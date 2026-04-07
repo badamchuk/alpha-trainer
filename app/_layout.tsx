@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { View } from 'react-native';
+import { useFonts } from 'expo-font';
 import { getUserProfile } from '../services/storage';
 import { initGemini } from '../services/gemini';
 import { initGroq } from '../services/groq';
@@ -8,6 +10,10 @@ import { requestPermissions } from '../services/notifications';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    Ionicons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
+  });
+
   useEffect(() => {
     async function init() {
       const profile = await getUserProfile();
@@ -17,6 +23,10 @@ export default function RootLayout() {
     }
     init();
   }, []);
+
+  if (!fontsLoaded) {
+    return <View style={{ flex: 1, backgroundColor: '#0D0D0D' }} />;
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
