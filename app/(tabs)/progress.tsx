@@ -1,13 +1,14 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, RefreshControl, Dimensions,
+  TouchableOpacity, TextInput, Modal, Alert,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
-import { getWorkouts, getStats } from '../../services/storage';
+import { getWorkouts, getStats, getPersonalRecords, PersonalRecord, getWeightLog, addWeightEntry, WeightEntry, getLocalDateString } from '../../services/storage';
 import { WorkoutEntry } from '../../types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -15,12 +16,30 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export default function ProgressScreen() {
   const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
   const [stats, setStats] = useState({ totalWorkouts: 0, weeklyWorkouts: 0, monthlyWorkouts: 0, totalDuration: 0, streak: 0 });
+  const [records, setRecords] = useState<PersonalRecord[]>([]);
+  const [weightLog, setWeightLog] = useState<WeightEntry[]>([]);
+  const [weightModalVisible, setWeightModalVisible] = useState(false);
+  const [weightInput, setWeightInput] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
   async function loadData() {
-    const [w, s] = await Promise.all([getWorkouts(), getStats()]);
+    const [w, s, r, wl] = await Promise.all([getWorkouts(), getStats(), getPersonalRecords(), getWeightLog()]);
     setWorkouts(w);
     setStats(s);
+    setRecords(r);
+    setWeightLog(wl);
+  }
+
+  async function handleLogWeight() {
+    const val = parseFloat(weightInput.replace(',', '.'));
+    if (isNaN(val) || val < 20 || val > 300) {
+      Alert.alert('Введи коректну вагу (20–300 кг)');
+      return;
+    }
+    await addWeightEntry({ date: getLocalDateString(new Date()), weight: val });
+    setWeightInput('');
+    setWeightModalVisible(false);
+    await loadData();
   }
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
@@ -162,6 +181,96 @@ export default function ProgressScreen() {
         </View>
       )}
 
+      {/* Weight History */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Вага тіла</Text>
+          <TouchableOpacity style={styles.logWeightBtn} onPress={() => setWeightModalVisible(true)}>
+            <Ionicons name="add" size={16} color="#FFF" />
+            <Text style={styles.logWeightBtnText}>Записати</Text>
+          </TouchableOpacity>
+        </View>
+        {weightLog.length === 0 ? (
+          <TouchableOpacity style={styles.weightEmpty} onPress={() => setWeightModalVisible(true)}>
+            <Ionicons name="scale-outline" size={28} color={Colors.textMuted} />
+            <Text style={styles.weightEmptyText}>Записуй вагу щоб відстежувати динаміку</Text>
+          </TouchableOpacity>
+        ) : (
+          <>
+            {/* Sparkline chart */}
+            {weightLog.length >= 2 && (() => {
+              const last = weightLog.slice(-12);
+              const minW = Math.min(...last.map((e) => e.weight));
+              const maxW = Math.max(...last.map((e) => e.weight));
+              const range = maxW - minW || 1;
+              const chartH = 48;
+              const chartW = SCREEN_WIDTH - Spacing.md * 4 - Spacing.md * 2;
+              const step = chartW / (last.length - 1);
+              return (
+                <View style={styles.weightChartContainer}>
+                  <View style={{ height: chartH, position: 'relative' }}>
+                    {last.map((e, i) => {
+                      const x = i * step;
+                      const y = chartH - ((e.weight - minW) / range) * (chartH - 8);
+                      return (
+                        <View key={i} style={[styles.weightDot, { left: x - 4, top: y - 4 }]} />
+                      );
+                    })}
+                  </View>
+                  <View style={styles.weightChartLabels}>
+                    <Text style={styles.weightChartLabel}>{minW} кг</Text>
+                    <Text style={styles.weightChartLabel}>{maxW} кг</Text>
+                  </View>
+                </View>
+              );
+            })()}
+            {/* Last 5 entries */}
+            {weightLog.slice(-5).reverse().map((e, i) => (
+              <View key={i} style={styles.weightRow}>
+                <Ionicons name="scale-outline" size={16} color={Colors.textMuted} />
+                <Text style={styles.weightDate}>{e.date}</Text>
+                <Text style={styles.weightValue}>{e.weight} кг</Text>
+              </View>
+            ))}
+            {weightLog.length > 5 && (
+              <Text style={styles.weightMore}>+{weightLog.length - 5} ще записів</Text>
+            )}
+          </>
+        )}
+      </View>
+
+      {/* Personal Records */}
+      {records.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Особисті рекорди</Text>
+          {records.map((r, i) => (
+            <View key={i} style={styles.prRow}>
+              <View style={styles.prRank}>
+                <Text style={styles.prRankText}>{i + 1}</Text>
+              </View>
+              <View style={styles.prBody}>
+                <Text style={styles.prName} numberOfLines={1}>{r.exerciseName}</Text>
+                <Text style={styles.prDate}>{r.date}</Text>
+              </View>
+              <View style={styles.prStats}>
+                {r.maxWeight > 0 && (
+                  <View style={styles.prBadge}>
+                    <Ionicons name="barbell-outline" size={12} color={Colors.primary} />
+                    <Text style={styles.prBadgeText}>{r.maxWeight} кг</Text>
+                  </View>
+                )}
+                {r.maxReps > 0 && (
+                  <View style={[styles.prBadge, { backgroundColor: 'rgba(46,196,182,0.12)' }]}>
+                    <Ionicons name="repeat-outline" size={12} color={Colors.success} />
+                    <Text style={[styles.prBadgeText, { color: Colors.success }]}>{r.maxReps} повт.</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
       {workouts.length === 0 && (
         <View style={styles.empty}>
           <Ionicons name="stats-chart-outline" size={56} color={Colors.textMuted} />
@@ -169,6 +278,33 @@ export default function ProgressScreen() {
           <Text style={styles.emptyText}>Починай записувати тренування — тут буде твоя статистика</Text>
         </View>
       )}
+
+      {/* Weight log modal */}
+      <Modal visible={weightModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Записати вагу</Text>
+            <TextInput
+              style={styles.weightModalInput}
+              placeholder="наприклад: 75.5"
+              placeholderTextColor={Colors.textMuted}
+              value={weightInput}
+              onChangeText={setWeightInput}
+              keyboardType="decimal-pad"
+              autoFocus
+            />
+            <Text style={styles.modalUnit}>кг</Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => { setWeightModalVisible(false); setWeightInput(''); }}>
+                <Text style={styles.modalCancelText}>Скасувати</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSave} onPress={handleLogWeight}>
+                <Text style={styles.modalSaveText}>Зберегти</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -229,4 +365,85 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingTop: 40, gap: Spacing.sm },
   emptyTitle: { ...Typography.h3, color: Colors.textSecondary },
   emptyText: { ...Typography.bodySmall, textAlign: 'center', maxWidth: 260 },
+  prRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
+    padding: Spacing.sm, paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.xs, borderWidth: 1, borderColor: Colors.border,
+  },
+  prRank: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(230,57,70,0.12)', alignItems: 'center', justifyContent: 'center',
+  },
+  prRankText: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
+  prBody: { flex: 1 },
+  prName: { color: Colors.textPrimary, fontWeight: '600', fontSize: 14 },
+  prDate: { color: Colors.textMuted, fontSize: 11, marginTop: 2 },
+  prStats: { flexDirection: 'row', gap: Spacing.xs, flexWrap: 'wrap', justifyContent: 'flex-end' },
+  prBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(230,57,70,0.12)', borderRadius: BorderRadius.full,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  prBadgeText: { color: Colors.primary, fontSize: 12, fontWeight: '600' },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md },
+  logWeightBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.primary, borderRadius: BorderRadius.full,
+    paddingHorizontal: 12, paddingVertical: 5,
+  },
+  logWeightBtnText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
+  weightEmpty: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: Spacing.lg, alignItems: 'center', gap: Spacing.sm,
+  },
+  weightEmptyText: { color: Colors.textMuted, fontSize: 13, textAlign: 'center' },
+  weightChartContainer: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: Spacing.md, marginBottom: Spacing.sm,
+  },
+  weightDot: {
+    position: 'absolute', width: 8, height: 8, borderRadius: 4,
+    backgroundColor: Colors.primary,
+  },
+  weightChartLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.xs },
+  weightChartLabel: { color: Colors.textMuted, fontSize: 11 },
+  weightRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  weightDate: { flex: 1, color: Colors.textSecondary, fontSize: 14 },
+  weightValue: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
+  weightMore: { color: Colors.textMuted, fontSize: 12, marginTop: Spacing.xs, textAlign: 'center' },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalCard: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.xl,
+    padding: Spacing.lg, width: '80%', alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  modalTitle: { ...Typography.h3, marginBottom: Spacing.md },
+  weightModalInput: {
+    backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Spacing.md, paddingVertical: 12,
+    color: Colors.textPrimary, fontSize: 28, fontWeight: '700',
+    textAlign: 'center', width: '100%', marginBottom: Spacing.xs,
+  },
+  modalUnit: { color: Colors.textMuted, fontSize: 14, marginBottom: Spacing.lg },
+  modalActions: { flexDirection: 'row', gap: Spacing.sm, width: '100%' },
+  modalCancel: {
+    flex: 1, padding: Spacing.sm, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.border, alignItems: 'center',
+  },
+  modalCancelText: { color: Colors.textSecondary, fontWeight: '600' },
+  modalSave: {
+    flex: 1, padding: Spacing.sm, borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary, alignItems: 'center',
+  },
+  modalSaveText: { color: '#FFF', fontWeight: '700' },
 });

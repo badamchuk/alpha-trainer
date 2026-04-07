@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  Alert, RefreshControl,
+  Alert, RefreshControl, TextInput,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,6 +42,7 @@ export default function JournalScreen() {
   const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   async function loadWorkouts() {
     const data = await getWorkouts();
@@ -74,7 +75,16 @@ export default function JournalScreen() {
     ]);
   };
 
-  const filtered = filter ? workouts.filter((w) => w.workoutType === filter) : workouts;
+  const filtered = workouts.filter((w) => {
+    if (filter && w.workoutType !== filter) return false;
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      w.workoutType.toLowerCase().includes(q) ||
+      w.notes?.toLowerCase().includes(q) ||
+      w.exercises.some((e) => e.name.toLowerCase().includes(q))
+    );
+  });
 
   const typeFilters = Array.from(new Set(workouts.map((w) => w.workoutType)));
 
@@ -88,6 +98,24 @@ export default function JournalScreen() {
         >
           <Ionicons name="add" size={22} color="#FFF" />
         </TouchableOpacity>
+      </View>
+
+      {/* Search */}
+      <View style={styles.searchContainer}>
+        <Ionicons name="search-outline" size={18} color={Colors.textMuted} style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Пошук за вправою, нотатками..."
+          placeholderTextColor={Colors.textMuted}
+          value={search}
+          onChangeText={setSearch}
+          returnKeyType="search"
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')} style={styles.searchClear}>
+            <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Filter chips */}
@@ -197,6 +225,19 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary, borderRadius: BorderRadius.full,
     width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
   },
+  searchContainer: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border,
+    marginHorizontal: Spacing.md, marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+  },
+  searchIcon: { paddingHorizontal: 6 },
+  searchInput: {
+    flex: 1, color: Colors.textPrimary, fontSize: 15,
+    paddingVertical: 10,
+  },
+  searchClear: { padding: 6 },
   filterList: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm },
   filterChip: {
     paddingHorizontal: 14, paddingVertical: 6, borderRadius: BorderRadius.full,

@@ -12,8 +12,8 @@ import {
   getUserProfile, getGoals, getRecentWorkouts,
   getChatHistory, saveChatHistory, clearChatHistory, saveTrainingPlan,
 } from '../../services/storage';
-import { chat as geminiChat, initGemini, generateTrainingPlan as geminiGeneratePlan } from '../../services/gemini';
-import { chat as groqChat, initGroq, generateTrainingPlan as groqGeneratePlan } from '../../services/groq';
+import { chatStream as geminiChatStream, initGemini, generateTrainingPlan as geminiGeneratePlan } from '../../services/gemini';
+import { chatStream as groqChatStream, initGroq, generateTrainingPlan as groqGeneratePlan } from '../../services/groq';
 import { createPlanFromAIText } from '../../services/planParser';
 import { ChatMessage, UserProfile } from '../../types';
 
@@ -37,6 +37,7 @@ export default function TrainerScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isPlanRequestInFlight, setIsPlanRequestInFlight] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [planMessage, setPlanMessage] = useState<ChatMessage | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
@@ -89,6 +90,7 @@ export default function TrainerScreen() {
     setMessages(updatedMessages);
     setInput('');
     setLoading(true);
+    setIsPlanRequestInFlight(isPlanRequest);
     setPlanMessage(null);
     setPlanSaved(false);
 
@@ -96,38 +98,51 @@ export default function TrainerScreen() {
       const goals = await getGoals();
       const recent = await getRecentWorkouts(7);
 
-      let reply: string;
       const useGroq = !!profile.groqApiKey;
+      const streamingMsgId = (Date.now() + 1).toString();
+      const streamingMsg: ChatMessage = {
+        id: streamingMsgId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date().toISOString(),
+      };
+      setMessages([...updatedMessages, streamingMsg]);
+
+      let reply: string;
 
       if (isPlanRequest) {
+        // Plans don't stream — they use the structured generation function
         reply = useGroq
           ? await groqGeneratePlan(profile, goals)
           : await geminiGeneratePlan(profile, goals);
+        setMessages((prev) =>
+          prev.map((m) => m.id === streamingMsgId ? { ...m, content: reply } : m)
+        );
       } else {
         const groqHistory = messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
         const geminiHistory = messages.map((m) => ({
           role: m.role === 'user' ? 'user' as const : 'model' as const,
           parts: [{ text: m.content }],
         }));
+
+        const onChunk = (text: string) => {
+          setMessages((prev) =>
+            prev.map((m) => m.id === streamingMsgId ? { ...m, content: text } : m)
+          );
+        };
+
         reply = useGroq
-          ? await groqChat(text.trim(), profile, goals, recent, groqHistory)
-          : await geminiChat(text.trim(), profile, goals, recent, geminiHistory);
+          ? await groqChatStream(text.trim(), profile, goals, recent, groqHistory, onChunk)
+          : await geminiChatStream(text.trim(), profile, goals, recent, geminiHistory, onChunk);
       }
 
-      const assistantMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: reply,
-        timestamp: new Date().toISOString(),
-      };
-
-      const finalMessages = [...updatedMessages, assistantMsg];
+      const finalMessages = [...updatedMessages, { ...streamingMsg, content: reply }];
       setMessages(finalMessages);
       await saveChatHistory(finalMessages);
 
       // Auto-detect if response looks like a training plan
       if (looksLikePlan(reply) || isPlanRequest) {
-        setPlanMessage(assistantMsg);
+        setPlanMessage({ ...streamingMsg, content: reply });
       }
     } catch (error: any) {
       const errMsg: ChatMessage = {
@@ -139,6 +154,7 @@ export default function TrainerScreen() {
       setMessages([...updatedMessages, errMsg]);
     } finally {
       setLoading(false);
+      setIsPlanRequestInFlight(false);
     }
   }
 
@@ -268,12 +284,12 @@ export default function TrainerScreen() {
         />
       )}
 
-      {/* Loading */}
-      {loading && (
+      {/* Loading — shown only while plan is being generated (no stream) */}
+      {loading && isPlanRequestInFlight && (
         <View style={styles.thinkingRow}>
           <View style={styles.thinkingBubble}>
             <ActivityIndicator size="small" color={Colors.primary} />
-            <Text style={styles.thinkingText}>Тренер думає...</Text>
+            <Text style={styles.thinkingText}>Складаю план...</Text>
           </View>
         </View>
       )}

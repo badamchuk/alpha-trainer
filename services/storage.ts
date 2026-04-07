@@ -7,6 +7,8 @@ const KEYS = {
   WORKOUTS: '@alpha_trainer:workouts',
   TRAINING_PLAN: '@alpha_trainer:training_plan',
   CHAT_HISTORY: '@alpha_trainer:chat_history',
+  DAILY_ADVICE: '@alpha_trainer:daily_advice',
+  WEIGHT_LOG: '@alpha_trainer:weight_log',
 };
 
 // --- User Profile ---
@@ -111,6 +113,99 @@ export async function clearChatHistory(): Promise<void> {
   await AsyncStorage.removeItem(KEYS.CHAT_HISTORY);
 }
 
+// --- Daily Advice Cache ---
+interface DailyAdviceCache {
+  date: string; // YYYY-MM-DD
+  text: string;
+}
+
+export async function getCachedDailyAdvice(): Promise<string | null> {
+  const json = await AsyncStorage.getItem(KEYS.DAILY_ADVICE);
+  if (!json) return null;
+  const cache: DailyAdviceCache = JSON.parse(json);
+  const today = getLocalDateString(new Date());
+  return cache.date === today ? cache.text : null;
+}
+
+export async function saveDailyAdviceCache(text: string): Promise<void> {
+  const cache: DailyAdviceCache = { date: getLocalDateString(new Date()), text };
+  await AsyncStorage.setItem(KEYS.DAILY_ADVICE, JSON.stringify(cache));
+}
+
+// --- Weight Log ---
+export interface WeightEntry {
+  date: string; // YYYY-MM-DD
+  weight: number; // kg
+}
+
+export async function getWeightLog(): Promise<WeightEntry[]> {
+  const json = await AsyncStorage.getItem(KEYS.WEIGHT_LOG);
+  return json ? JSON.parse(json) : [];
+}
+
+export async function addWeightEntry(entry: WeightEntry): Promise<void> {
+  const log = await getWeightLog();
+  // Replace entry for same date if exists
+  const idx = log.findIndex((e) => e.date === entry.date);
+  if (idx !== -1) {
+    log[idx] = entry;
+  } else {
+    log.push(entry);
+  }
+  log.sort((a, b) => a.date.localeCompare(b.date));
+  await AsyncStorage.setItem(KEYS.WEIGHT_LOG, JSON.stringify(log));
+}
+
+// --- Personal Records ---
+export interface PersonalRecord {
+  exerciseName: string;
+  maxWeight: number; // kg
+  maxWeightReps?: number;
+  maxReps: number;
+  date: string; // when max was set
+}
+
+export async function getPersonalRecords(): Promise<PersonalRecord[]> {
+  const workouts = await getWorkouts();
+  const map = new Map<string, PersonalRecord>();
+
+  for (const workout of workouts) {
+    for (const ex of workout.exercises) {
+      if (!ex.name) continue;
+      const key = ex.name.toLowerCase().trim();
+      const existing = map.get(key);
+
+      const newRecord: PersonalRecord = existing
+        ? { ...existing }
+        : { exerciseName: ex.name, maxWeight: 0, maxReps: 0, date: workout.date };
+
+      if (ex.weight && ex.weight > newRecord.maxWeight) {
+        newRecord.maxWeight = ex.weight;
+        newRecord.maxWeightReps = ex.reps;
+        newRecord.date = workout.date;
+      }
+      if (ex.reps && ex.reps > newRecord.maxReps) {
+        newRecord.maxReps = ex.reps;
+      }
+
+      map.set(key, newRecord);
+    }
+  }
+
+  return Array.from(map.values())
+    .filter((r) => r.maxWeight > 0 || r.maxReps > 0)
+    .sort((a, b) => b.maxWeight - a.maxWeight || b.maxReps - a.maxReps)
+    .slice(0, 10);
+}
+
+// --- Helpers ---
+export function getLocalDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 // --- Stats ---
 export async function getStats(): Promise<{
   totalWorkouts: number;
@@ -124,21 +219,22 @@ export async function getStats(): Promise<{
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  const weeklyWorkouts = workouts.filter((w) => new Date(w.date) >= weekAgo).length;
-  const monthlyWorkouts = workouts.filter((w) => new Date(w.date) >= monthAgo).length;
+  const weeklyWorkouts = workouts.filter((w) => w.date >= getLocalDateString(weekAgo)).length;
+  const monthlyWorkouts = workouts.filter((w) => w.date >= getLocalDateString(monthAgo)).length;
   const totalDuration = workouts.reduce((sum, w) => sum + (w.duration || 0), 0);
 
-  // Calculate streak
+  // Calculate streak using local dates (not UTC)
   let streak = 0;
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString(new Date());
   const workoutDates = new Set(workouts.map((w) => w.date));
   let checkDate = new Date();
   while (true) {
-    const dateStr = checkDate.toISOString().split('T')[0];
+    const dateStr = getLocalDateString(checkDate);
     if (workoutDates.has(dateStr)) {
       streak++;
       checkDate.setDate(checkDate.getDate() - 1);
     } else if (dateStr === today) {
+      // Allow today to not have a workout yet without breaking streak
       checkDate.setDate(checkDate.getDate() - 1);
     } else {
       break;

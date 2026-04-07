@@ -90,6 +90,34 @@ export async function chat(
   });
 }
 
+export async function chatStream(
+  message: string,
+  profile: UserProfile,
+  goals: Goal[],
+  recentWorkouts: WorkoutEntry[],
+  history: { role: 'user' | 'model'; parts: { text: string }[] }[],
+  onChunk: (text: string) => void
+): Promise<string> {
+  const systemContext = buildSystemContext(profile, goals, recentWorkouts);
+  return callWithFallback(async (model) => {
+    const chatSession = model.startChat({
+      history: [
+        { role: 'user', parts: [{ text: systemContext }] },
+        { role: 'model', parts: [{ text: 'Зрозумів! Я готовий допомагати тобі з тренуваннями, враховуючи твій профіль та цілі.' }] },
+        ...history,
+      ],
+    });
+    const result = await chatSession.sendMessageStream(message);
+    let fullText = '';
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      fullText += text;
+      onChunk(fullText);
+    }
+    return fullText;
+  });
+}
+
 export async function generateTrainingPlan(
   profile: UserProfile,
   goals: Goal[]

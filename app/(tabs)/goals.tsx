@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getGoals, addGoal, updateGoal, deleteGoal } from '../../services/storage';
 import { Goal } from '../../types';
+import DatePickerField from '../../components/DatePickerField';
 
 const GOAL_TYPES = [
   { id: 'strength', label: 'Сила', icon: 'barbell-outline', color: '#E63946' },
@@ -197,13 +198,11 @@ export default function GoalsScreen() {
               onChangeText={(t) => setForm((f) => ({ ...f, currentValue: t }))}
             />
 
-            <Text style={styles.fieldLabel}>Дедлайн (необов'язково, РРРР-ММ-ДД)</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="2026-06-01"
-              placeholderTextColor={Colors.textMuted}
+            <DatePickerField
+              label="Дедлайн (необов'язково)"
               value={form.deadline}
-              onChangeText={(t) => setForm((f) => ({ ...f, deadline: t }))}
+              onChange={(d) => setForm((f) => ({ ...f, deadline: d }))}
+              minimumDate={new Date()}
             />
           </ScrollView>
         </View>

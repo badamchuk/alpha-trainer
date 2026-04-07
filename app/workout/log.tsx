@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, KeyboardAvoidingView, Platform, Alert,
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { addWorkout } from '../../services/storage';
 import { WorkoutEntry, ExerciseLog, WorkoutType } from '../../types';
+import DatePickerField from '../../components/DatePickerField';
 
 const WORKOUT_TYPES: { id: WorkoutType; label: string; icon: string; color: string }[] = [
   { id: 'strength', label: 'Силове', icon: 'barbell-outline', color: '#E63946' },
@@ -27,12 +28,46 @@ const RATINGS = [1, 2, 3, 4, 5] as const;
 export default function LogWorkoutScreen() {
   const router = useRouter();
   const [workoutType, setWorkoutType] = useState<WorkoutType>('strength');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const now = new Date();
+  const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const [date, setDate] = useState(localToday);
   const [duration, setDuration] = useState('');
   const [notes, setNotes] = useState('');
   const [rating, setRating] = useState<1 | 2 | 3 | 4 | 5 | undefined>(undefined);
   const [exercises, setExercises] = useState<ExerciseLog[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Timer state
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, []);
+
+  function toggleTimer() {
+    if (timerRunning) {
+      clearInterval(timerRef.current!);
+      timerRef.current = null;
+      setTimerRunning(false);
+      const mins = Math.max(1, Math.round(timerSeconds / 60));
+      setDuration(String(mins));
+    } else {
+      setTimerRunning(true);
+      timerRef.current = setInterval(() => {
+        setTimerSeconds((s) => s + 1);
+      }, 1000);
+    }
+  }
+
+  function formatTimer(secs: number): string {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
 
   // Exercise form state
   const [exName, setExName] = useState('');
@@ -117,29 +152,42 @@ export default function LogWorkoutScreen() {
           </ScrollView>
 
           {/* Date & Duration */}
-          <View style={styles.row}>
-            <View style={styles.rowItem}>
-              <Text style={styles.label}>Дата</Text>
-              <TextInput
-                style={styles.input}
-                value={date}
-                onChangeText={setDate}
-                placeholder="РРРР-ММ-ДД"
-                placeholderTextColor={Colors.textMuted}
+          <DatePickerField
+            label="Дата"
+            value={date}
+            onChange={setDate}
+            maximumDate={new Date()}
+          />
+          {/* Timer */}
+          <View style={styles.timerCard}>
+            <View style={styles.timerDisplay}>
+              <Ionicons
+                name={timerRunning ? 'timer' : 'timer-outline'}
+                size={22}
+                color={timerRunning ? Colors.primary : Colors.textMuted}
               />
+              <Text style={[styles.timerText, timerRunning && styles.timerTextActive]}>
+                {formatTimer(timerSeconds)}
+              </Text>
             </View>
-            <View style={styles.rowItem}>
-              <Text style={styles.label}>Тривалість (хв)</Text>
-              <TextInput
-                style={styles.input}
-                value={duration}
-                onChangeText={setDuration}
-                placeholder="60"
-                placeholderTextColor={Colors.textMuted}
-                keyboardType="numeric"
-              />
-            </View>
+            <TouchableOpacity
+              style={[styles.timerBtn, timerRunning && styles.timerBtnStop]}
+              onPress={toggleTimer}
+            >
+              <Ionicons name={timerRunning ? 'stop' : 'play'} size={16} color="#FFF" />
+              <Text style={styles.timerBtnText}>{timerRunning ? 'Зупинити' : 'Старт'}</Text>
+            </TouchableOpacity>
           </View>
+
+          <Text style={styles.label}>Тривалість (хв)</Text>
+          <TextInput
+            style={styles.input}
+            value={duration}
+            onChangeText={setDuration}
+            placeholder="60"
+            placeholderTextColor={Colors.textMuted}
+            keyboardType="numeric"
+          />
 
           {/* Rating */}
           <Text style={styles.label}>Оцінка тренування</Text>
@@ -294,4 +342,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   addExBtnText: { color: '#FFF', fontWeight: '600', fontSize: 13 },
+  timerCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: Spacing.md, marginTop: Spacing.md,
+  },
+  timerDisplay: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  timerText: { fontSize: 28, fontWeight: '700', color: Colors.textMuted, fontVariant: ['tabular-nums'] },
+  timerTextActive: { color: Colors.primary },
+  timerBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: Colors.success, borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md, paddingVertical: 8,
+  },
+  timerBtnStop: { backgroundColor: Colors.error },
+  timerBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
 });

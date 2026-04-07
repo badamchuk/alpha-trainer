@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { format, isToday } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
-import { getUserProfile, getGoals, getRecentWorkouts, getStats, getWorkoutsForDate, getTrainingPlan } from '../../services/storage';
+import { getUserProfile, getGoals, getRecentWorkouts, getStats, getWorkoutsForDate, getTrainingPlan, getCachedDailyAdvice, saveDailyAdviceCache } from '../../services/storage';
 import { getDailyAdvice as geminiDailyAdvice } from '../../services/gemini';
 import { getDailyAdvice as groqDailyAdvice, initGroq } from '../../services/groq';
 import { getTodayPlan, WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS } from '../../services/planParser';
@@ -42,6 +42,14 @@ export default function TodayScreen() {
 
   async function loadAdvice(p: UserProfile) {
     if (!p?.groqApiKey && !p?.geminiApiKey) return;
+
+    // Use cached advice if available for today
+    const cached = await getCachedDailyAdvice();
+    if (cached) {
+      setAdvice(cached);
+      return;
+    }
+
     setLoadingAdvice(true);
     try {
       const goals = await getGoals();
@@ -54,6 +62,7 @@ export default function TodayScreen() {
         text = await geminiDailyAdvice(p, goals, recent);
       }
       setAdvice(text);
+      await saveDailyAdviceCache(text);
     } catch {
       setAdvice('');
     } finally {
