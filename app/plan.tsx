@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
-import { getTrainingPlan, saveTrainingPlan } from '../services/storage';
+import { getTrainingPlan, saveTrainingPlan, getUserProfile } from '../services/storage';
 import { TrainingPlan, DayPlan } from '../types';
 import {
   WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS,
@@ -25,10 +25,16 @@ export default function PlanScreen() {
   const router = useRouter();
   const [plan, setPlan] = useState<TrainingPlan | null>(null);
   const [expanded, setExpanded] = useState<number | null>(new Date().getDay());
+  const [aiProvider, setAiProvider] = useState<'Groq' | 'Gemini AI'>('Gemini AI');
 
-  useEffect(() => {
-    getTrainingPlan().then(setPlan);
-  }, []);
+  useFocusEffect(useCallback(() => {
+    async function load() {
+      const [p, profile] = await Promise.all([getTrainingPlan(), getUserProfile()]);
+      setPlan(p);
+      setAiProvider(profile?.groqApiKey ? 'Groq' : 'Gemini AI');
+    }
+    load();
+  }, []));
 
   const today = new Date().getDay();
 
@@ -91,7 +97,7 @@ export default function PlanScreen() {
           <View style={styles.metaLeft}>
             <View style={styles.aiTag}>
               <Ionicons name="sparkles" size={12} color="#4285F4" />
-              <Text style={styles.aiTagText}>Gemini AI</Text>
+              <Text style={styles.aiTagText}>{aiProvider}</Text>
             </View>
             <Text style={styles.metaDate}>Складено {createdDate}</Text>
           </View>

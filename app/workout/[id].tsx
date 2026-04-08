@@ -18,6 +18,12 @@ const TYPE_LABELS: Record<string, string> = {
   run: 'Біг', cycling: 'Велосипед', swimming: 'Плавання', custom: 'Інше',
 };
 
+const TYPE_ICONS: Record<string, string> = {
+  strength: 'barbell-outline', cardio: 'heart-outline', crossfit: 'flash-outline',
+  hiit: 'timer-outline', run: 'walk-outline', yoga: 'leaf-outline',
+  recovery: 'bed-outline', cycling: 'bicycle-outline', swimming: 'water-outline', custom: 'ellipsis-horizontal-outline',
+};
+
 const TYPE_COLORS: Record<string, string> = {
   strength: '#E63946', cardio: '#2EC4B6', crossfit: '#F4A261',
   hiit: '#FF6B6B', yoga: '#9B59B6', recovery: '#3498DB',
@@ -153,6 +159,7 @@ export default function WorkoutDetailScreen() {
 
   const color = TYPE_COLORS[workout.workoutType] || Colors.textMuted;
   const label = TYPE_LABELS[workout.workoutType] || workout.workoutType;
+  const typeIcon = TYPE_ICONS[workout.workoutType] || 'barbell-outline';
   const dateFormatted = format(parseISO(workout.date), 'EEEE, d MMMM yyyy', { locale: uk });
 
   // ─── EDIT MODE ────────────────────────────────────────────────────
@@ -323,7 +330,7 @@ export default function WorkoutDetailScreen() {
         <View style={[styles.typeBanner, { backgroundColor: color + '15', borderColor: color + '30' }]}>
           <View style={styles.typeBannerLeft}>
             <View style={[styles.typeIcon, { backgroundColor: color + '20' }]}>
-              <Ionicons name="barbell-outline" size={24} color={color} />
+              <Ionicons name={typeIcon as any} size={24} color={color} />
             </View>
             <View>
               <Text style={[styles.typeLabel, { color }]}>{label}</Text>

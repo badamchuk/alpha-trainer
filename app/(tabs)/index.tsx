@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { format, isToday } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
-import { getUserProfile, getGoals, getRecentWorkouts, getStats, getWorkoutsForDate, getTrainingPlan, getCachedDailyAdvice, saveDailyAdviceCache } from '../../services/storage';
+import { getUserProfile, getGoals, getRecentWorkouts, getStats, getWorkoutsForDate, getTrainingPlan, getCachedDailyAdvice, saveDailyAdviceCache, getLocalDateString } from '../../services/storage';
 import { getDailyAdvice as geminiDailyAdvice } from '../../services/gemini';
 import { getDailyAdvice as groqDailyAdvice, initGroq } from '../../services/groq';
 import { getTodayPlan, WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS } from '../../services/planParser';
@@ -24,7 +24,7 @@ export default function TodayScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [todayPlan, setTodayPlan] = useState<DayPlan | null>(null);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString(new Date());
   const todayFormatted = format(new Date(), 'EEEE, d MMMM', { locale: uk });
 
   async function loadData() {

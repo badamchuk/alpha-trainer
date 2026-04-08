@@ -60,8 +60,7 @@ export default function ProgressScreen() {
     const weekEnd = subDays(today, i * 7);
     const weekStart = subDays(weekEnd, 6);
     const count = workouts.filter((w) => {
-      const d = new Date(w.date);
-      return d >= weekStart && d <= weekEnd;
+      return w.date >= format(weekStart, 'yyyy-MM-dd') && w.date <= format(weekEnd, 'yyyy-MM-dd');
     }).length;
     return { week: 12 - i, count, label: format(weekEnd, 'dd.MM') };
   }).reverse();
