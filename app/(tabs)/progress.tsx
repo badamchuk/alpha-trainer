@@ -10,6 +10,7 @@ import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getWorkouts, getStats, getPersonalRecords, PersonalRecord, getWeightLog, addWeightEntry, WeightEntry, getLocalDateString } from '../../services/storage';
 import { WorkoutEntry } from '../../types';
+import { getRunStats, getStrengthStats, formatPace, RunStats, StrengthStats } from '../../services/analytics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -21,6 +22,8 @@ export default function ProgressScreen() {
   const [weightModalVisible, setWeightModalVisible] = useState(false);
   const [weightInput, setWeightInput] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [runStats, setRunStats] = useState<RunStats | null>(null);
+  const [strengthStats, setStrengthStats] = useState<StrengthStats | null>(null);
 
   async function loadData() {
     const [w, s, r, wl] = await Promise.all([getWorkouts(), getStats(), getPersonalRecords(), getWeightLog()]);
@@ -28,6 +31,10 @@ export default function ProgressScreen() {
     setStats(s);
     setRecords(r);
     setWeightLog(wl);
+    const rs = getRunStats(w);
+    setRunStats(rs.totalRuns > 0 ? rs : null);
+    const ss = getStrengthStats(w);
+    setStrengthStats(ss.totalSessions > 0 ? ss : null);
   }
 
   async function handleLogWeight() {
@@ -180,6 +187,84 @@ export default function ProgressScreen() {
         </View>
       )}
 
+      {/* Run stats */}
+      {runStats && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Статистика бігу</Text>
+          <View style={styles.runStatsGrid}>
+            <RunStatCard label="Всього пробіжок" value={`${runStats.totalRuns}`} icon="walk-outline" color="#2ECC71" />
+            <RunStatCard label="Загальна дистанція" value={`${runStats.totalDistanceKm} км`} icon="navigate-outline" color="#2ECC71" />
+            <RunStatCard label="Цього місяця" value={`${runStats.monthlyDistanceKm} км`} icon="calendar-outline" color="#2ECC71" />
+            <RunStatCard label="Найдовший біг" value={`${runStats.longestRunKm} км`} icon="trophy-outline" color="#F4A261" />
+            {runStats.bestPaceSec > 0 && (
+              <RunStatCard label="Кращий темп" value={formatPace(runStats.bestPaceSec)} icon="flash-outline" color="#E63946" />
+            )}
+            {runStats.avgPaceSec > 0 && (
+              <RunStatCard label="Середній темп" value={formatPace(runStats.avgPaceSec)} icon="speedometer-outline" color="#3498DB" />
+            )}
+          </View>
+
+          {/* Last runs */}
+          {runStats.recentRuns.length > 0 && (
+            <View style={styles.runList}>
+              <Text style={styles.subSectionTitle}>Останні пробіжки</Text>
+              {runStats.recentRuns.slice(0, 6).map((r, i) => (
+                <View key={i} style={styles.runRow}>
+                  <Text style={styles.runDate}>{r.date}</Text>
+                  <Text style={styles.runDist}>{r.distanceKm > 0 ? `${r.distanceKm} км` : `${r.durationMin} хв`}</Text>
+                  {r.paceSec > 0 && <Text style={styles.runPace}>{formatPace(r.paceSec)}</Text>}
+                  <Text style={styles.runDur}>{r.durationMin} хв</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Pace trend chart */}
+          {runStats.recentRuns.filter(r => r.paceSec > 0).length >= 3 && (() => {
+            const paceRuns = runStats.recentRuns.filter(r => r.paceSec > 0).slice(0, 8).reverse();
+            const minP = Math.min(...paceRuns.map(r => r.paceSec));
+            const maxP = Math.max(...paceRuns.map(r => r.paceSec));
+            const range = maxP - minP || 1;
+            const chartH = 48;
+            const chartW = SCREEN_WIDTH - Spacing.md * 4 - Spacing.md * 2;
+            const step = chartW / Math.max(paceRuns.length - 1, 1);
+            return (
+              <View style={[styles.weightChartContainer, { marginTop: Spacing.sm }]}>
+                <Text style={styles.subSectionTitle}>Динаміка темпу (менше = краще)</Text>
+                <View style={{ height: chartH, position: 'relative' }}>
+                  {paceRuns.map((r, i) => {
+                    const x = i * step;
+                    // Invert: faster pace (lower sec) = higher dot
+                    const y = ((r.paceSec - minP) / range) * (chartH - 8);
+                    return <View key={i} style={[styles.weightDot, { left: x - 4, top: y }]} />;
+                  })}
+                </View>
+                <View style={styles.weightChartLabels}>
+                  <Text style={styles.weightChartLabel}>{formatPace(minP)} (кращий)</Text>
+                  <Text style={styles.weightChartLabel}>{formatPace(maxP)}</Text>
+                </View>
+              </View>
+            );
+          })()}
+        </View>
+      )}
+
+      {/* Strength stats */}
+      {strengthStats && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Статистика силових</Text>
+          <View style={styles.runStatsGrid}>
+            <RunStatCard label="Тренувань" value={`${strengthStats.totalSessions}`} icon="barbell-outline" color="#E63946" />
+            <RunStatCard label="Цього місяця" value={`${strengthStats.monthSessions}`} icon="calendar-outline" color="#E63946" />
+            <RunStatCard label="Всього підходів" value={`${strengthStats.totalSets}`} icon="repeat-outline" color="#9B59B6" />
+            <RunStatCard label="Сер. тривалість" value={`${strengthStats.avgDurationMin} хв`} icon="time-outline" color="#3498DB" />
+            {strengthStats.avgRating > 0 && (
+              <RunStatCard label="Сер. оцінка" value={`${strengthStats.avgRating}/5`} icon="star-outline" color="#F4A261" />
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Weight History */}
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
@@ -305,6 +390,18 @@ export default function ProgressScreen() {
         </View>
       </Modal>
     </ScrollView>
+  );
+}
+
+function RunStatCard({ icon, color, value, label }: {
+  icon: any; color: string; value: string; label: string;
+}) {
+  return (
+    <View style={styles.runStatCard}>
+      <Ionicons name={icon} size={18} color={color} />
+      <Text style={[styles.runStatValue, { color }]}>{value}</Text>
+      <Text style={styles.runStatLabel}>{label}</Text>
+    </View>
   );
 }
 
@@ -445,4 +542,23 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary, alignItems: 'center',
   },
   modalSaveText: { color: '#FFF', fontWeight: '700' },
+  runStatsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.sm },
+  runStatCard: {
+    width: (SCREEN_WIDTH - Spacing.md * 2 - Spacing.sm * 2) / 3,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
+    padding: Spacing.sm, alignItems: 'center', gap: 3,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  runStatValue: { fontSize: 16, fontWeight: '800' },
+  runStatLabel: { fontSize: 10, color: Colors.textMuted, textAlign: 'center' },
+  runList: { marginTop: Spacing.sm },
+  subSectionTitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: Spacing.sm },
+  runRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  runDate: { color: Colors.textMuted, fontSize: 12, width: 88 },
+  runDist: { color: Colors.textPrimary, fontWeight: '700', fontSize: 14, flex: 1 },
+  runPace: { color: Colors.primary, fontSize: 13, fontWeight: '600', width: 72, textAlign: 'center' },
+  runDur: { color: Colors.textMuted, fontSize: 12, width: 40, textAlign: 'right' },
 });

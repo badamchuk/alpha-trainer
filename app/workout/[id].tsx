@@ -11,6 +11,9 @@ import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme
 import { getWorkouts, deleteWorkout, updateWorkout } from '../../services/storage';
 import { WorkoutEntry, ExerciseLog, WorkoutType } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
+import { computePace, formatPace } from '../../services/analytics';
+
+const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
 const TYPE_LABELS: Record<string, string> = {
   strength: 'Силове', cardio: 'Кардіо', crossfit: 'CrossFit',
@@ -65,6 +68,12 @@ export default function WorkoutDetailScreen() {
   const [exDistance, setExDistance] = useState('');
   const [exCalories, setExCalories] = useState('');
   const [exWatts, setExWatts] = useState('');
+  // Cardio edit fields
+  const [totalDistance, setTotalDistance] = useState('');
+  const [avgHeartRate, setAvgHeartRate] = useState('');
+  const [maxHeartRate, setMaxHeartRate] = useState('');
+  const [elevationGain, setElevationGain] = useState('');
+  const [totalCalories, setTotalCalories] = useState('');
 
   useEffect(() => {
     async function load() {
@@ -83,6 +92,11 @@ export default function WorkoutDetailScreen() {
     setNotes(workout.notes || '');
     setRating(workout.rating);
     setExercises([...workout.exercises]);
+    setTotalDistance(workout.totalDistance ? String(workout.totalDistance) : '');
+    setAvgHeartRate(workout.avgHeartRate ? String(workout.avgHeartRate) : '');
+    setMaxHeartRate(workout.maxHeartRate ? String(workout.maxHeartRate) : '');
+    setElevationGain(workout.elevationGain ? String(workout.elevationGain) : '');
+    setTotalCalories(workout.totalCalories ? String(workout.totalCalories) : '');
     setEditing(true);
   }
 
@@ -117,14 +131,22 @@ export default function WorkoutDetailScreen() {
     }
     setSaving(true);
     try {
+      const distKm = totalDistance ? Number(totalDistance) : undefined;
+      const durMin = Number(duration);
       const updated: WorkoutEntry = {
         ...workout,
         workoutType,
         date,
-        duration: Number(duration),
+        duration: durMin,
         notes: notes.trim(),
         rating,
         exercises,
+        totalDistance: distKm,
+        avgPace: distKm && durMin ? computePace(distKm, durMin) : undefined,
+        avgHeartRate: avgHeartRate ? Number(avgHeartRate) : undefined,
+        maxHeartRate: maxHeartRate ? Number(maxHeartRate) : undefined,
+        elevationGain: elevationGain ? Number(elevationGain) : undefined,
+        totalCalories: totalCalories ? Number(totalCalories) : undefined,
       };
       await updateWorkout(updated);
       setWorkout(updated);
@@ -211,6 +233,51 @@ export default function WorkoutDetailScreen() {
               placeholderTextColor={Colors.textMuted}
               keyboardType="numeric"
             />
+
+            {CARDIO_TYPES.includes(workoutType as WorkoutType) && (
+              <View style={styles.cardioCard}>
+                <Text style={styles.cardioTitle}>Параметри кардіо</Text>
+                <View style={styles.row}>
+                  <View style={styles.rowItem}>
+                    <Text style={styles.miniLabel}>Дистанція (км)</Text>
+                    <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                      value={totalDistance} onChangeText={setTotalDistance} keyboardType="decimal-pad" />
+                  </View>
+                  <View style={styles.rowItem}>
+                    <Text style={styles.miniLabel}>ккал (всього)</Text>
+                    <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                      value={totalCalories} onChangeText={setTotalCalories} keyboardType="numeric" />
+                  </View>
+                </View>
+                {totalDistance && duration ? (
+                  <Text style={styles.paceHint}>
+                    Темп: {formatPace(computePace(Number(totalDistance), Number(duration)))}
+                  </Text>
+                ) : null}
+                <View style={styles.row}>
+                  <View style={styles.rowItem}>
+                    <Text style={styles.miniLabel}>ЧСС серед.</Text>
+                    <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                      value={avgHeartRate} onChangeText={setAvgHeartRate} keyboardType="numeric" />
+                  </View>
+                  <View style={styles.rowItem}>
+                    <Text style={styles.miniLabel}>ЧСС макс.</Text>
+                    <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                      value={maxHeartRate} onChangeText={setMaxHeartRate} keyboardType="numeric" />
+                  </View>
+                </View>
+                {workoutType === 'run' && (
+                  <View style={styles.row}>
+                    <View style={styles.rowItem}>
+                      <Text style={styles.miniLabel}>Набір висоти (м)</Text>
+                      <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                        value={elevationGain} onChangeText={setElevationGain} keyboardType="numeric" />
+                    </View>
+                    <View style={styles.rowItem} />
+                  </View>
+                )}
+              </View>
+            )}
 
             {/* Rating */}
             <Text style={styles.label}>Оцінка тренування</Text>
@@ -374,15 +441,52 @@ export default function WorkoutDetailScreen() {
         {/* Stats */}
         <View style={styles.statsRow}>
           <StatItem icon="time-outline" label="Тривалість" value={`${workout.duration} хв`} />
-          <StatItem icon="barbell-outline" label="Вправ" value={`${workout.exercises.length}`} />
-          {workout.exercises.some((e) => e.sets) && (
-            <StatItem
-              icon="repeat-outline"
-              label="Підходів"
-              value={`${workout.exercises.reduce((s, e) => s + (e.sets || 0), 0)}`}
-            />
+          {workout.totalDistance ? (
+            <StatItem icon="navigate-outline" label="Дистанція" value={`${workout.totalDistance} км`} />
+          ) : (
+            <StatItem icon="barbell-outline" label="Вправ" value={`${workout.exercises.length}`} />
           )}
+          {workout.avgPace ? (
+            <StatItem icon="speedometer-outline" label="Темп" value={formatPace(workout.avgPace)} />
+          ) : workout.exercises.some((e) => e.sets) ? (
+            <StatItem icon="repeat-outline" label="Підходів"
+              value={`${workout.exercises.reduce((s, e) => s + (e.sets || 0), 0)}`} />
+          ) : null}
         </View>
+
+        {/* Cardio details */}
+        {(workout.avgHeartRate || workout.maxHeartRate || workout.elevationGain || workout.totalCalories) && (
+          <View style={styles.cardioStatsRow}>
+            {workout.avgHeartRate && (
+              <View style={styles.cardioStatItem}>
+                <Ionicons name="heart-outline" size={14} color="#E63946" />
+                <Text style={styles.cardioStatVal}>{workout.avgHeartRate}</Text>
+                <Text style={styles.cardioStatLbl}>avg уд/хв</Text>
+              </View>
+            )}
+            {workout.maxHeartRate && (
+              <View style={styles.cardioStatItem}>
+                <Ionicons name="heart" size={14} color="#E63946" />
+                <Text style={styles.cardioStatVal}>{workout.maxHeartRate}</Text>
+                <Text style={styles.cardioStatLbl}>max уд/хв</Text>
+              </View>
+            )}
+            {workout.elevationGain && (
+              <View style={styles.cardioStatItem}>
+                <Ionicons name="trending-up-outline" size={14} color={Colors.success} />
+                <Text style={styles.cardioStatVal}>{workout.elevationGain}</Text>
+                <Text style={styles.cardioStatLbl}>м висоти</Text>
+              </View>
+            )}
+            {workout.totalCalories && (
+              <View style={styles.cardioStatItem}>
+                <Ionicons name="flame-outline" size={14} color={Colors.accent} />
+                <Text style={styles.cardioStatVal}>{workout.totalCalories}</Text>
+                <Text style={styles.cardioStatLbl}>ккал</Text>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Exercises */}
         {workout.exercises.length > 0 && (
@@ -500,6 +604,24 @@ const styles = StyleSheet.create({
   },
   notesText: { color: Colors.textSecondary, fontSize: 15, lineHeight: 22 },
   notFound: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  cardioStatsRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.lg,
+  },
+  cardioStatItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm, paddingVertical: 6,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  cardioStatVal: { color: Colors.textPrimary, fontWeight: '700', fontSize: 14 },
+  cardioStatLbl: { color: Colors.textMuted, fontSize: 11 },
+  cardioCard: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
+    marginTop: Spacing.xs, gap: Spacing.xs,
+  },
+  cardioTitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: Spacing.xs },
+  paceHint: { color: Colors.primary, fontSize: 13, fontWeight: '600', marginTop: 2, marginBottom: 4 },
   // Edit mode styles
   label: {
     color: Colors.textSecondary, fontSize: 13, fontWeight: '600',

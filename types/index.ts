@@ -44,6 +44,13 @@ export interface WorkoutEntry {
   completedAt: string;
   rating?: 1 | 2 | 3 | 4 | 5;
   aiGeneratedPlan?: string;
+  // Cardio / run-specific fields (workout-level)
+  totalDistance?: number;    // km
+  avgPace?: number;          // seconds per km (auto-computed or manual)
+  avgHeartRate?: number;     // bpm
+  maxHeartRate?: number;     // bpm
+  elevationGain?: number;    // meters
+  totalCalories?: number;    // kcal (workout total)
 }
 
 export interface TrainingPlan {

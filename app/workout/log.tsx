@@ -9,6 +9,9 @@ import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme
 import { addWorkout } from '../../services/storage';
 import { WorkoutEntry, ExerciseLog, WorkoutType } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
+import { computePace, formatPace } from '../../services/analytics';
+
+const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
 const WORKOUT_TYPES: { id: WorkoutType; label: string; icon: string; color: string }[] = [
   { id: 'strength', label: 'Силове', icon: 'barbell-outline', color: '#E63946' },
@@ -69,6 +72,13 @@ export default function LogWorkoutScreen() {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
 
+  // Cardio/run fields
+  const [totalDistance, setTotalDistance] = useState('');
+  const [avgHeartRate, setAvgHeartRate] = useState('');
+  const [maxHeartRate, setMaxHeartRate] = useState('');
+  const [elevationGain, setElevationGain] = useState('');
+  const [totalCalories, setTotalCalories] = useState('');
+
   // Exercise form state
   const [exName, setExName] = useState('');
   const [exSets, setExSets] = useState('');
@@ -105,15 +115,25 @@ export default function LogWorkoutScreen() {
 
     setSaving(true);
     try {
+      const distKm = totalDistance ? Number(totalDistance) : undefined;
+      const durMin = Number(duration);
+      const pace = distKm && durMin ? computePace(distKm, durMin) : undefined;
+
       const entry: WorkoutEntry = {
         id: Date.now().toString(),
         date,
         workoutType,
         exercises,
         notes: notes.trim(),
-        duration: Number(duration),
+        duration: durMin,
         rating,
         completedAt: new Date().toISOString(),
+        totalDistance: distKm,
+        avgPace: pace,
+        avgHeartRate: avgHeartRate ? Number(avgHeartRate) : undefined,
+        maxHeartRate: maxHeartRate ? Number(maxHeartRate) : undefined,
+        elevationGain: elevationGain ? Number(elevationGain) : undefined,
+        totalCalories: totalCalories ? Number(totalCalories) : undefined,
       };
       await addWorkout(entry);
       router.back();
@@ -193,6 +213,55 @@ export default function LogWorkoutScreen() {
             placeholderTextColor={Colors.textMuted}
             keyboardType="numeric"
           />
+
+          {/* Cardio/Run details */}
+          {CARDIO_TYPES.includes(workoutType as WorkoutType) && (
+            <View style={styles.cardioCard}>
+              <Text style={styles.cardioTitle}>
+                <Ionicons name="speedometer-outline" size={14} color={Colors.textSecondary} />
+                {'  '}Параметри кардіо
+              </Text>
+              <View style={styles.row}>
+                <View style={styles.rowItem}>
+                  <Text style={styles.miniLabel}>Дистанція (км)</Text>
+                  <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                    value={totalDistance} onChangeText={setTotalDistance} keyboardType="decimal-pad" />
+                </View>
+                <View style={styles.rowItem}>
+                  <Text style={styles.miniLabel}>ккал (всього)</Text>
+                  <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                    value={totalCalories} onChangeText={setTotalCalories} keyboardType="numeric" />
+                </View>
+              </View>
+              {totalDistance && duration ? (
+                <Text style={styles.paceHint}>
+                  Темп: {formatPace(computePace(Number(totalDistance), Number(duration)))}
+                </Text>
+              ) : null}
+              <View style={styles.row}>
+                <View style={styles.rowItem}>
+                  <Text style={styles.miniLabel}>ЧСС серед. (уд/хв)</Text>
+                  <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                    value={avgHeartRate} onChangeText={setAvgHeartRate} keyboardType="numeric" />
+                </View>
+                <View style={styles.rowItem}>
+                  <Text style={styles.miniLabel}>ЧСС макс. (уд/хв)</Text>
+                  <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                    value={maxHeartRate} onChangeText={setMaxHeartRate} keyboardType="numeric" />
+                </View>
+              </View>
+              {workoutType === 'run' && (
+                <View style={styles.row}>
+                  <View style={styles.rowItem}>
+                    <Text style={styles.miniLabel}>Набір висоти (м)</Text>
+                    <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                      value={elevationGain} onChangeText={setElevationGain} keyboardType="numeric" />
+                  </View>
+                  <View style={styles.rowItem} />
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Rating */}
           <Text style={styles.label}>Оцінка тренування</Text>
@@ -370,6 +439,13 @@ const styles = StyleSheet.create({
   timerDisplay: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   timerText: { fontSize: 28, fontWeight: '700', color: Colors.textMuted, fontVariant: ['tabular-nums'] },
   timerTextActive: { color: Colors.primary },
+  cardioCard: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
+    marginTop: Spacing.md, gap: Spacing.xs,
+  },
+  cardioTitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: Spacing.xs },
+  paceHint: { color: Colors.primary, fontSize: 13, fontWeight: '600', marginTop: 2, marginBottom: 4 },
   timerBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: Colors.success, borderRadius: BorderRadius.md,
