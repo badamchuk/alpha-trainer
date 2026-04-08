@@ -122,55 +122,11 @@ export async function chatStream(
   history: { role: 'user' | 'assistant'; content: string }[],
   onChunk: (text: string) => void
 ): Promise<string> {
-  if (!groqApiKey) throw new Error('Groq не ініціалізовано. Додай API ключ у налаштуваннях.');
-  const systemContext = buildSystemContext(profile, goals, recentWorkouts);
-  const messages = [
-    { role: 'system', content: systemContext },
-    ...history.map((m) => ({ role: m.role, content: m.content })),
-    { role: 'user', content: message },
-  ];
-
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${groqApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ model: activeModel, messages, temperature: 0.7, max_tokens: 2048, stream: true }),
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err?.error?.message || response.statusText);
-  }
-
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-  let fullText = '';
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data:')) continue;
-      const data = trimmed.slice(5).trim();
-      if (data === '[DONE]') continue;
-      try {
-        const parsed = JSON.parse(data);
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (delta) {
-          fullText += delta;
-          onChunk(fullText);
-        }
-      } catch {}
-    }
-  }
-  return fullText;
+  // React Native's fetch does not support ReadableStream (response.body),
+  // so we use the regular non-streaming endpoint and call onChunk once done.
+  const reply = await chat(message, profile, goals, recentWorkouts, history);
+  onChunk(reply);
+  return reply;
 }
 
 export async function generateTrainingPlan(
