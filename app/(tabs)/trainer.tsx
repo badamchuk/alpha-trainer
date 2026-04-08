@@ -11,9 +11,11 @@ import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme
 import {
   getUserProfile, getGoals, getRecentWorkouts,
   getChatHistory, saveChatHistory, clearChatHistory, saveTrainingPlan,
+  getWeightLog, getPersonalRecords,
 } from '../../services/storage';
-import { chatStream as geminiChatStream, initGemini, generateTrainingPlan as geminiGeneratePlan } from '../../services/gemini';
-import { chatStream as groqChatStream, initGroq, generateTrainingPlan as groqGeneratePlan } from '../../services/groq';
+import { chatStream as geminiChatStream, initGemini, generateTrainingPlan as geminiGeneratePlan, extractMemoryNote as geminiExtractNote } from '../../services/gemini';
+import { chatStream as groqChatStream, initGroq, generateTrainingPlan as groqGeneratePlan, extractMemoryNote as groqExtractNote } from '../../services/groq';
+import { getMemoryEntries, addMemoryEntry, buildMemoryContext } from '../../services/aiMemory';
 import { createPlanFromAIText } from '../../services/planParser';
 import { ChatMessage, UserProfile } from '../../types';
 
@@ -39,6 +41,7 @@ export default function TrainerScreen() {
   const [loading, setLoading] = useState(false);
   const [isPlanRequestInFlight, setIsPlanRequestInFlight] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [memoryBlock, setMemoryBlock] = useState('');
   const [planMessage, setPlanMessage] = useState<ChatMessage | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
   const [planSaved, setPlanSaved] = useState(false);
@@ -47,9 +50,13 @@ export default function TrainerScreen() {
   useFocusEffect(
     useCallback(() => {
       async function load() {
-        const [p, history] = await Promise.all([getUserProfile(), getChatHistory()]);
+        const [p, history, memEntries, allWorkouts, wl, recs] = await Promise.all([
+          getUserProfile(), getChatHistory(), getMemoryEntries(),
+          getRecentWorkouts(100), getWeightLog(), getPersonalRecords(),
+        ]);
         setProfile(p);
         setMessages(history);
+        setMemoryBlock(buildMemoryContext(memEntries, allWorkouts, wl, recs));
         if (p?.geminiApiKey) initGemini(p.geminiApiKey);
         if (p?.groqApiKey) initGroq(p.groqApiKey);
       }
@@ -132,13 +139,21 @@ export default function TrainerScreen() {
         };
 
         reply = useGroq
-          ? await groqChatStream(text.trim(), profile, goals, recent, groqHistory, onChunk)
-          : await geminiChatStream(text.trim(), profile, goals, recent, geminiHistory, onChunk);
+          ? await groqChatStream(text.trim(), profile, goals, recent, groqHistory, onChunk, memoryBlock)
+          : await geminiChatStream(text.trim(), profile, goals, recent, geminiHistory, onChunk, memoryBlock);
       }
 
       const finalMessages = [...updatedMessages, { ...streamingMsg, content: reply }];
       setMessages(finalMessages);
       await saveChatHistory(finalMessages);
+
+      // Extract and save memory note in background (no await — doesn't block UI)
+      if (!isPlanRequest) {
+        const extractFn = useGroq ? groqExtractNote : geminiExtractNote;
+        extractFn(text.trim(), reply)
+          .then((note) => { if (note) addMemoryEntry(note); })
+          .catch(() => {});
+      }
 
       // Auto-detect if response looks like a training plan
       if (looksLikePlan(reply) || isPlanRequest) {

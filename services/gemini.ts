@@ -32,7 +32,7 @@ async function callWithFallback<T>(fn: (model: ReturnType<typeof getModel>) => P
   throw new Error('Всі моделі Gemini недоступні');
 }
 
-function buildSystemContext(profile: UserProfile, goals: Goal[], recentWorkouts: WorkoutEntry[]): string {
+function buildSystemContext(profile: UserProfile, goals: Goal[], recentWorkouts: WorkoutEntry[], memoryBlock = ''): string {
   const goalsList = goals
     .filter((g) => !g.completed)
     .map((g) => `- ${g.title}: ${g.target}`)
@@ -66,7 +66,7 @@ ${goalsList || 'Цілі не встановлено'}
 ОСТАННІ 7 ТРЕНУВАНЬ:
 ${workoutHistory || 'Тренувань ще немає'}
 
-Давай конкретні, персоналізовані поради. Враховуй рівень підготовки, цілі та останні тренування. Будь мотивуючим але реалістичним.`;
+Давай конкретні, персоналізовані поради. Враховуй рівень підготовки, цілі та останні тренування. Будь мотивуючим але реалістичним.${memoryBlock}`;
 }
 
 export async function chat(
@@ -74,9 +74,10 @@ export async function chat(
   profile: UserProfile,
   goals: Goal[],
   recentWorkouts: WorkoutEntry[],
-  history: { role: 'user' | 'model'; parts: { text: string }[] }[]
+  history: { role: 'user' | 'model'; parts: { text: string }[] }[],
+  memoryBlock = ''
 ): Promise<string> {
-  const systemContext = buildSystemContext(profile, goals, recentWorkouts);
+  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock);
   return callWithFallback(async (model) => {
     const chatSession = model.startChat({
       history: [
@@ -96,9 +97,10 @@ export async function chatStream(
   goals: Goal[],
   recentWorkouts: WorkoutEntry[],
   history: { role: 'user' | 'model'; parts: { text: string }[] }[],
-  onChunk: (text: string) => void
+  onChunk: (text: string) => void,
+  memoryBlock = ''
 ): Promise<string> {
-  const systemContext = buildSystemContext(profile, goals, recentWorkouts);
+  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock);
   return callWithFallback(async (model) => {
     const chatSession = model.startChat({
       history: [
@@ -116,6 +118,25 @@ export async function chatStream(
     }
     return fullText;
   });
+}
+
+export async function extractMemoryNote(
+  userMessage: string,
+  aiReply: string
+): Promise<string> {
+  if (!genAI) return '';
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+    const result = await model.generateContent(
+      `Витягни 1-2 ключових факти про спортсмена з цього фрагменту розмови. Лише конкретні факти: травми, досягнення, переваги, проблеми зі здоров'ям, скарги, нові цілі. Якщо нічого важливого — відповідай "—". Без вступу, максимум 50 слів.
+
+Питання: ${userMessage.slice(0, 300)}
+Відповідь AI: ${aiReply.slice(0, 500)}`
+    );
+    return result.response.text().trim();
+  } catch {
+    return '';
+  }
 }
 
 export async function generateTrainingPlan(
