@@ -63,6 +63,8 @@ export default function WorkoutDetailScreen() {
   const [exWeight, setExWeight] = useState('');
   const [exDuration, setExDuration] = useState('');
   const [exDistance, setExDistance] = useState('');
+  const [exCalories, setExCalories] = useState('');
+  const [exWatts, setExWatts] = useState('');
 
   useEffect(() => {
     async function load() {
@@ -86,7 +88,8 @@ export default function WorkoutDetailScreen() {
 
   function cancelEdit() {
     setEditing(false);
-    setExName(''); setExSets(''); setExReps(''); setExWeight(''); setExDuration(''); setExDistance('');
+    setExName(''); setExSets(''); setExReps(''); setExWeight('');
+    setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
   }
 
   function addExercise() {
@@ -98,9 +101,12 @@ export default function WorkoutDetailScreen() {
       weight: exWeight ? Number(exWeight) : undefined,
       duration: exDuration ? Number(exDuration) : undefined,
       distance: exDistance ? Number(exDistance) : undefined,
+      calories: exCalories ? Number(exCalories) : undefined,
+      watts: exWatts ? Number(exWatts) : undefined,
     };
     setExercises([...exercises, ex]);
-    setExName(''); setExSets(''); setExReps(''); setExWeight(''); setExDuration(''); setExDistance('');
+    setExName(''); setExSets(''); setExReps(''); setExWeight('');
+    setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
   }
 
   async function handleSave() {
@@ -233,6 +239,8 @@ export default function WorkoutDetailScreen() {
                       ex.weight && `${ex.weight} кг`,
                       ex.duration && `${ex.duration} хв`,
                       ex.distance && `${ex.distance} км`,
+                      ex.calories && `${ex.calories} ккал`,
+                      ex.watts && `${ex.watts} вт`,
                     ].filter(Boolean).join(' · ')}
                   </Text>
                 </View>
@@ -281,6 +289,18 @@ export default function WorkoutDetailScreen() {
                     value={exDistance} onChangeText={setExDistance} keyboardType="decimal-pad" />
                 </View>
                 <View style={styles.rowItem}>
+                  <Text style={styles.miniLabel}>ккал</Text>
+                  <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                    value={exCalories} onChangeText={setExCalories} keyboardType="numeric" />
+                </View>
+              </View>
+              <View style={styles.row}>
+                <View style={styles.rowItem}>
+                  <Text style={styles.miniLabel}>Вати (вт)</Text>
+                  <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                    value={exWatts} onChangeText={setExWatts} keyboardType="numeric" />
+                </View>
+                <View style={[styles.rowItem, { flex: 2 }]}>
                   <Text style={styles.miniLabel}> </Text>
                   <TouchableOpacity style={styles.addExBtn} onPress={addExercise}>
                     <Ionicons name="add" size={20} color="#FFF" />
@@ -382,6 +402,8 @@ export default function WorkoutDetailScreen() {
                       ex.weight && `${ex.weight} кг`,
                       ex.duration && `${ex.duration} хв`,
                       ex.distance && `${ex.distance} км`,
+                      ex.calories && `${ex.calories} ккал`,
+                      ex.watts && `${ex.watts} вт`,
                     ].filter(Boolean).join('  ')}
                   </Text>
                   {ex.notes && <Text style={styles.exerciseNotes}>{ex.notes}</Text>}

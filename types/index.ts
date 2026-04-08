@@ -29,6 +29,8 @@ export interface ExerciseLog {
   weight?: number;
   duration?: number; // minutes
   distance?: number; // km
+  calories?: number; // kcal
+  watts?: number;    // average power (rowing, cycling)
   notes?: string;
 }
 
