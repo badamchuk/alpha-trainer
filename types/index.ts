@@ -79,6 +79,16 @@ export interface PlannedExercise {
   notes?: string;
 }
 
+export interface BodyMeasurement {
+  date: string;       // YYYY-MM-DD
+  waist?: number;     // cm
+  chest?: number;     // cm
+  hips?: number;      // cm
+  bicep?: number;     // cm
+  thigh?: number;     // cm
+  neck?: number;      // cm
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';

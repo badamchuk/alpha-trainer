@@ -8,9 +8,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
-import { getWorkouts, getStats, getPersonalRecords, PersonalRecord, getWeightLog, addWeightEntry, WeightEntry, getLocalDateString } from '../../services/storage';
-import { WorkoutEntry } from '../../types';
-import { getRunStats, getStrengthStats, formatPace, RunStats, StrengthStats } from '../../services/analytics';
+import { getWorkouts, getStats, getPersonalRecords, PersonalRecord, getWeightLog, addWeightEntry, WeightEntry, getLocalDateString, getMeasurements, addMeasurement, getUserProfile } from '../../services/storage';
+import { WorkoutEntry, BodyMeasurement } from '../../types';
+import {
+  getRunStats, getStrengthStats, formatPace, RunStats, StrengthStats,
+  getWeeklyTonnage, WeeklyTonnage,
+  getExerciseProgress, getAllExerciseNames, ExerciseProgressPoint, estimate1RM,
+  estimateCalories,
+  getHRZoneSummary, HRZoneSummary,
+  getMuscleGroupBalance, MuscleGroupData,
+} from '../../services/analytics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -24,17 +31,62 @@ export default function ProgressScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [runStats, setRunStats] = useState<RunStats | null>(null);
   const [strengthStats, setStrengthStats] = useState<StrengthStats | null>(null);
+  const [tonnage, setTonnage] = useState<WeeklyTonnage[]>([]);
+  const [exerciseNames, setExerciseNames] = useState<string[]>([]);
+  const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+  const [exerciseProgress, setExerciseProgress] = useState<ExerciseProgressPoint[]>([]);
+  const [exerciseSearch, setExerciseSearch] = useState('');
+  const [hrZones, setHrZones] = useState<HRZoneSummary[]>([]);
+  const [muscleGroups, setMuscleGroups] = useState<MuscleGroupData[]>([]);
+  const [measurements, setMeasurements] = useState<BodyMeasurement[]>([]);
+  const [measureModalVisible, setMeasureModalVisible] = useState(false);
+  const [measureForm, setMeasureForm] = useState({ waist: '', chest: '', hips: '', bicep: '', thigh: '' });
+  const [profile, setProfile] = useState<any>(null);
 
   async function loadData() {
-    const [w, s, r, wl] = await Promise.all([getWorkouts(), getStats(), getPersonalRecords(), getWeightLog()]);
+    const [w, s, r, wl, ms, p] = await Promise.all([
+      getWorkouts(), getStats(), getPersonalRecords(),
+      getWeightLog(), getMeasurements(), getUserProfile(),
+    ]);
     setWorkouts(w);
     setStats(s);
     setRecords(r);
     setWeightLog(wl);
+    setMeasurements(ms);
+    setProfile(p);
     const rs = getRunStats(w);
     setRunStats(rs.totalRuns > 0 ? rs : null);
     const ss = getStrengthStats(w);
     setStrengthStats(ss.totalSessions > 0 ? ss : null);
+    setTonnage(getWeeklyTonnage(w));
+    setExerciseNames(getAllExerciseNames(w));
+    if (p?.age) setHrZones(getHRZoneSummary(w, p.age));
+    setMuscleGroups(getMuscleGroupBalance(w));
+  }
+
+  function selectExercise(name: string) {
+    setSelectedExercise(name);
+    setExerciseSearch(name);
+    setExerciseProgress(getExerciseProgress(workouts, name));
+  }
+
+  async function handleSaveMeasurement() {
+    const entry: BodyMeasurement = {
+      date: getLocalDateString(new Date()),
+      waist: measureForm.waist ? Number(measureForm.waist) : undefined,
+      chest: measureForm.chest ? Number(measureForm.chest) : undefined,
+      hips: measureForm.hips ? Number(measureForm.hips) : undefined,
+      bicep: measureForm.bicep ? Number(measureForm.bicep) : undefined,
+      thigh: measureForm.thigh ? Number(measureForm.thigh) : undefined,
+    };
+    if (!Object.values(entry).slice(1).some(Boolean)) {
+      Alert.alert('Введи хоча б один вимір');
+      return;
+    }
+    await addMeasurement(entry);
+    setMeasureForm({ waist: '', chest: '', hips: '', bicep: '', thigh: '' });
+    setMeasureModalVisible(false);
+    await loadData();
   }
 
   async function handleLogWeight() {
@@ -265,6 +317,251 @@ export default function ProgressScreen() {
         </View>
       )}
 
+      {/* Tonnage chart */}
+      {tonnage.some((t) => t.tonnage > 0) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Тоннаж (підх × повт × вага)</Text>
+          <View style={styles.barChart}>
+            {(() => {
+              const maxT = Math.max(...tonnage.map((t) => t.tonnage), 1);
+              return tonnage.map((item, i) => (
+                <View key={i} style={styles.barColumn}>
+                  <Text style={styles.barValue}>{item.tonnage > 0 ? `${Math.round(item.tonnage / 1000)}т` : ''}</Text>
+                  <View style={styles.barWrapper}>
+                    <View style={[styles.bar, { height: Math.max((item.tonnage / maxT) * 80, item.tonnage > 0 ? 4 : 0), backgroundColor: '#9B59B6' }]} />
+                  </View>
+                  <Text style={styles.barLabel}>{item.weekLabel}</Text>
+                </View>
+              ));
+            })()}
+          </View>
+        </View>
+      )}
+
+      {/* Exercise progress */}
+      {exerciseNames.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Прогрес по вправі</Text>
+          <View style={styles.searchContainer}>
+            <Ionicons name="search-outline" size={16} color={Colors.textMuted} style={{ paddingHorizontal: 6 }} />
+            <TextInput
+              style={styles.exSearchInput}
+              placeholder="Введи назву вправи..."
+              placeholderTextColor={Colors.textMuted}
+              value={exerciseSearch}
+              onChangeText={(t) => { setExerciseSearch(t); if (!t) setSelectedExercise(null); }}
+            />
+          </View>
+          {exerciseSearch.length > 0 && !selectedExercise && (
+            <View style={styles.exSuggestions}>
+              {exerciseNames.filter((n) => n.toLowerCase().includes(exerciseSearch.toLowerCase())).slice(0, 5).map((name) => (
+                <TouchableOpacity key={name} style={styles.exSuggestionItem} onPress={() => selectExercise(name)}>
+                  <Text style={styles.exSuggestionText}>{name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {selectedExercise && exerciseProgress.length > 0 && (() => {
+            const withWeight = exerciseProgress.filter((p) => p.weight > 0);
+            const best = exerciseProgress.reduce((b, p) => p.estimated1RM > b.estimated1RM ? p : b, exerciseProgress[0]);
+            return (
+              <View style={styles.exProgressContainer}>
+                <View style={styles.exBestRow}>
+                  <View style={styles.exBestCard}>
+                    <Text style={styles.exBestLabel}>Макс. вага</Text>
+                    <Text style={styles.exBestValue}>{Math.max(...exerciseProgress.map(p => p.weight))} кг</Text>
+                  </View>
+                  <View style={styles.exBestCard}>
+                    <Text style={styles.exBestLabel}>Розрах. 1RM</Text>
+                    <Text style={[styles.exBestValue, { color: Colors.primary }]}>{best.estimated1RM} кг</Text>
+                  </View>
+                  <View style={styles.exBestCard}>
+                    <Text style={styles.exBestLabel}>Сесій</Text>
+                    <Text style={styles.exBestValue}>{exerciseProgress.length}</Text>
+                  </View>
+                </View>
+                {withWeight.length >= 2 && (() => {
+                  const pts = withWeight.slice(-10);
+                  const minW = Math.min(...pts.map((p) => p.weight));
+                  const maxW = Math.max(...pts.map((p) => p.weight));
+                  const range = maxW - minW || 1;
+                  const chartH = 56;
+                  const chartW = SCREEN_WIDTH - Spacing.md * 4 - Spacing.md * 2;
+                  const step = chartW / Math.max(pts.length - 1, 1);
+                  return (
+                    <View style={styles.weightChartContainer}>
+                      <Text style={styles.subSectionTitle}>Вага (кг) за останні {pts.length} сесій</Text>
+                      <View style={{ height: chartH, position: 'relative' }}>
+                        {pts.map((p, i) => {
+                          const x = i * step;
+                          const y = chartH - 8 - ((p.weight - minW) / range) * (chartH - 16);
+                          return (
+                            <View key={i}>
+                              <View style={[styles.weightDot, { left: x - 4, top: y - 4 }]} />
+                              {i === pts.length - 1 && (
+                                <Text style={[styles.exDotLabel, { left: x - 12, top: y - 20 }]}>{p.weight}</Text>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                      <View style={styles.weightChartLabels}>
+                        <Text style={styles.weightChartLabel}>{pts[0].date}</Text>
+                        <Text style={styles.weightChartLabel}>{pts[pts.length - 1].date}</Text>
+                      </View>
+                    </View>
+                  );
+                })()}
+                <View style={styles.exHistoryList}>
+                  {exerciseProgress.slice(-5).reverse().map((p, i) => (
+                    <View key={i} style={styles.exHistoryRow}>
+                      <Text style={styles.exHistoryDate}>{p.date}</Text>
+                      {p.weight > 0 && <Text style={styles.exHistoryWeight}>{p.weight} кг</Text>}
+                      {p.reps > 0 && <Text style={styles.exHistoryReps}>× {p.reps}</Text>}
+                      {p.sets > 0 && <Text style={styles.exHistorySets}>{p.sets} підх.</Text>}
+                      {p.estimated1RM > 0 && <Text style={styles.exHistory1rm}>~{p.estimated1RM} 1RM</Text>}
+                    </View>
+                  ))}
+                </View>
+              </View>
+            );
+          })()}
+        </View>
+      )}
+
+      {/* Muscle group balance */}
+      {muscleGroups.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Баланс м'язових груп</Text>
+          {(() => {
+            const maxCount = muscleGroups[0].count;
+            return muscleGroups.map((mg) => (
+              <View key={mg.group} style={styles.typeRow}>
+                <Text style={[styles.typeLabel, { color: mg.color }]}>{mg.label}</Text>
+                <View style={styles.typeBar}>
+                  <View style={[styles.typeBarFill, { width: `${(mg.count / maxCount) * 100}%`, backgroundColor: mg.color }]} />
+                </View>
+                <Text style={[styles.typeCount, { color: mg.color }]}>{mg.count}</Text>
+              </View>
+            ));
+          })()}
+          <Text style={styles.muscleNote}>підходів всього</Text>
+        </View>
+      )}
+
+      {/* HR Zones */}
+      {hrZones.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Зони ЧСС</Text>
+          <Text style={styles.hrNote}>Макс. ЧСС: {220 - (profile?.age || 30)} уд/хв (220 − вік)</Text>
+          {hrZones.map((z) => (
+            <View key={z.zone} style={styles.hrZoneRow}>
+              <View style={[styles.hrZoneDot, { backgroundColor: z.color }]} />
+              <Text style={styles.hrZoneLabel}>{z.label}</Text>
+              <Text style={styles.hrZoneCount}>{z.count} трен.</Text>
+              <Text style={styles.hrZoneMin}>{z.totalMinutes} хв</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Calorie estimation */}
+      {workouts.length > 0 && profile?.weight && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Витрата калорій (оцінка)</Text>
+          {(() => {
+            const monthCutoff = getLocalDateString(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+            const recentW = workouts.filter((w) => w.date >= monthCutoff);
+            const totalCal = recentW.reduce((sum, w) => {
+              if (w.totalCalories) return sum + w.totalCalories;
+              return sum + estimateCalories(w.workoutType, w.duration, profile.weight);
+            }, 0);
+            const TYPE_LABELS_UA: Record<string, string> = {
+              strength: 'Силове', cardio: 'Кардіо', crossfit: 'CrossFit',
+              hiit: 'HIIT', yoga: 'Йога', recovery: 'Відновлення',
+              run: 'Біг', cycling: 'Велосипед', swimming: 'Плавання', custom: 'Інше',
+            };
+            const byType: Record<string, number> = {};
+            recentW.forEach((w) => {
+              const cal = w.totalCalories || estimateCalories(w.workoutType, w.duration, profile.weight);
+              byType[w.workoutType] = (byType[w.workoutType] || 0) + cal;
+            });
+            return (
+              <>
+                <View style={styles.calTotalRow}>
+                  <Ionicons name="flame-outline" size={22} color={Colors.accent} />
+                  <Text style={styles.calTotal}>{Math.round(totalCal).toLocaleString()} ккал</Text>
+                  <Text style={styles.calTotalLabel}>за останній місяць</Text>
+                </View>
+                {Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([type, cal]) => (
+                  <View key={type} style={styles.calRow}>
+                    <Text style={styles.calType}>{TYPE_LABELS_UA[type] || type}</Text>
+                    <Text style={styles.calValue}>{Math.round(cal)} ккал</Text>
+                  </View>
+                ))}
+                <Text style={styles.calNote}>* Оцінка на основі MET-значень. Точні значення вноси вручну при записі тренування.</Text>
+              </>
+            );
+          })()}
+        </View>
+      )}
+
+      {/* Body Measurements */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Заміри тіла</Text>
+          <TouchableOpacity style={styles.logWeightBtn} onPress={() => setMeasureModalVisible(true)}>
+            <Ionicons name="add" size={16} color="#FFF" />
+            <Text style={styles.logWeightBtnText}>Записати</Text>
+          </TouchableOpacity>
+        </View>
+        {measurements.length === 0 ? (
+          <TouchableOpacity style={styles.weightEmpty} onPress={() => setMeasureModalVisible(true)}>
+            <Ionicons name="body-outline" size={28} color={Colors.textMuted} />
+            <Text style={styles.weightEmptyText}>Записуй заміри — відстежуй зміни складу тіла</Text>
+          </TouchableOpacity>
+        ) : (
+          <>
+            {/* Latest vs previous */}
+            {measurements.length >= 1 && (() => {
+              const latest = measurements[measurements.length - 1];
+              const prev = measurements.length >= 2 ? measurements[measurements.length - 2] : null;
+              const fields: { key: keyof BodyMeasurement; label: string }[] = [
+                { key: 'waist', label: 'Талія' }, { key: 'chest', label: 'Груди' },
+                { key: 'hips', label: 'Стегна' }, { key: 'bicep', label: 'Біцепс' },
+                { key: 'thigh', label: 'Стегно' },
+              ];
+              return (
+                <View style={styles.measureCard}>
+                  <Text style={styles.measureDate}>{latest.date}</Text>
+                  <View style={styles.measureGrid}>
+                    {fields.filter((f) => latest[f.key] != null).map((f) => {
+                      const val = latest[f.key] as number;
+                      const prevVal = prev ? prev[f.key] as number : null;
+                      const diff = prevVal != null ? val - prevVal : null;
+                      return (
+                        <View key={f.key} style={styles.measureCell}>
+                          <Text style={styles.measureLabel}>{f.label}</Text>
+                          <Text style={styles.measureVal}>{val} <Text style={styles.measureUnit}>см</Text></Text>
+                          {diff != null && diff !== 0 && (
+                            <Text style={[styles.measureDiff, { color: diff < 0 ? Colors.success : Colors.error }]}>
+                              {diff > 0 ? '+' : ''}{diff.toFixed(1)}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })()}
+            {measurements.length > 1 && (
+              <Text style={styles.weightMore}>Всього {measurements.length} записів</Text>
+            )}
+          </>
+        )}
+      </View>
+
       {/* Weight History */}
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
@@ -362,6 +659,40 @@ export default function ProgressScreen() {
           <Text style={styles.emptyText}>Починай записувати тренування — тут буде твоя статистика</Text>
         </View>
       )}
+
+      {/* Measurements modal */}
+      <Modal visible={measureModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { width: '90%' }]}>
+            <Text style={styles.modalTitle}>Заміри тіла (см)</Text>
+            {[
+              { key: 'waist', label: 'Талія' }, { key: 'chest', label: 'Груди' },
+              { key: 'hips', label: 'Стегна' }, { key: 'bicep', label: 'Біцепс' },
+              { key: 'thigh', label: 'Стегно (обхват)' },
+            ].map((f) => (
+              <View key={f.key} style={styles.measureModalRow}>
+                <Text style={styles.measureModalLabel}>{f.label}</Text>
+                <TextInput
+                  style={styles.measureModalInput}
+                  placeholder="–"
+                  placeholderTextColor={Colors.textMuted}
+                  value={measureForm[f.key as keyof typeof measureForm]}
+                  onChangeText={(v) => setMeasureForm((prev) => ({ ...prev, [f.key]: v }))}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            ))}
+            <View style={[styles.modalActions, { marginTop: Spacing.md }]}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => { setMeasureModalVisible(false); setMeasureForm({ waist: '', chest: '', hips: '', bicep: '', thigh: '' }); }}>
+                <Text style={styles.modalCancelText}>Скасувати</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSave} onPress={handleSaveMeasurement}>
+                <Text style={styles.modalSaveText}>Зберегти</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Weight log modal */}
       <Modal visible={weightModalVisible} transparent animationType="fade">
@@ -542,6 +873,85 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary, alignItems: 'center',
   },
   modalSaveText: { color: '#FFF', fontWeight: '700' },
+  searchContainer: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Spacing.sm, marginBottom: Spacing.sm,
+  },
+  exSearchInput: { flex: 1, color: Colors.textPrimary, fontSize: 14, paddingVertical: 9 },
+  exSuggestions: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.sm,
+  },
+  exSuggestionItem: { paddingHorizontal: Spacing.md, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  exSuggestionText: { color: Colors.textPrimary, fontSize: 14 },
+  exProgressContainer: { gap: Spacing.sm },
+  exBestRow: { flexDirection: 'row', gap: Spacing.sm },
+  exBestCard: {
+    flex: 1, backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
+    padding: Spacing.sm, alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
+  },
+  exBestLabel: { color: Colors.textMuted, fontSize: 11, marginBottom: 3 },
+  exBestValue: { color: Colors.textPrimary, fontSize: 18, fontWeight: '800' },
+  exHistoryList: { marginTop: Spacing.xs },
+  exHistoryRow: {
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 7,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  exHistoryDate: { color: Colors.textMuted, fontSize: 12, width: 90 },
+  exHistoryWeight: { color: Colors.textPrimary, fontWeight: '700', fontSize: 14, width: 52 },
+  exHistoryReps: { color: Colors.textSecondary, fontSize: 13, width: 40 },
+  exHistorySets: { color: Colors.textMuted, fontSize: 12, width: 56 },
+  exHistory1rm: { color: Colors.primary, fontSize: 12, fontWeight: '600', flex: 1, textAlign: 'right' },
+  exDotLabel: { position: 'absolute', color: Colors.primary, fontSize: 10, fontWeight: '700' },
+  muscleNote: { color: Colors.textMuted, fontSize: 11, marginTop: 4 },
+  hrNote: { color: Colors.textMuted, fontSize: 12, marginBottom: Spacing.sm },
+  hrZoneRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  hrZoneDot: { width: 12, height: 12, borderRadius: 6 },
+  hrZoneLabel: { flex: 1, color: Colors.textSecondary, fontSize: 14 },
+  hrZoneCount: { color: Colors.textPrimary, fontWeight: '600', fontSize: 14, width: 60, textAlign: 'right' },
+  hrZoneMin: { color: Colors.textMuted, fontSize: 13, width: 48, textAlign: 'right' },
+  calTotalRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
+  calTotal: { fontSize: 26, fontWeight: '800', color: Colors.accent },
+  calTotalLabel: { color: Colors.textMuted, fontSize: 13 },
+  calRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  calType: { color: Colors.textSecondary, fontSize: 14 },
+  calValue: { color: Colors.textPrimary, fontWeight: '600', fontSize: 14 },
+  calNote: { color: Colors.textMuted, fontSize: 11, marginTop: Spacing.sm, fontStyle: 'italic' },
+  measureCard: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
+  },
+  measureDate: { color: Colors.textMuted, fontSize: 12, marginBottom: Spacing.sm },
+  measureGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  measureCell: {
+    minWidth: 80, backgroundColor: Colors.surfaceElevated,
+    borderRadius: BorderRadius.md, padding: Spacing.sm, alignItems: 'center',
+  },
+  measureLabel: { color: Colors.textMuted, fontSize: 11, marginBottom: 2 },
+  measureVal: { color: Colors.textPrimary, fontWeight: '700', fontSize: 16 },
+  measureUnit: { color: Colors.textMuted, fontWeight: '400', fontSize: 12 },
+  measureDiff: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  measureModalRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  measureModalLabel: { color: Colors.textSecondary, fontSize: 14, flex: 1 },
+  measureModalInput: {
+    backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Spacing.sm, paddingVertical: 7,
+    color: Colors.textPrimary, fontSize: 16, fontWeight: '600',
+    textAlign: 'center', width: 80,
+  },
+  subSectionTitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: Spacing.sm },
   runStatsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.sm },
   runStatCard: {
     width: (SCREEN_WIDTH - Spacing.md * 2 - Spacing.sm * 2) / 3,

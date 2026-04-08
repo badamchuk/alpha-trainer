@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserProfile, Goal, WorkoutEntry, TrainingPlan, ChatMessage } from '../types';
+import { UserProfile, Goal, WorkoutEntry, TrainingPlan, ChatMessage, BodyMeasurement } from '../types';
 
 const KEYS = {
   USER_PROFILE: '@alpha_trainer:user_profile',
@@ -9,6 +9,7 @@ const KEYS = {
   CHAT_HISTORY: '@alpha_trainer:chat_history',
   DAILY_ADVICE: '@alpha_trainer:daily_advice',
   WEIGHT_LOG: '@alpha_trainer:weight_log',
+  MEASUREMENTS: '@alpha_trainer:measurements',
 };
 
 // --- User Profile ---
@@ -196,6 +197,24 @@ export async function getPersonalRecords(): Promise<PersonalRecord[]> {
     .filter((r) => r.maxWeight > 0 || r.maxReps > 0)
     .sort((a, b) => b.maxWeight - a.maxWeight || b.maxReps - a.maxReps)
     .slice(0, 10);
+}
+
+// --- Body Measurements ---
+export async function getMeasurements(): Promise<BodyMeasurement[]> {
+  const json = await AsyncStorage.getItem(KEYS.MEASUREMENTS);
+  return json ? JSON.parse(json) : [];
+}
+
+export async function addMeasurement(entry: BodyMeasurement): Promise<void> {
+  const log = await getMeasurements();
+  const idx = log.findIndex((e) => e.date === entry.date);
+  if (idx !== -1) {
+    log[idx] = { ...log[idx], ...entry }; // merge fields for same date
+  } else {
+    log.push(entry);
+  }
+  log.sort((a, b) => a.date.localeCompare(b.date));
+  await AsyncStorage.setItem(KEYS.MEASUREMENTS, JSON.stringify(log));
 }
 
 // --- Helpers ---
