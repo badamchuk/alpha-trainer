@@ -12,6 +12,8 @@ import DatePickerField from '../../components/DatePickerField';
 import { computePace, formatPace } from '../../services/analytics';
 import RestTimer from '../../components/RestTimer';
 import { getTemplates, saveTemplate, WorkoutTemplate } from '../../services/templates';
+import { useLocale } from '../../services/i18n';
+import ExercisePicker from '../../components/ExercisePicker';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -32,6 +34,7 @@ const RATINGS = [1, 2, 3, 4, 5] as const;
 
 export default function LogWorkoutScreen() {
   const router = useRouter();
+  const { t } = useLocale();
   const [workoutType, setWorkoutType] = useState<WorkoutType>('strength');
   const now = new Date();
   const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -53,6 +56,8 @@ export default function LogWorkoutScreen() {
 
   // Progressive overload hint
   const [overloadHint, setOverloadHint] = useState('');
+  // Exercise picker
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   // Timer state
   const [timerRunning, setTimerRunning] = useState(false);
@@ -113,7 +118,7 @@ export default function LogWorkoutScreen() {
         if (ex.weight) parts.push(`${ex.weight} кг`);
         if (ex.reps) parts.push(`${ex.reps} повт.`);
         if (ex.sets) parts.push(`${ex.sets} підх.`);
-        setOverloadHint(parts.length ? `Минулого разу: ${parts.join(' × ')}` : '');
+        setOverloadHint(parts.length ? t('overloadLastTime', parts.join(' × ')) : '');
         return;
       }
     }
@@ -121,8 +126,8 @@ export default function LogWorkoutScreen() {
   }
 
   async function openTemplates() {
-    const t = await getTemplates();
-    setTemplates(t);
+    const tmpl = await getTemplates();
+    setTemplates(tmpl);
     setTemplatesVisible(true);
   }
 
@@ -133,7 +138,7 @@ export default function LogWorkoutScreen() {
   }
 
   async function handleSaveTemplate() {
-    if (!templateName.trim()) { Alert.alert('Введи назву шаблону'); return; }
+    if (!templateName.trim()) { Alert.alert(t('enterExerciseName')); return; }
     await saveTemplate({
       id: Date.now().toString(),
       name: templateName.trim(),
@@ -143,11 +148,11 @@ export default function LogWorkoutScreen() {
     });
     setSaveTemplateVisible(false);
     setTemplateName('');
-    Alert.alert('Шаблон збережено!');
+    Alert.alert(t('templateSaved'));
   }
 
   function addExercise() {
-    if (!exName.trim()) { Alert.alert('Введи назву вправи'); return; }
+    if (!exName.trim()) { Alert.alert(t('enterExerciseName')); return; }
     const ex: ExerciseLog = {
       name: exName.trim(),
       sets: exSets ? Number(exSets) : undefined,
@@ -173,12 +178,12 @@ export default function LogWorkoutScreen() {
   }
 
   async function handleSave() {
-    if (!duration || isNaN(Number(duration))) { Alert.alert('Вкажи тривалість тренування (в хвилинах)'); return; }
+    if (!duration || isNaN(Number(duration))) { Alert.alert(t('durationRequired')); return; }
     const isCardioType = CARDIO_TYPES.includes(workoutType);
     if (exercises.length === 0 && !totalDistance) {
       Alert.alert(
-        isCardioType ? 'Додай дистанцію або вправи' : 'Додай хоча б одну вправу',
-        isCardioType ? 'Для кардіо тренування вкажи дистанцію або додай вправи.' : 'Запишіть вправи, щоб відстежувати прогрес.'
+        isCardioType ? t('needExercisesCardio') : t('needExercisesStrength'),
+        isCardioType ? t('needExercisesCardioMsg') : t('needExercisesStrengthMsg')
       );
       return;
     }
@@ -224,20 +229,20 @@ export default function LogWorkoutScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="close" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Нове тренування</Text>
+          <Text style={styles.headerTitle}>{t('newWorkout')}</Text>
           <View style={styles.headerRight}>
             <TouchableOpacity onPress={openTemplates} style={styles.headerIconBtn}>
               <Ionicons name="albums-outline" size={22} color={Colors.textSecondary} />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleSave} disabled={saving}>
-              <Text style={[styles.saveBtn, saving && { opacity: 0.5 }]}>Зберегти</Text>
+              <Text style={[styles.saveBtn, saving && { opacity: 0.5 }]}>{t('save')}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {/* Workout Type */}
-          <Text style={styles.label}>Тип тренування</Text>
+          <Text style={styles.label}>{t('workoutTypeLabel')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeList}>
             {WORKOUT_TYPES.map((t) => (
               <TouchableOpacity
@@ -279,7 +284,7 @@ export default function LogWorkoutScreen() {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.label}>Тривалість (хв)</Text>
+          <Text style={styles.label}>{t('durationLabel')}</Text>
           <TextInput
             style={styles.input}
             value={duration}
@@ -298,12 +303,12 @@ export default function LogWorkoutScreen() {
               </Text>
               <View style={styles.row}>
                 <View style={styles.rowItem}>
-                  <Text style={styles.miniLabel}>Дистанція (км)</Text>
+                  <Text style={styles.miniLabel}>{t('distanceKmLabel')}</Text>
                   <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={totalDistance} onChangeText={setTotalDistance} keyboardType="decimal-pad" />
                 </View>
                 <View style={styles.rowItem}>
-                  <Text style={styles.miniLabel}>ккал (всього)</Text>
+                  <Text style={styles.miniLabel}>{t('totalCalLabel')}</Text>
                   <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={totalCalories} onChangeText={setTotalCalories} keyboardType="numeric" />
                 </View>
@@ -315,12 +320,12 @@ export default function LogWorkoutScreen() {
               ) : null}
               <View style={styles.row}>
                 <View style={styles.rowItem}>
-                  <Text style={styles.miniLabel}>ЧСС серед. (уд/хв)</Text>
+                  <Text style={styles.miniLabel}>{t('avgHrLabel')}</Text>
                   <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={avgHeartRate} onChangeText={setAvgHeartRate} keyboardType="numeric" />
                 </View>
                 <View style={styles.rowItem}>
-                  <Text style={styles.miniLabel}>ЧСС макс. (уд/хв)</Text>
+                  <Text style={styles.miniLabel}>{t('maxHrLabel')}</Text>
                   <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={maxHeartRate} onChangeText={setMaxHeartRate} keyboardType="numeric" />
                 </View>
@@ -328,7 +333,7 @@ export default function LogWorkoutScreen() {
               {workoutType === 'run' && (
                 <View style={styles.row}>
                   <View style={styles.rowItem}>
-                    <Text style={styles.miniLabel}>Набір висоти (м)</Text>
+                    <Text style={styles.miniLabel}>{t('elevationLabel')}</Text>
                     <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                       value={elevationGain} onChangeText={setElevationGain} keyboardType="numeric" />
                   </View>
@@ -339,7 +344,7 @@ export default function LogWorkoutScreen() {
           )}
 
           {/* Rating */}
-          <Text style={styles.label}>Оцінка тренування</Text>
+          <Text style={styles.label}>{t('ratingLabel')}</Text>
           <View style={styles.ratingRow}>
             {RATINGS.map((r) => (
               <TouchableOpacity key={r} onPress={() => setRating(r)}>
@@ -354,7 +359,7 @@ export default function LogWorkoutScreen() {
 
           {/* Exercises */}
           <View style={styles.exercisesHeader}>
-            <Text style={styles.label}>Вправи</Text>
+            <Text style={styles.label}>{t('exercisesLabel')}</Text>
             <View style={styles.exercisesHeaderActions}>
               {exercises.length > 0 && (
                 <TouchableOpacity
@@ -362,7 +367,7 @@ export default function LogWorkoutScreen() {
                   onPress={() => setRestTimerVisible(true)}
                 >
                   <Ionicons name="timer-outline" size={15} color={Colors.primary} />
-                  <Text style={styles.restTimerBtnText}>Відпочинок</Text>
+                  <Text style={styles.restTimerBtnText}>{t('restTimerBtn')}</Text>
                 </TouchableOpacity>
               )}
               {exercises.length > 0 && (
@@ -401,10 +406,19 @@ export default function LogWorkoutScreen() {
 
           {/* Add Exercise Form */}
           <View style={styles.exerciseForm}>
-            <Text style={styles.formSubtitle}>Додати вправу</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+              <Text style={styles.formSubtitle}>{t('addExercise')}</Text>
+              <TouchableOpacity
+                style={styles.libraryBtn}
+                onPress={() => setPickerVisible(true)}
+              >
+                <Ionicons name="library-outline" size={14} color={Colors.primary} />
+                <Text style={styles.libraryBtnText}>{t('chooseFromLibrary')}</Text>
+              </TouchableOpacity>
+            </View>
             <TextInput
               style={styles.input}
-              placeholder="Назва вправи (наприклад: Присідання)"
+              placeholder={t('exerciseNamePlaceholder')}
               placeholderTextColor={Colors.textMuted}
               value={exName}
               onChangeText={(v) => { setExName(v); setOverloadHint(''); }}
@@ -415,41 +429,41 @@ export default function LogWorkoutScreen() {
             ) : null}
             <View style={styles.row}>
               <View style={styles.rowItem}>
-                <Text style={styles.miniLabel}>Підходи</Text>
+                <Text style={styles.miniLabel}>{t('setsLabel')}</Text>
                 <TextInput style={styles.input} placeholder="3" placeholderTextColor={Colors.textMuted}
                   value={exSets} onChangeText={setExSets} keyboardType="numeric" />
               </View>
               <View style={styles.rowItem}>
-                <Text style={styles.miniLabel}>Повтори</Text>
+                <Text style={styles.miniLabel}>{t('repsLabel')}</Text>
                 <TextInput style={styles.input} placeholder="12" placeholderTextColor={Colors.textMuted}
                   value={exReps} onChangeText={setExReps} keyboardType="numeric" />
               </View>
               <View style={styles.rowItem}>
-                <Text style={styles.miniLabel}>Вага (кг)</Text>
+                <Text style={styles.miniLabel}>{t('weightKgLabel')}</Text>
                 <TextInput style={styles.input} placeholder="50" placeholderTextColor={Colors.textMuted}
                   value={exWeight} onChangeText={setExWeight} keyboardType="decimal-pad" />
               </View>
             </View>
             <View style={styles.row}>
               <View style={styles.rowItem}>
-                <Text style={styles.miniLabel}>Час (хв)</Text>
+                <Text style={styles.miniLabel}>{t('timeMinLabel')}</Text>
                 <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                   value={exDuration} onChangeText={setExDuration} keyboardType="numeric" />
               </View>
               <View style={styles.rowItem}>
-                <Text style={styles.miniLabel}>Км</Text>
+                <Text style={styles.miniLabel}>{t('kmLabel')}</Text>
                 <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                   value={exDistance} onChangeText={setExDistance} keyboardType="decimal-pad" />
               </View>
               <View style={styles.rowItem}>
-                <Text style={styles.miniLabel}>ккал</Text>
+                <Text style={styles.miniLabel}>{t('kcalLabel')}</Text>
                 <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                   value={exCalories} onChangeText={setExCalories} keyboardType="numeric" />
               </View>
             </View>
             <View style={styles.row}>
               <View style={styles.rowItem}>
-                <Text style={styles.miniLabel}>Вати (вт)</Text>
+                <Text style={styles.miniLabel}>{t('wattsLabel')}</Text>
                 <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                   value={exWatts} onChangeText={setExWatts} keyboardType="numeric" />
               </View>
@@ -457,17 +471,17 @@ export default function LogWorkoutScreen() {
                 <Text style={styles.miniLabel}> </Text>
                 <TouchableOpacity style={styles.addExBtn} onPress={addExercise}>
                   <Ionicons name="add" size={20} color="#FFF" />
-                  <Text style={styles.addExBtnText}>Додати</Text>
+                  <Text style={styles.addExBtnText}>{t('add')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
 
           {/* Notes */}
-          <Text style={styles.label}>Нотатки</Text>
+          <Text style={styles.label}>{t('notesLabel')}</Text>
           <TextInput
             style={[styles.input, styles.notesInput]}
-            placeholder="Як пройшло тренування? Самопочуття, досягнення, що покращити..."
+            placeholder={t('notesPlaceholder')}
             placeholderTextColor={Colors.textMuted}
             value={notes}
             onChangeText={setNotes}
@@ -480,12 +494,19 @@ export default function LogWorkoutScreen() {
       {/* Rest Timer Modal */}
       <RestTimer visible={restTimerVisible} onClose={() => setRestTimerVisible(false)} />
 
+      {/* Exercise Picker Modal */}
+      <ExercisePicker
+        visible={pickerVisible}
+        onClose={() => setPickerVisible(false)}
+        onSelect={(name) => { setExName(name); setOverloadHint(''); lookupOverloadHint(name); }}
+      />
+
       {/* Templates Modal */}
       <Modal visible={templatesVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Шаблони тренувань</Text>
+              <Text style={styles.modalTitle}>{t('templatesTitle')}</Text>
               <TouchableOpacity onPress={() => setTemplatesVisible(false)}>
                 <Ionicons name="close" size={22} color={Colors.textSecondary} />
               </TouchableOpacity>
@@ -493,8 +514,8 @@ export default function LogWorkoutScreen() {
             {templates.length === 0 ? (
               <View style={styles.modalEmpty}>
                 <Ionicons name="albums-outline" size={40} color={Colors.textMuted} />
-                <Text style={styles.modalEmptyText}>Немає збережених шаблонів</Text>
-                <Text style={styles.modalEmptySubtext}>Додай вправи та збережи як шаблон</Text>
+                <Text style={styles.modalEmptyText}>{t('noTemplates')}</Text>
+                <Text style={styles.modalEmptySubtext}>{t('noTemplatesText')}</Text>
               </View>
             ) : (
               <FlatList
@@ -522,10 +543,10 @@ export default function LogWorkoutScreen() {
       <Modal visible={saveTemplateVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { padding: Spacing.lg }]}>
-            <Text style={styles.modalTitle}>Зберегти шаблон</Text>
+            <Text style={styles.modalTitle}>{t('saveTemplateTitle')}</Text>
             <TextInput
               style={[styles.input, { marginTop: Spacing.md }]}
-              placeholder="Назва шаблону"
+              placeholder={t('templateNamePlaceholder')}
               placeholderTextColor={Colors.textMuted}
               value={templateName}
               onChangeText={setTemplateName}
@@ -536,10 +557,10 @@ export default function LogWorkoutScreen() {
                 style={styles.modalCancelBtn}
                 onPress={() => { setSaveTemplateVisible(false); setTemplateName(''); }}
               >
-                <Text style={styles.modalCancelText}>Скасувати</Text>
+                <Text style={styles.modalCancelText}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleSaveTemplate}>
-                <Text style={styles.modalConfirmText}>Зберегти</Text>
+                <Text style={styles.modalConfirmText}>{t('save')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -684,4 +705,11 @@ const styles = StyleSheet.create({
   },
   timerBtnStop: { backgroundColor: Colors.error },
   timerBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+  libraryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(230,57,70,0.08)', borderRadius: BorderRadius.full,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: 'rgba(230,57,70,0.25)',
+  },
+  libraryBtnText: { color: Colors.primary, fontSize: 11, fontWeight: '600' },
 });

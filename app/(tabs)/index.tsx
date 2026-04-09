@@ -9,6 +9,7 @@ import { format, isToday, startOfWeek, addDays } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getUserProfile, getGoals, getRecentWorkouts, getStats, getWorkoutsForDate, getTrainingPlan, getCachedDailyAdvice, saveDailyAdviceCache, getLocalDateString, getWorkouts } from '../../services/storage';
+import { useLocale } from '../../services/i18n';
 import { getDailyAdvice as geminiDailyAdvice } from '../../services/gemini';
 import { getDailyAdvice as groqDailyAdvice, initGroq } from '../../services/groq';
 import { getTodayPlan, WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS } from '../../services/planParser';
@@ -19,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function TodayScreen() {
   const router = useRouter();
+  const { t } = useLocale();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [todayWorkouts, setTodayWorkouts] = useState<WorkoutEntry[]>([]);
   const [stats, setStats] = useState({ totalWorkouts: 0, weeklyWorkouts: 0, monthlyWorkouts: 0, totalDuration: 0, streak: 0 });
@@ -173,14 +175,14 @@ export default function TodayScreen() {
           />
           <View style={{ marginLeft: Spacing.sm }}>
             <Text style={styles.todayLabel}>
-              {isWorkoutDay ? 'День тренування' : 'День відпочинку'}
+              {isWorkoutDay ? t('workoutDay') : t('restDay')}
             </Text>
             <Text style={styles.todaySubtext}>
               {todayWorkouts.length > 0
-                ? `${todayWorkouts.length} тренування записано`
+                ? t('workoutsLoggedToday', todayWorkouts.length)
                 : isWorkoutDay
-                ? 'Тренування ще не записано'
-                : 'Відновлюйся та готуйся'}
+                ? t('workoutNotLogged')
+                : t('relax')}
             </Text>
           </View>
         </View>
@@ -189,16 +191,16 @@ export default function TodayScreen() {
             style={styles.logBtn}
             onPress={() => router.push('/workout/log')}
           >
-            <Text style={styles.logBtnText}>Записати</Text>
+            <Text style={styles.logBtnText}>{t('logBtn')}</Text>
           </TouchableOpacity>
         )}
       </View>
 
       {/* Stats Row */}
       <View style={styles.statsRow}>
-        <StatCard label="Серія" value={`${stats.streak}`} unit="днів" icon="flame-outline" color={Colors.primary} />
-        <StatCard label="Цього тижня" value={`${stats.weeklyWorkouts}`} unit="трен." icon="calendar-outline" color={Colors.success} />
-        <StatCard label="Загалом" value={`${stats.totalWorkouts}`} unit="трен." icon="trophy-outline" color={Colors.accent} />
+        <StatCard label={t('streak')} value={`${stats.streak}`} unit={t('daysUnit')} icon="flame-outline" color={Colors.primary} />
+        <StatCard label={t('thisWeekLabel')} value={`${stats.weeklyWorkouts}`} unit={t('trainingsUnit')} icon="calendar-outline" color={Colors.success} />
+        <StatCard label={t('totalLabel')} value={`${stats.totalWorkouts}`} unit={t('trainingsUnit')} icon="trophy-outline" color={Colors.accent} />
       </View>
 
       {/* Weekly Tracker */}
@@ -211,7 +213,7 @@ export default function TodayScreen() {
       <View style={styles.waterCard}>
         <View style={styles.waterHeader}>
           <Ionicons name="water" size={18} color="#4285F4" />
-          <Text style={styles.waterTitle}>Вода</Text>
+          <Text style={styles.waterTitle}>{t('waterLabel')}</Text>
           <Text style={styles.waterCount}>
             {waterData.glasses}/{waterData.goal} склянок
           </Text>
@@ -234,7 +236,7 @@ export default function TodayScreen() {
           ))}
         </View>
         {waterData.glasses >= waterData.goal ? (
-          <Text style={styles.waterDone}>Ціль виконана!</Text>
+          <Text style={styles.waterDone}>{t('waterGoalDone')}</Text>
         ) : null}
         <View style={styles.waterFooter}>
           <Ionicons
@@ -242,7 +244,7 @@ export default function TodayScreen() {
             size={14}
             color={waterRemindersOn ? '#4285F4' : Colors.textMuted}
           />
-          <Text style={styles.waterReminderLabel}>Нагадування</Text>
+          <Text style={styles.waterReminderLabel}>{t('waterRemindersLabel')}</Text>
           <Switch
             value={waterRemindersOn}
             onValueChange={toggleWaterReminders}
@@ -257,9 +259,9 @@ export default function TodayScreen() {
       {todayPlan && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>План на сьогодні</Text>
+            <Text style={styles.sectionTitle}>{t('todayPlan')}</Text>
             <TouchableOpacity onPress={() => router.push('/plan')}>
-              <Text style={styles.seeAllBtn}>Весь тиждень →</Text>
+              <Text style={styles.seeAllBtn}>{t('fullWeekBtn')}</Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity style={styles.planCard} onPress={() => router.push('/plan')} activeOpacity={0.8}>
@@ -303,8 +305,8 @@ export default function TodayScreen() {
         <TouchableOpacity style={styles.noPlanCard} onPress={() => router.push('/(tabs)/trainer')}>
           <Ionicons name="sparkles" size={20} color={Colors.primary} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.noPlanTitle}>Немає плану тренувань</Text>
-            <Text style={styles.noPlanSub}>Попроси AI скласти програму →</Text>
+            <Text style={styles.noPlanTitle}>{t('noPlanTitle')}</Text>
+            <Text style={styles.noPlanSub}>{t('noPlanSub')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
         </TouchableOpacity>
@@ -313,7 +315,7 @@ export default function TodayScreen() {
       {/* Today's logged workouts */}
       {todayWorkouts.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Сьогодні зроблено</Text>
+          <Text style={styles.sectionTitle}>{t('todayDone')}</Text>
           {todayWorkouts.map((w) => (
             <TouchableOpacity
               key={w.id}
@@ -336,7 +338,7 @@ export default function TodayScreen() {
       {/* AI Advice */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Порада від тренера</Text>
+          <Text style={styles.sectionTitle}>{t('coachAdvice')}</Text>
           <View style={styles.geminiTag}>
             <Text style={styles.geminiTagText}>{profile?.groqApiKey ? 'Groq' : 'Gemini'}</Text>
           </View>
@@ -344,7 +346,7 @@ export default function TodayScreen() {
         {loadingAdvice ? (
           <View style={styles.adviceCard}>
             <ActivityIndicator color={Colors.primary} size="small" />
-            <Text style={[styles.adviceText, { marginTop: Spacing.sm, color: Colors.textMuted }]}>Отримую пораду...</Text>
+            <Text style={[styles.adviceText, { marginTop: Spacing.sm, color: Colors.textMuted }]}>{t('gettingAdvice')}</Text>
           </View>
         ) : advice ? (
           <View style={styles.adviceCard}>
@@ -353,7 +355,7 @@ export default function TodayScreen() {
               style={styles.chatBtn}
               onPress={() => router.push('/(tabs)/trainer')}
             >
-              <Text style={styles.chatBtnText}>Поговорити з тренером</Text>
+              <Text style={styles.chatBtnText}>{t('chatWithCoach')}</Text>
               <Ionicons name="arrow-forward" size={14} color={Colors.primary} />
             </TouchableOpacity>
           </View>
@@ -364,9 +366,9 @@ export default function TodayScreen() {
           >
             <Ionicons name="key-outline" size={24} color={Colors.textMuted} />
             <Text style={[styles.adviceText, { color: Colors.textSecondary, marginTop: Spacing.sm }]}>
-              Додай Groq або Gemini API ключ у профілі щоб отримувати персональні поради
+              {t('noApiKeyAdvice')}
             </Text>
-            <Text style={[styles.chatBtnText, { marginTop: Spacing.sm }]}>Налаштувати →</Text>
+            <Text style={[styles.chatBtnText, { marginTop: Spacing.sm }]}>{t('configureBtn')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -377,7 +379,7 @@ export default function TodayScreen() {
         onPress={() => router.push('/workout/log')}
       >
         <Ionicons name="add-circle-outline" size={22} color="#FFF" />
-        <Text style={styles.bigLogBtnText}>Записати тренування</Text>
+        <Text style={styles.bigLogBtnText}>{t('logTraining')}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -391,12 +393,13 @@ function WeeklyTracker({ availableDays, workoutDates }: {
   availableDays: number[];
   workoutDates: Set<string>;
 }) {
+  const { t } = useLocale();
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const todayStr = getLocalDateString(new Date());
 
   return (
     <View style={styles.weekCard}>
-      <Text style={styles.weekTitle}>Цей тиждень</Text>
+      <Text style={styles.weekTitle}>{t('thisWeekTracker')}</Text>
       <View style={styles.weekDays}>
         {DAY_LABELS.map((label, idx) => {
           const dayDate = addDays(weekStart, idx);

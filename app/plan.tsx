@@ -12,6 +12,7 @@ import { TrainingPlan, DayPlan } from '../types';
 import {
   WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS,
 } from '../services/planParser';
+import { useLocale } from '../services/i18n';
 
 const DAY_NAMES: Record<number, string> = {
   0: 'Неділя', 1: 'Понеділок', 2: 'Вівторок',
@@ -23,6 +24,7 @@ const DAY_SHORT: Record<number, string> = {
 
 export default function PlanScreen() {
   const router = useRouter();
+  const { t } = useLocale();
   const [plan, setPlan] = useState<TrainingPlan | null>(null);
   const [expanded, setExpanded] = useState<number | null>(new Date().getDay());
   const [aiProvider, setAiProvider] = useState<'Groq' | 'Gemini AI'>('Gemini AI');
@@ -45,12 +47,12 @@ export default function PlanScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Мій план тренувань</Text>
+          <Text style={styles.headerTitle}>{t('planTitle')}</Text>
           <View style={{ width: 24 }} />
         </View>
         <View style={styles.empty}>
           <Ionicons name="calendar-outline" size={64} color={Colors.textMuted} />
-          <Text style={styles.emptyTitle}>План ще не створено</Text>
+          <Text style={styles.emptyTitle}>{t('planTitle')}</Text>
           <Text style={styles.emptyDesc}>
             Перейди до вкладки "Тренер", натисни{'\n'}"Розробити план тренувань"{'\n'}і збережи відповідь AI
           </Text>
@@ -59,7 +61,7 @@ export default function PlanScreen() {
             onPress={() => { router.back(); router.push('/(tabs)/trainer'); }}
           >
             <Ionicons name="sparkles" size={18} color="#FFF" />
-            <Text style={styles.emptyBtnText}>Відкрити AI Тренера</Text>
+            <Text style={styles.emptyBtnText}>{t('generatePlan')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -80,11 +82,11 @@ export default function PlanScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Мій план тренувань</Text>
+        <Text style={styles.headerTitle}>{t('planTitle')}</Text>
         <TouchableOpacity
-          onPress={() => Alert.alert('Оновити план?', 'Перейди до AI Тренера і попроси новий план', [
-            { text: 'Скасувати', style: 'cancel' },
-            { text: 'Відкрити тренера', onPress: () => { router.back(); router.push('/(tabs)/trainer'); } },
+          onPress={() => Alert.alert(t('planTitle'), '', [
+            { text: t('cancel'), style: 'cancel' },
+            { text: t('generatePlan'), onPress: () => { router.back(); router.push('/(tabs)/trainer'); } },
           ])}
         >
           <Ionicons name="refresh-outline" size={22} color={Colors.textMuted} />

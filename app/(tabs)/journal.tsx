@@ -10,6 +10,7 @@ import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getWorkouts, deleteWorkout } from '../../services/storage';
 import { WorkoutEntry } from '../../types';
+import { useLocale } from '../../services/i18n';
 
 const WORKOUT_TYPE_COLORS: Record<string, string> = {
   strength: '#E63946',
@@ -39,6 +40,7 @@ const WORKOUT_TYPE_LABELS: Record<string, string> = {
 
 export default function JournalScreen() {
   const router = useRouter();
+  const { t } = useLocale();
   const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<string | null>(null);
@@ -62,10 +64,10 @@ export default function JournalScreen() {
   };
 
   const handleDelete = (id: string, type: string) => {
-    Alert.alert('Видалити тренування', `Видалити "${type}"?`, [
-      { text: 'Скасувати', style: 'cancel' },
+    Alert.alert(t('deleteWorkoutBtn') || 'Видалити тренування', t('deleteWorkoutTitle', type), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Видалити',
+        text: t('delete'),
         style: 'destructive',
         onPress: async () => {
           await deleteWorkout(id);
@@ -119,7 +121,7 @@ export default function JournalScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Журнал тренувань</Text>
+        <Text style={styles.title}>{t('journalTitle')}</Text>
         <View style={styles.headerActions}>
           {workouts.length > 0 && (
             <TouchableOpacity style={styles.exportBtn} onPress={exportCSV}>
@@ -140,7 +142,7 @@ export default function JournalScreen() {
         <Ionicons name="search-outline" size={18} color={Colors.textMuted} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Пошук за вправою, нотатками..."
+          placeholder={t('searchPlaceholder')}
           placeholderTextColor={Colors.textMuted}
           value={search}
           onChangeText={setSearch}
@@ -168,7 +170,7 @@ export default function JournalScreen() {
                 onPress={() => setFilter(item)}
               >
                 <Text style={[styles.filterChipText, filter === item && styles.filterChipTextActive]}>
-                  {item ? (WORKOUT_TYPE_LABELS[item] || item) : 'Всі'}
+                  {item ? (WORKOUT_TYPE_LABELS[item] || item) : t('all')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -184,10 +186,10 @@ export default function JournalScreen() {
         ListEmptyComponent={() => (
           <View style={styles.empty}>
             <Ionicons name="journal-outline" size={56} color={Colors.textMuted} />
-            <Text style={styles.emptyTitle}>Журнал порожній</Text>
-            <Text style={styles.emptyText}>Запиши своє перше тренування</Text>
+            <Text style={styles.emptyTitle}>{t('emptyJournalTitle')}</Text>
+            <Text style={styles.emptyText}>{t('emptyJournalText')}</Text>
             <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/workout/log')}>
-              <Text style={styles.emptyBtnText}>Записати тренування</Text>
+              <Text style={styles.emptyBtnText}>{t('logTraining')}</Text>
             </TouchableOpacity>
           </View>
         )}

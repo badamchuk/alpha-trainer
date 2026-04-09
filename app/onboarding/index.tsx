@@ -14,6 +14,7 @@ import { scheduleWorkoutReminders, scheduleWaterReminders } from '../../services
 import { computeWaterGoal, setWaterGoal } from '../../services/water';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile } from '../../types';
+import { loadLanguage, setLanguage, useLocale, Lang } from '../../services/i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -45,6 +46,7 @@ const TOTAL_STEPS = 7;
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { lang, t, setLanguage: changeLang } = useLocale();
   const [step, setStep] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -68,6 +70,7 @@ export default function OnboardingScreen() {
 
   useEffect(() => {
     async function load() {
+      await loadLanguage();
       const profile = await getUserProfile();
       if (profile) {
         setIsEditing(true);
@@ -234,7 +237,7 @@ export default function OnboardingScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {step === 0 && <StepWelcome />}
+            {step === 0 && <StepWelcome lang={lang} onLangChange={changeLang} />}
             {step === 1 && <StepName name={name} setName={setName} />}
             {step === 2 && (
               <StepBody age={age} setAge={setAge} weight={weight} setWeight={setWeight}
@@ -279,7 +282,7 @@ export default function OnboardingScreen() {
         <View style={styles.footer}>
           <TouchableOpacity style={styles.nextBtn} onPress={handleNext}>
             <Text style={styles.nextBtnText}>
-              {step === 0 ? 'Розпочати' : isLastStep ? 'Готово!' : 'Далі'}
+              {step === 0 ? t('next') : isLastStep ? t('done') : t('next')}
             </Text>
             <Ionicons
               name={isLastStep ? 'checkmark-circle-outline' : 'arrow-forward'}
@@ -296,9 +299,24 @@ export default function OnboardingScreen() {
 
 // ─── STEPS ────────────────────────────────────────────────────────────────────
 
-function StepWelcome() {
+function StepWelcome({ lang, onLangChange }: { lang: Lang; onLangChange: (l: Lang) => void }) {
   return (
     <View style={styles.stepContent}>
+      {/* Language picker */}
+      <View style={styles.langPicker}>
+        <TouchableOpacity
+          style={[styles.langBtn, lang === 'uk' && styles.langBtnActive]}
+          onPress={() => onLangChange('uk')}
+        >
+          <Text style={[styles.langBtnText, lang === 'uk' && styles.langBtnTextActive]}>🇺🇦 Українська</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.langBtn, lang === 'en' && styles.langBtnActive]}
+          onPress={() => onLangChange('en')}
+        >
+          <Text style={[styles.langBtnText, lang === 'en' && styles.langBtnTextActive]}>🇬🇧 English</Text>
+        </TouchableOpacity>
+      </View>
       <View style={styles.bigIcon}>
         <Ionicons name="barbell-outline" size={52} color={Colors.primary} />
       </View>
@@ -764,6 +782,21 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
   },
   featureText: { color: Colors.textSecondary, fontSize: 14 },
+
+  // Language picker
+  langPicker: {
+    flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg, alignSelf: 'center',
+  },
+  langBtn: {
+    borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 20, paddingVertical: 10,
+    backgroundColor: Colors.surface,
+  },
+  langBtnActive: {
+    backgroundColor: Colors.primary, borderColor: Colors.primary,
+  },
+  langBtnText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  langBtnTextActive: { color: '#FFF' },
 
   // Name step
   bigInput: {

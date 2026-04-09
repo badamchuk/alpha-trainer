@@ -5,11 +5,13 @@ import { getUserProfile } from '../services/storage';
 import { initGemini } from '../services/gemini';
 import { initGroq } from '../services/groq';
 import { requestPermissions } from '../services/notifications';
+import { loadLanguage } from '../services/i18n';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 export default function RootLayout() {
   useEffect(() => {
     async function init() {
+      await loadLanguage();
       const profile = await getUserProfile();
       if (profile?.geminiApiKey) initGemini(profile.geminiApiKey);
       if (profile?.groqApiKey) initGroq(profile.groqApiKey);

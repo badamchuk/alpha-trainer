@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getGoals, addGoal, updateGoal, deleteGoal } from '../../services/storage';
 import { Goal } from '../../types';
+import { useLocale } from '../../services/i18n';
 import DatePickerField from '../../components/DatePickerField';
 
 const GOAL_TYPES = [
@@ -21,6 +22,7 @@ const GOAL_TYPES = [
 ];
 
 export default function GoalsScreen() {
+  const { t } = useLocale();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
@@ -89,9 +91,9 @@ export default function GoalsScreen() {
   }
 
   async function handleDelete(id: string) {
-    Alert.alert('Видалити ціль?', '', [
-      { text: 'Скасувати', style: 'cancel' },
-      { text: 'Видалити', style: 'destructive', onPress: async () => { await deleteGoal(id); await loadGoals(); } },
+    Alert.alert(t('delete') + ' ' + (t('goalsTitle') ? '' : ''), '', [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('delete'), style: 'destructive', onPress: async () => { await deleteGoal(id); await loadGoals(); } },
     ]);
   }
 
@@ -101,7 +103,7 @@ export default function GoalsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Мої цілі</Text>
+        <Text style={styles.title}>{t('goalsTitle')}</Text>
         <TouchableOpacity style={styles.addBtn} onPress={openNew}>
           <Ionicons name="add" size={22} color="#FFF" />
         </TouchableOpacity>
@@ -119,10 +121,10 @@ export default function GoalsScreen() {
         ListEmptyComponent={() => (
           <View style={styles.empty}>
             <Ionicons name="flag-outline" size={56} color={Colors.textMuted} />
-            <Text style={styles.emptyTitle}>Немає цілей</Text>
-            <Text style={styles.emptyText}>Поставь свою першу ціль — і AI-тренер допоможе її досягти</Text>
+            <Text style={styles.emptyTitle}>{t('noGoalsTitle')}</Text>
+            <Text style={styles.emptyText}>{t('noGoalsText')}</Text>
             <TouchableOpacity style={styles.emptyBtn} onPress={openNew}>
-              <Text style={styles.emptyBtnText}>Додати ціль</Text>
+              <Text style={styles.emptyBtnText}>{t('addGoalBtn')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -147,11 +149,11 @@ export default function GoalsScreen() {
         <View style={styles.modal}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setModalVisible(false)}>
-              <Text style={styles.cancelBtn}>Скасувати</Text>
+              <Text style={styles.cancelBtn}>{t('cancel')}</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>{editGoal ? 'Редагувати ціль' : 'Нова ціль'}</Text>
+            <Text style={styles.modalTitle}>{editGoal ? t('edit') : t('addGoalBtn')}</Text>
             <TouchableOpacity onPress={handleSave}>
-              <Text style={styles.saveBtn}>Зберегти</Text>
+              <Text style={styles.saveBtn}>{t('save')}</Text>
             </TouchableOpacity>
           </View>
 

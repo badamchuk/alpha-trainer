@@ -9,6 +9,7 @@ import { format, subDays, eachDayOfInterval } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getWorkouts, getStats, getPersonalRecords, PersonalRecord, getWeightLog, addWeightEntry, WeightEntry, getLocalDateString, getMeasurements, addMeasurement, getUserProfile } from '../../services/storage';
+import { useLocale } from '../../services/i18n';
 import { WorkoutEntry, BodyMeasurement } from '../../types';
 import {
   getRunStats, getStrengthStats, formatPace, RunStats, StrengthStats,
@@ -22,6 +23,7 @@ import {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function ProgressScreen() {
+  const { t } = useLocale();
   const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
   const [stats, setStats] = useState({ totalWorkouts: 0, weeklyWorkouts: 0, monthlyWorkouts: 0, totalDuration: 0, streak: 0 });
   const [records, setRecords] = useState<PersonalRecord[]>([]);
@@ -159,7 +161,7 @@ export default function ProgressScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
     >
-      <Text style={[styles.title, { marginBottom: Spacing.lg }]}>Прогрес</Text>
+      <Text style={[styles.title, { marginBottom: Spacing.lg }]}>{t('progressTitle')}</Text>
 
       {/* Key Stats */}
       <View style={styles.statsGrid}>
@@ -205,7 +207,7 @@ export default function ProgressScreen() {
       {/* Weekly bar chart */}
       {workouts.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Тижневий об'єм (12 тижнів)</Text>
+          <Text style={styles.sectionTitle}>{t('weeklyLoad')}</Text>
           <View style={styles.barChart}>
             {weeklyData.map((item) => (
               <View key={item.week} style={styles.barColumn}>
@@ -246,7 +248,7 @@ export default function ProgressScreen() {
       {/* Run stats */}
       {runStats && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Статистика бігу</Text>
+          <Text style={styles.sectionTitle}>{t('runStatsTitle')}</Text>
           <View style={styles.runStatsGrid}>
             <RunStatCard label="Всього пробіжок" value={`${runStats.totalRuns}`} icon="walk-outline" color="#2ECC71" />
             <RunStatCard label="Загальна дистанція" value={`${runStats.totalDistanceKm} км`} icon="navigate-outline" color="#2ECC71" />
@@ -345,12 +347,12 @@ export default function ProgressScreen() {
       {/* Exercise progress */}
       {exerciseNames.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Прогрес по вправі</Text>
+          <Text style={styles.sectionTitle}>{t('exerciseProgress')}</Text>
           <View style={styles.searchContainer}>
             <Ionicons name="search-outline" size={16} color={Colors.textMuted} style={{ paddingHorizontal: 6 }} />
             <TextInput
               style={styles.exSearchInput}
-              placeholder="Введи назву вправи..."
+              placeholder={t('searchExercise')}
               placeholderTextColor={Colors.textMuted}
               value={exerciseSearch}
               onChangeText={(t) => { setExerciseSearch(t); if (!t) setSelectedExercise(null); }}
@@ -436,7 +438,7 @@ export default function ProgressScreen() {
       {/* Muscle group balance */}
       {muscleGroups.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Баланс м'язових груп</Text>
+          <Text style={styles.sectionTitle}>{t('muscleGroupsTitle')}</Text>
           {(() => {
             const maxCount = muscleGroups[0].count;
             return muscleGroups.map((mg) => (
@@ -456,7 +458,7 @@ export default function ProgressScreen() {
       {/* HR Zones */}
       {hrZones.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Зони ЧСС</Text>
+          <Text style={styles.sectionTitle}>{t('hrZonesTitle')}</Text>
           <Text style={styles.hrNote}>Макс. ЧСС: {220 - (profile?.age || 30)} уд/хв (220 − вік)</Text>
           {hrZones.map((z) => (
             <View key={z.zone} style={styles.hrZoneRow}>
@@ -472,7 +474,7 @@ export default function ProgressScreen() {
       {/* Calorie estimation */}
       {workouts.length > 0 && profile?.weight && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Витрата калорій (оцінка)</Text>
+          <Text style={styles.sectionTitle}>{t('caloriesByMonthTitle')}</Text>
           {(() => {
             const monthCutoff = getLocalDateString(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
             const recentW = workouts.filter((w) => w.date >= monthCutoff);
@@ -513,10 +515,10 @@ export default function ProgressScreen() {
       {/* Body Measurements */}
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Заміри тіла</Text>
+          <Text style={styles.sectionTitle}>{t('measurementsTitle')}</Text>
           <TouchableOpacity style={styles.logWeightBtn} onPress={() => setMeasureModalVisible(true)}>
             <Ionicons name="add" size={16} color="#FFF" />
-            <Text style={styles.logWeightBtnText}>Записати</Text>
+            <Text style={styles.logWeightBtnText}>{t('addMeasurementBtn')}</Text>
           </TouchableOpacity>
         </View>
         {measurements.length === 0 ? (
@@ -569,10 +571,10 @@ export default function ProgressScreen() {
       {/* Weight History */}
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Вага тіла</Text>
+          <Text style={styles.sectionTitle}>{t('weightHistoryTitle')}</Text>
           <TouchableOpacity style={styles.logWeightBtn} onPress={() => setWeightModalVisible(true)}>
             <Ionicons name="add" size={16} color="#FFF" />
-            <Text style={styles.logWeightBtnText}>Записати</Text>
+            <Text style={styles.logWeightBtnText}>{t('addWeightBtn')}</Text>
           </TouchableOpacity>
         </View>
         {weightLog.length === 0 ? (
@@ -627,7 +629,7 @@ export default function ProgressScreen() {
       {/* Personal Records */}
       {records.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Особисті рекорди</Text>
+          <Text style={styles.sectionTitle}>{t('personalRecordsTitle')}</Text>
           {records.map((r, i) => (
             <View key={i} style={styles.prRow}>
               <View style={styles.prRank}>
@@ -659,8 +661,8 @@ export default function ProgressScreen() {
       {workouts.length === 0 && (
         <View style={styles.empty}>
           <Ionicons name="stats-chart-outline" size={56} color={Colors.textMuted} />
-          <Text style={styles.emptyTitle}>Немає даних</Text>
-          <Text style={styles.emptyText}>Починай записувати тренування — тут буде твоя статистика</Text>
+          <Text style={styles.emptyTitle}>{t('noData')}</Text>
+          <Text style={styles.emptyText}>{t('noWorkouts')}</Text>
         </View>
       )}
 

@@ -18,6 +18,7 @@ import { chatStream as groqChatStream, initGroq, generateTrainingPlan as groqGen
 import { getMemoryEntries, addMemoryEntry, buildMemoryContext } from '../../services/aiMemory';
 import { createPlanFromAIText } from '../../services/planParser';
 import { ChatMessage, UserProfile } from '../../types';
+import { useLocale } from '../../services/i18n';
 
 const QUICK_PROMPTS = [
   { text: 'Розроби план тренувань', icon: 'calendar-outline', isPlan: true },
@@ -36,6 +37,7 @@ function looksLikePlan(text: string): boolean {
 
 export default function TrainerScreen() {
   const router = useRouter();
+  const { t } = useLocale();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -76,11 +78,11 @@ export default function TrainerScreen() {
     const hasGemini = !!profile?.geminiApiKey;
     if (!hasGroq && !hasGemini) {
       Alert.alert(
-        'API ключ не налаштовано',
-        'Щоб спілкуватися з AI-тренером, потрібен Groq або Gemini API ключ.',
+        t('trainerNoApiKey'),
+        t('trainerNoApiKeyText'),
         [
-          { text: 'Скасувати', style: 'cancel' },
-          { text: 'Налаштувати', onPress: () => router.push('/onboarding') },
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('trainerGoToProfile'), onPress: () => router.push('/onboarding') },
         ]
       );
       return;
@@ -195,10 +197,10 @@ export default function TrainerScreen() {
   }
 
   const handleClear = () => {
-    Alert.alert('Очистити чат', 'Видалити всю історію розмови?', [
-      { text: 'Скасувати', style: 'cancel' },
+    Alert.alert(t('trainerClear'), t('trainerClearConfirm'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Очистити', style: 'destructive', onPress: async () => {
+        text: t('delete'), style: 'destructive', onPress: async () => {
           await clearChatHistory();
           setMessages([]);
           setPlanMessage(null);
@@ -221,7 +223,7 @@ export default function TrainerScreen() {
             <Ionicons name="sparkles" size={18} color={Colors.primary} />
           </View>
           <View>
-            <Text style={styles.headerTitle}>AI Тренер</Text>
+            <Text style={styles.headerTitle}>{t('trainerTitle')}</Text>
             <Text style={styles.headerSub}>{profile?.groqApiKey ? 'Groq' : 'Gemini'} · {profile?.name || 'Налаштуй профіль'}</Text>
           </View>
         </View>
@@ -248,7 +250,7 @@ export default function TrainerScreen() {
           </Text>
           {!profile?.groqApiKey && !profile?.geminiApiKey && (
             <TouchableOpacity style={styles.setupBtn} onPress={() => router.push('/onboarding')}>
-              <Text style={styles.setupBtnText}>Налаштувати профіль</Text>
+              <Text style={styles.setupBtnText}>{t('trainerGoToProfile')}</Text>
             </TouchableOpacity>
           )}
 
@@ -304,7 +306,7 @@ export default function TrainerScreen() {
         <View style={styles.thinkingRow}>
           <View style={styles.thinkingBubble}>
             <ActivityIndicator size="small" color={Colors.primary} />
-            <Text style={styles.thinkingText}>Складаю план...</Text>
+            <Text style={styles.thinkingText}>{t('trainerThinking')}</Text>
           </View>
         </View>
       )}
@@ -331,7 +333,7 @@ export default function TrainerScreen() {
         <View style={styles.inputRow}>
           <TextInput
             style={styles.input}
-            placeholder="Напиши питання тренеру..."
+            placeholder={t('trainerPlaceholder')}
             placeholderTextColor={Colors.textMuted}
             value={input}
             onChangeText={setInput}

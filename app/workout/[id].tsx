@@ -12,6 +12,7 @@ import { getWorkouts, deleteWorkout, updateWorkout } from '../../services/storag
 import { WorkoutEntry, ExerciseLog, WorkoutType } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
 import { computePace, formatPace } from '../../services/analytics';
+import { useLocale } from '../../services/i18n';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -48,6 +49,7 @@ const WORKOUT_TYPES: { id: WorkoutType; label: string; icon: string }[] = [
 
 export default function WorkoutDetailScreen() {
   const router = useRouter();
+  const { t } = useLocale();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [workout, setWorkout] = useState<WorkoutEntry | null>(null);
   const [editing, setEditing] = useState(false);
@@ -107,7 +109,7 @@ export default function WorkoutDetailScreen() {
   }
 
   function addExercise() {
-    if (!exName.trim()) { Alert.alert('Введи назву вправи'); return; }
+    if (!exName.trim()) { Alert.alert(t('enterExerciseName')); return; }
     const ex: ExerciseLog = {
       name: exName.trim(),
       sets: exSets ? Number(exSets) : undefined,
@@ -126,7 +128,7 @@ export default function WorkoutDetailScreen() {
   async function handleSave() {
     if (!workout) return;
     if (!duration || isNaN(Number(duration))) {
-      Alert.alert('Вкажи тривалість тренування (в хвилинах)');
+      Alert.alert(t('durationRequired'));
       return;
     }
     setSaving(true);
@@ -159,10 +161,10 @@ export default function WorkoutDetailScreen() {
   }
 
   async function handleDelete() {
-    Alert.alert('Видалити тренування?', 'Цю дію не можна скасувати.', [
-      { text: 'Скасувати', style: 'cancel' },
+    Alert.alert(t('deleteWorkoutBtn'), t('deleteWorkoutConfirm'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Видалити', style: 'destructive',
+        text: t('delete'), style: 'destructive',
         onPress: async () => { await deleteWorkout(id!); router.back(); },
       },
     ]);
@@ -175,7 +177,7 @@ export default function WorkoutDetailScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Тренування</Text>
+          <Text style={styles.headerTitle}>{t('workoutDetailTitle')}</Text>
           <View style={{ width: 24 }} />
         </View>
         <View style={styles.notFound}>
@@ -200,9 +202,9 @@ export default function WorkoutDetailScreen() {
             <TouchableOpacity onPress={cancelEdit}>
               <Ionicons name="close" size={24} color={Colors.textSecondary} />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Редагування</Text>
+            <Text style={styles.headerTitle}>{t('edit')}</Text>
             <TouchableOpacity onPress={handleSave} disabled={saving}>
-              <Text style={[styles.saveBtn, saving && { opacity: 0.5 }]}>Зберегти</Text>
+              <Text style={[styles.saveBtn, saving && { opacity: 0.5 }]}>{t('save')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -401,7 +403,7 @@ export default function WorkoutDetailScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Деталі тренування</Text>
+        <Text style={styles.headerTitle}>{t('workoutDetailTitle')}</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={enterEdit} style={styles.iconBtn}>
             <Ionicons name="create-outline" size={22} color={Colors.textSecondary} />
