@@ -406,16 +406,18 @@ export default function LogWorkoutScreen() {
 
           {/* Add Exercise Form */}
           <View style={styles.exerciseForm}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-              <Text style={styles.formSubtitle}>{t('addExercise')}</Text>
-              <TouchableOpacity
-                style={styles.libraryBtn}
-                onPress={() => setPickerVisible(true)}
-              >
-                <Ionicons name="library-outline" size={14} color={Colors.primary} />
-                <Text style={styles.libraryBtnText}>{t('chooseFromLibrary')}</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.formSubtitle}>{t('addExercise')}</Text>
+
+            {/* Library button — prominent, full width */}
+            <TouchableOpacity
+              style={styles.libraryBtn}
+              onPress={() => setPickerVisible(true)}
+            >
+              <Ionicons name="library-outline" size={18} color={Colors.primary} />
+              <Text style={styles.libraryBtnText}>{t('chooseFromLibrary')}</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+            </TouchableOpacity>
+
             <TextInput
               style={styles.input}
               placeholder={t('exerciseNamePlaceholder')}
@@ -706,10 +708,11 @@ const styles = StyleSheet.create({
   timerBtnStop: { backgroundColor: Colors.error },
   timerBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
   libraryBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(230,57,70,0.08)', borderRadius: BorderRadius.full,
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, borderColor: 'rgba(230,57,70,0.25)',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: 'rgba(230,57,70,0.07)', borderRadius: BorderRadius.md,
+    paddingVertical: 11, paddingHorizontal: Spacing.md,
+    borderWidth: 1, borderColor: 'rgba(230,57,70,0.3)',
+    marginBottom: Spacing.xs,
   },
-  libraryBtnText: { color: Colors.primary, fontSize: 11, fontWeight: '600' },
+  libraryBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '600', flex: 1 },
 });
