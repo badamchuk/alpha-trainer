@@ -5,14 +5,15 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { format, isToday } from 'date-fns';
+import { format, isToday, startOfWeek, addDays } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
-import { getUserProfile, getGoals, getRecentWorkouts, getStats, getWorkoutsForDate, getTrainingPlan, getCachedDailyAdvice, saveDailyAdviceCache, getLocalDateString } from '../../services/storage';
+import { getUserProfile, getGoals, getRecentWorkouts, getStats, getWorkoutsForDate, getTrainingPlan, getCachedDailyAdvice, saveDailyAdviceCache, getLocalDateString, getWorkouts } from '../../services/storage';
 import { getDailyAdvice as geminiDailyAdvice } from '../../services/gemini';
 import { getDailyAdvice as groqDailyAdvice, initGroq } from '../../services/groq';
 import { getTodayPlan, WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS } from '../../services/planParser';
 import { UserProfile, WorkoutEntry, TrainingPlan, DayPlan } from '../../types';
+import { getWaterData, addGlass, removeGlass } from '../../services/water';
 
 export default function TodayScreen() {
   const router = useRouter();
@@ -23,21 +24,36 @@ export default function TodayScreen() {
   const [loadingAdvice, setLoadingAdvice] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [todayPlan, setTodayPlan] = useState<DayPlan | null>(null);
+  const [weekWorkoutDates, setWeekWorkoutDates] = useState<Set<string>>(new Set());
+  const [waterData, setWaterData] = useState({ glasses: 0, goal: 8 });
 
   const today = getLocalDateString(new Date());
   const todayFormatted = format(new Date(), 'EEEE, d MMMM', { locale: uk });
 
   async function loadData() {
-    const [p, s, tw, plan] = await Promise.all([
+    const [p, s, tw, plan, allWorkouts, water] = await Promise.all([
       getUserProfile(),
       getStats(),
       getWorkoutsForDate(today),
       getTrainingPlan(),
+      getWorkouts(),
+      getWaterData(),
     ]);
     setProfile(p);
     setStats(s);
     setTodayWorkouts(tw);
     setTodayPlan(plan ? getTodayPlan(plan) : null);
+    setWaterData(water);
+
+    // Build set of logged workout dates for current week
+    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }); // Monday
+    const weekEnd = addDays(weekStart, 6);
+    const weekStartStr = getLocalDateString(weekStart);
+    const weekEndStr = getLocalDateString(weekEnd);
+    const dates = new Set(
+      allWorkouts.filter((w) => w.date >= weekStartStr && w.date <= weekEndStr).map((w) => w.date)
+    );
+    setWeekWorkoutDates(dates);
   }
 
   async function loadAdvice(p: UserProfile) {
@@ -145,6 +161,43 @@ export default function TodayScreen() {
         <StatCard label="Серія" value={`${stats.streak}`} unit="днів" icon="flame-outline" color={Colors.primary} />
         <StatCard label="Цього тижня" value={`${stats.weeklyWorkouts}`} unit="трен." icon="calendar-outline" color={Colors.success} />
         <StatCard label="Загалом" value={`${stats.totalWorkouts}`} unit="трен." icon="trophy-outline" color={Colors.accent} />
+      </View>
+
+      {/* Weekly Tracker */}
+      <WeeklyTracker
+        availableDays={profile?.availableDays || []}
+        workoutDates={weekWorkoutDates}
+      />
+
+      {/* Water Tracker */}
+      <View style={styles.waterCard}>
+        <View style={styles.waterHeader}>
+          <Ionicons name="water-outline" size={18} color="#4285F4" />
+          <Text style={styles.waterTitle}>Вода</Text>
+          <Text style={styles.waterCount}>
+            {waterData.glasses}/{waterData.goal} склянок
+          </Text>
+        </View>
+        <View style={styles.glassesGrid}>
+          {Array(waterData.goal).fill(0).map((_, i) => (
+            <TouchableOpacity
+              key={i}
+              onPress={async () => {
+                const d = i < waterData.glasses ? await removeGlass() : await addGlass();
+                setWaterData(d);
+              }}
+            >
+              <Ionicons
+                name={i < waterData.glasses ? 'water' : 'water-outline'}
+                size={26}
+                color={i < waterData.glasses ? '#4285F4' : Colors.border}
+              />
+            </TouchableOpacity>
+          ))}
+        </View>
+        {waterData.glasses >= waterData.goal && (
+          <Text style={styles.waterDone}>Ціль виконана!</Text>
+        )}
       </View>
 
       {/* Today's plan from AI */}
@@ -277,6 +330,55 @@ export default function TodayScreen() {
   );
 }
 
+const DAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+// availableDays uses 0=Sun,1=Mon,...,6=Sat — convert to Mon-first index
+const JS_TO_MON_FIRST: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 0: 6 };
+
+function WeeklyTracker({ availableDays, workoutDates }: {
+  availableDays: number[];
+  workoutDates: Set<string>;
+}) {
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const todayStr = getLocalDateString(new Date());
+
+  return (
+    <View style={styles.weekCard}>
+      <Text style={styles.weekTitle}>Цей тиждень</Text>
+      <View style={styles.weekDays}>
+        {DAY_LABELS.map((label, idx) => {
+          const dayDate = addDays(weekStart, idx);
+          const dateStr = getLocalDateString(dayDate);
+          const isToday = dateStr === todayStr;
+          const isFuture = dateStr > todayStr;
+          const isDone = workoutDates.has(dateStr);
+          // idx 0=Mon,1=Tue,...,6=Sun → js day: Mon=1,Tue=2,...,Sun=0
+          const jsDay = idx === 6 ? 0 : idx + 1;
+          const isPlanned = availableDays.includes(jsDay);
+
+          return (
+            <View key={idx} style={styles.weekDay}>
+              <Text style={[styles.weekDayLabel, isToday && styles.weekDayLabelToday]}>{label}</Text>
+              <View style={[
+                styles.weekDayDot,
+                isDone && styles.weekDayDotDone,
+                !isDone && isPlanned && !isFuture && styles.weekDayDotMissed,
+                !isDone && isPlanned && isFuture && styles.weekDayDotPlanned,
+                isToday && !isDone && styles.weekDayDotToday,
+              ]}>
+                {isDone
+                  ? <Ionicons name="checkmark" size={12} color="#FFF" />
+                  : isPlanned && !isFuture
+                  ? <Ionicons name="close" size={11} color={Colors.textMuted} />
+                  : null}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function StatCard({ label, value, unit, icon, color }: {
   label: string; value: string; unit: string; icon: any; color: string;
 }) {
@@ -372,6 +474,36 @@ const styles = StyleSheet.create({
   workoutDot: { width: 8, height: 8, borderRadius: 4 },
   workoutItemTitle: { ...Typography.body, fontWeight: '600' },
   workoutItemSub: { ...Typography.bodySmall, marginTop: 2 },
+  weekCard: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
+    marginBottom: Spacing.md,
+  },
+  weekTitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: Spacing.sm },
+  weekDays: { flexDirection: 'row', justifyContent: 'space-between' },
+  weekDay: { alignItems: 'center', gap: 6 },
+  weekDayLabel: { color: Colors.textMuted, fontSize: 11, fontWeight: '500' },
+  weekDayLabelToday: { color: Colors.primary, fontWeight: '700' },
+  weekDayDot: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  weekDayDotDone: { backgroundColor: Colors.success, borderColor: Colors.success },
+  weekDayDotMissed: { backgroundColor: Colors.surfaceElevated, borderColor: Colors.border },
+  weekDayDotPlanned: { borderColor: Colors.primary, borderStyle: 'dashed' },
+  weekDayDotToday: { borderColor: Colors.primary, borderWidth: 2 },
+  waterCard: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
+    marginBottom: Spacing.md, gap: Spacing.sm,
+  },
+  waterHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  waterTitle: { color: Colors.textPrimary, fontWeight: '600', fontSize: 14, flex: 1 },
+  waterCount: { color: Colors.textMuted, fontSize: 13 },
+  glassesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  waterDone: { color: Colors.success, fontSize: 12, fontWeight: '600', textAlign: 'center' },
   bigLogBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: Spacing.sm, backgroundColor: Colors.primary,

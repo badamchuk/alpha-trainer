@@ -962,7 +962,6 @@ const styles = StyleSheet.create({
   runStatValue: { fontSize: 16, fontWeight: '800' },
   runStatLabel: { fontSize: 10, color: Colors.textMuted, textAlign: 'center' },
   runList: { marginTop: Spacing.sm },
-  subSectionTitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: Spacing.sm },
   runRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: Colors.border,

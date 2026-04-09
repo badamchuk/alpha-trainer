@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, KeyboardAvoidingView, Platform, Alert,
+  ScrollView, KeyboardAvoidingView, Platform, Alert, Modal, FlatList,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
-import { addWorkout } from '../../services/storage';
+import { addWorkout, getWorkouts } from '../../services/storage';
 import { WorkoutEntry, ExerciseLog, WorkoutType } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
 import { computePace, formatPace } from '../../services/analytics';
+import RestTimer from '../../components/RestTimer';
+import { getTemplates, saveTemplate, WorkoutTemplate } from '../../services/templates';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -39,6 +41,18 @@ export default function LogWorkoutScreen() {
   const [rating, setRating] = useState<1 | 2 | 3 | 4 | 5 | undefined>(undefined);
   const [exercises, setExercises] = useState<ExerciseLog[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Rest timer
+  const [restTimerVisible, setRestTimerVisible] = useState(false);
+
+  // Templates
+  const [templatesVisible, setTemplatesVisible] = useState(false);
+  const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
+  const [saveTemplateVisible, setSaveTemplateVisible] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+
+  // Progressive overload hint
+  const [overloadHint, setOverloadHint] = useState('');
 
   // Timer state
   const [timerRunning, setTimerRunning] = useState(false);
@@ -89,6 +103,49 @@ export default function LogWorkoutScreen() {
   const [exCalories, setExCalories] = useState('');
   const [exWatts, setExWatts] = useState('');
 
+  async function lookupOverloadHint(name: string) {
+    if (!name.trim()) { setOverloadHint(''); return; }
+    const all = await getWorkouts();
+    for (const w of all) {
+      const ex = w.exercises.find((e) => e.name.toLowerCase().trim() === name.toLowerCase().trim());
+      if (ex) {
+        const parts: string[] = [];
+        if (ex.weight) parts.push(`${ex.weight} кг`);
+        if (ex.reps) parts.push(`${ex.reps} повт.`);
+        if (ex.sets) parts.push(`${ex.sets} підх.`);
+        setOverloadHint(parts.length ? `Минулого разу: ${parts.join(' × ')}` : '');
+        return;
+      }
+    }
+    setOverloadHint('');
+  }
+
+  async function openTemplates() {
+    const t = await getTemplates();
+    setTemplates(t);
+    setTemplatesVisible(true);
+  }
+
+  function applyTemplate(t: WorkoutTemplate) {
+    setWorkoutType(t.workoutType);
+    setExercises(t.exercises);
+    setTemplatesVisible(false);
+  }
+
+  async function handleSaveTemplate() {
+    if (!templateName.trim()) { Alert.alert('Введи назву шаблону'); return; }
+    await saveTemplate({
+      id: Date.now().toString(),
+      name: templateName.trim(),
+      workoutType,
+      exercises,
+      createdAt: new Date().toISOString(),
+    });
+    setSaveTemplateVisible(false);
+    setTemplateName('');
+    Alert.alert('Шаблон збережено!');
+  }
+
   function addExercise() {
     if (!exName.trim()) { Alert.alert('Введи назву вправи'); return; }
     const ex: ExerciseLog = {
@@ -104,6 +161,8 @@ export default function LogWorkoutScreen() {
     setExercises([...exercises, ex]);
     setExName(''); setExSets(''); setExReps(''); setExWeight('');
     setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
+    setOverloadHint('');
+    setRestTimerVisible(true);
   }
 
   function removeExercise(i: number) {
@@ -155,9 +214,14 @@ export default function LogWorkoutScreen() {
             <Ionicons name="close" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Нове тренування</Text>
-          <TouchableOpacity onPress={handleSave} disabled={saving}>
-            <Text style={[styles.saveBtn, saving && { opacity: 0.5 }]}>Зберегти</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity onPress={openTemplates} style={styles.headerIconBtn}>
+              <Ionicons name="albums-outline" size={22} color={Colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleSave} disabled={saving}>
+              <Text style={[styles.saveBtn, saving && { opacity: 0.5 }]}>Зберегти</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -278,7 +342,29 @@ export default function LogWorkoutScreen() {
           </View>
 
           {/* Exercises */}
-          <Text style={styles.label}>Вправи</Text>
+          <View style={styles.exercisesHeader}>
+            <Text style={styles.label}>Вправи</Text>
+            <View style={styles.exercisesHeaderActions}>
+              {exercises.length > 0 && (
+                <TouchableOpacity
+                  style={styles.restTimerBtn}
+                  onPress={() => setRestTimerVisible(true)}
+                >
+                  <Ionicons name="timer-outline" size={15} color={Colors.primary} />
+                  <Text style={styles.restTimerBtnText}>Відпочинок</Text>
+                </TouchableOpacity>
+              )}
+              {exercises.length > 0 && (
+                <TouchableOpacity
+                  style={styles.saveTemplateBtn}
+                  onPress={() => setSaveTemplateVisible(true)}
+                >
+                  <Ionicons name="bookmark-outline" size={15} color={Colors.textSecondary} />
+                  <Text style={styles.saveTemplateBtnText}>Шаблон</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
 
           {exercises.map((ex, i) => (
             <View key={i} style={styles.exerciseItem}>
@@ -310,8 +396,12 @@ export default function LogWorkoutScreen() {
               placeholder="Назва вправи (наприклад: Присідання)"
               placeholderTextColor={Colors.textMuted}
               value={exName}
-              onChangeText={setExName}
+              onChangeText={(v) => { setExName(v); setOverloadHint(''); }}
+              onBlur={() => lookupOverloadHint(exName)}
             />
+            {overloadHint ? (
+              <Text style={styles.overloadHint}>{overloadHint}</Text>
+            ) : null}
             <View style={styles.row}>
               <View style={styles.rowItem}>
                 <Text style={styles.miniLabel}>Підходи</Text>
@@ -375,6 +465,75 @@ export default function LogWorkoutScreen() {
           />
         </ScrollView>
       </View>
+
+      {/* Rest Timer Modal */}
+      <RestTimer visible={restTimerVisible} onClose={() => setRestTimerVisible(false)} />
+
+      {/* Templates Modal */}
+      <Modal visible={templatesVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Шаблони тренувань</Text>
+              <TouchableOpacity onPress={() => setTemplatesVisible(false)}>
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            {templates.length === 0 ? (
+              <View style={styles.modalEmpty}>
+                <Ionicons name="albums-outline" size={40} color={Colors.textMuted} />
+                <Text style={styles.modalEmptyText}>Немає збережених шаблонів</Text>
+                <Text style={styles.modalEmptySubtext}>Додай вправи та збережи як шаблон</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={templates}
+                keyExtractor={(t) => t.id}
+                style={{ maxHeight: 360 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity style={styles.templateItem} onPress={() => applyTemplate(item)}>
+                    <View style={styles.templateItemLeft}>
+                      <Text style={styles.templateName}>{item.name}</Text>
+                      <Text style={styles.templateMeta}>
+                        {item.exercises.length} вправ · {item.workoutType}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Save Template Modal */}
+      <Modal visible={saveTemplateVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { padding: Spacing.lg }]}>
+            <Text style={styles.modalTitle}>Зберегти шаблон</Text>
+            <TextInput
+              style={[styles.input, { marginTop: Spacing.md }]}
+              placeholder="Назва шаблону"
+              placeholderTextColor={Colors.textMuted}
+              value={templateName}
+              onChangeText={setTemplateName}
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => { setSaveTemplateVisible(false); setTemplateName(''); }}
+              >
+                <Text style={styles.modalCancelText}>Скасувати</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleSaveTemplate}>
+                <Text style={styles.modalConfirmText}>Зберегти</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -446,6 +605,67 @@ const styles = StyleSheet.create({
   },
   cardioTitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: Spacing.xs },
   paceHint: { color: Colors.primary, fontSize: 13, fontWeight: '600', marginTop: 2, marginBottom: 4 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  headerIconBtn: { padding: 4 },
+  exercisesHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: Spacing.md, marginBottom: Spacing.xs,
+  },
+  exercisesHeaderActions: { flexDirection: 'row', gap: Spacing.xs },
+  restTimerBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(230,57,70,0.1)', borderRadius: BorderRadius.full,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: 'rgba(230,57,70,0.25)',
+  },
+  restTimerBtnText: { color: Colors.primary, fontSize: 12, fontWeight: '600' },
+  saveTemplateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.full,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  saveTemplateBtnText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
+  overloadHint: {
+    color: Colors.success, fontSize: 12, fontWeight: '600',
+    marginTop: 4, marginBottom: 2,
+  },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
+    paddingBottom: 32,
+  },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  modalTitle: { ...Typography.h3, fontSize: 16 },
+  modalEmpty: { alignItems: 'center', paddingVertical: Spacing.xl, gap: Spacing.sm },
+  modalEmptyText: { color: Colors.textSecondary, fontWeight: '600' },
+  modalEmptySubtext: { color: Colors.textMuted, fontSize: 13 },
+  templateItem: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    padding: Spacing.md, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.xs,
+  },
+  templateItemLeft: { flex: 1 },
+  templateName: { color: Colors.textPrimary, fontWeight: '600', fontSize: 15 },
+  templateMeta: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
+  modalActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg },
+  modalCancelBtn: {
+    flex: 1, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: BorderRadius.md, paddingVertical: 12, alignItems: 'center',
+  },
+  modalCancelText: { color: Colors.textSecondary, fontWeight: '600' },
+  modalConfirmBtn: {
+    flex: 2, backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md, paddingVertical: 12, alignItems: 'center',
+  },
+  modalConfirmText: { color: '#FFF', fontWeight: '700' },
   timerBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: Colors.success, borderRadius: BorderRadius.md,

@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  Alert, RefreshControl, TextInput,
+  Alert, RefreshControl, TextInput, Share,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -88,16 +88,51 @@ export default function JournalScreen() {
 
   const typeFilters = Array.from(new Set(workouts.map((w) => w.workoutType)));
 
+  async function exportCSV() {
+    if (workouts.length === 0) { Alert.alert('Немає даних для експорту'); return; }
+    const header = 'Дата,Тип,Тривалість (хв),Вправи,Дистанція (км),ккал,Нотатки,Оцінка\n';
+    const rows = workouts.map((w) => {
+      const exStr = w.exercises.map((e) => {
+        const parts = [e.name];
+        if (e.sets && e.reps) parts.push(`${e.sets}x${e.reps}`);
+        if (e.weight) parts.push(`${e.weight}кг`);
+        return parts.join(' ');
+      }).join('; ');
+      const cols = [
+        w.date,
+        WORKOUT_TYPE_LABELS[w.workoutType] || w.workoutType,
+        w.duration || '',
+        `"${exStr.replace(/"/g, '""')}"`,
+        w.totalDistance || '',
+        w.totalCalories || '',
+        `"${(w.notes || '').replace(/"/g, '""')}"`,
+        w.rating || '',
+      ];
+      return cols.join(',');
+    });
+    const csv = header + rows.join('\n');
+    try {
+      await Share.share({ message: csv, title: 'AlphaTrainer – Журнал тренувань' });
+    } catch { /* user cancelled */ }
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Журнал тренувань</Text>
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => router.push('/workout/log')}
-        >
-          <Ionicons name="add" size={22} color="#FFF" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          {workouts.length > 0 && (
+            <TouchableOpacity style={styles.exportBtn} onPress={exportCSV}>
+              <Ionicons name="share-outline" size={18} color={Colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() => router.push('/workout/log')}
+          >
+            <Ionicons name="add" size={22} color="#FFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search */}
@@ -221,6 +256,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   title: { ...Typography.h2 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  exportBtn: {
+    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.full,
+    borderWidth: 1, borderColor: Colors.border,
+  },
   addBtn: {
     backgroundColor: Colors.primary, borderRadius: BorderRadius.full,
     width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
