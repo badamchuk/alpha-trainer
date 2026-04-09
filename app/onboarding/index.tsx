@@ -10,7 +10,9 @@ import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme
 import { getUserProfile, saveUserProfile } from '../../services/storage';
 import { initGemini, verifyApiKey } from '../../services/gemini';
 import { initGroq, verifyGroqApiKey } from '../../services/groq';
-import { scheduleWorkoutReminders } from '../../services/notifications';
+import { scheduleWorkoutReminders, scheduleWaterReminders } from '../../services/notifications';
+import { computeWaterGoal, setWaterGoal } from '../../services/water';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile } from '../../types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -178,6 +180,15 @@ export default function OnboardingScreen() {
     if (enableNotifications) {
       await scheduleWorkoutReminders(availableDays, Number(reminderHour), Number(reminderMinute));
     }
+
+    // Update water goal based on new profile and reschedule reminders if on
+    const waterGoal = computeWaterGoal(profile);
+    await setWaterGoal(waterGoal);
+    const remindersFlag = await AsyncStorage.getItem('@alpha_trainer:water_reminders');
+    if (remindersFlag === 'true') {
+      await scheduleWaterReminders(waterGoal);
+    }
+
     router.replace('/(tabs)');
   }
 

@@ -87,6 +87,78 @@ export async function scheduleWorkoutReminders(
   }
 }
 
+export async function cancelWaterReminders(): Promise<void> {
+  if (isExpoGo) return;
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  for (const notif of scheduled) {
+    if (notif.identifier.startsWith('water-reminder-')) {
+      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+    }
+  }
+}
+
+/**
+ * Schedules daily water reminders spread evenly between startHour and endHour.
+ * @param glasses   total glasses goal per day
+ * @param startHour first reminder hour (default 8)
+ * @param endHour   last reminder hour (default 22)
+ */
+export async function scheduleWaterReminders(
+  glasses: number,
+  startHour = 8,
+  endHour = 22
+): Promise<void> {
+  if (isExpoGo) return;
+  await cancelWaterReminders();
+
+  const hasPermission = await requestPermissions();
+  if (!hasPermission) return;
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('water', {
+      name: 'Водний баланс',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      vibrationPattern: [0, 150],
+    });
+  }
+
+  const messages = [
+    'Час випити склянку води 💧',
+    'Не забувай про воду — твоє тіло дякує 💧',
+    'Підтримуй водний баланс — випий склянку зараз 💧',
+    'Вода = енергія. Час зробити ковток! 💧',
+    'Гідратація — ключ до продуктивності 💧',
+    'Склянка води прямо зараз! 💧',
+  ];
+
+  // Spread reminders evenly: glasses notifications between startHour and endHour
+  const totalMinutes = (endHour - startHour) * 60;
+  const intervalMinutes = glasses > 1 ? totalMinutes / (glasses - 1) : totalMinutes;
+
+  for (let i = 0; i < glasses; i++) {
+    const offsetMinutes = Math.round(i * intervalMinutes);
+    const hour = startHour + Math.floor(offsetMinutes / 60);
+    const minute = offsetMinutes % 60;
+    const msg = messages[i % messages.length];
+
+    await Notifications.scheduleNotificationAsync({
+      identifier: `water-reminder-${i}`,
+      content: {
+        title: 'AlphaTrainer — Вода',
+        body: msg,
+        data: { type: 'water_reminder' },
+        sound: true,
+        ...(Platform.OS === 'android' ? { channelId: 'water' } : {}),
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour,
+        minute,
+      },
+    });
+  }
+}
+
 export async function scheduleOneTimeReminder(
   title: string,
   body: string,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  RefreshControl, ActivityIndicator,
+  RefreshControl, ActivityIndicator, Alert, Switch,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +13,9 @@ import { getDailyAdvice as geminiDailyAdvice } from '../../services/gemini';
 import { getDailyAdvice as groqDailyAdvice, initGroq } from '../../services/groq';
 import { getTodayPlan, WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS } from '../../services/planParser';
 import { UserProfile, WorkoutEntry, TrainingPlan, DayPlan } from '../../types';
-import { getWaterData, addGlass, removeGlass } from '../../services/water';
+import { getWaterData, addGlass, removeGlass, setWaterGoal, computeWaterGoal } from '../../services/water';
+import { scheduleWaterReminders, cancelWaterReminders, requestPermissions } from '../../services/notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function TodayScreen() {
   const router = useRouter();
@@ -26,6 +28,7 @@ export default function TodayScreen() {
   const [todayPlan, setTodayPlan] = useState<DayPlan | null>(null);
   const [weekWorkoutDates, setWeekWorkoutDates] = useState<Set<string>>(new Set());
   const [waterData, setWaterData] = useState({ glasses: 0, goal: 8 });
+  const [waterRemindersOn, setWaterRemindersOn] = useState(false);
 
   const today = getLocalDateString(new Date());
   const todayFormatted = format(new Date(), 'EEEE, d MMMM', { locale: uk });
@@ -43,7 +46,22 @@ export default function TodayScreen() {
     setStats(s);
     setTodayWorkouts(tw);
     setTodayPlan(plan ? getTodayPlan(plan) : null);
-    setWaterData(water);
+    // Update water goal from profile if profile is complete
+    if (p?.onboardingComplete) {
+      const computed = computeWaterGoal(p);
+      if (computed !== water.goal) {
+        await setWaterGoal(computed);
+        setWaterData({ ...water, goal: computed });
+      } else {
+        setWaterData(water);
+      }
+    } else {
+      setWaterData(water);
+    }
+
+    // Load water reminders state
+    const remindersFlag = await AsyncStorage.getItem('@alpha_trainer:water_reminders');
+    setWaterRemindersOn(remindersFlag === 'true');
 
     // Build set of logged workout dates for current week
     const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }); // Monday
@@ -100,6 +118,26 @@ export default function TodayScreen() {
     if (profile) await loadAdvice(profile);
     setRefreshing(false);
   };
+
+  async function toggleWaterReminders() {
+    if (waterRemindersOn) {
+      await cancelWaterReminders();
+      await AsyncStorage.setItem('@alpha_trainer:water_reminders', 'false');
+      setWaterRemindersOn(false);
+    } else {
+      const granted = await requestPermissions();
+      if (!granted) {
+        Alert.alert(
+          'Дозвіл відхилено',
+          'Дозволь сповіщення в налаштуваннях телефону щоб отримувати нагадування про воду.'
+        );
+        return;
+      }
+      await scheduleWaterReminders(waterData.goal);
+      await AsyncStorage.setItem('@alpha_trainer:water_reminders', 'true');
+      setWaterRemindersOn(true);
+    }
+  }
 
   const dayOfWeek = new Date().getDay(); // 0=Sun
   const workoutDayNames: Record<number, string> = { 0: 'Відпочинок', 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб' };
@@ -172,7 +210,7 @@ export default function TodayScreen() {
       {/* Water Tracker */}
       <View style={styles.waterCard}>
         <View style={styles.waterHeader}>
-          <Ionicons name="water-outline" size={18} color="#4285F4" />
+          <Ionicons name="water" size={18} color="#4285F4" />
           <Text style={styles.waterTitle}>Вода</Text>
           <Text style={styles.waterCount}>
             {waterData.glasses}/{waterData.goal} склянок
@@ -195,9 +233,24 @@ export default function TodayScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        {waterData.glasses >= waterData.goal && (
+        {waterData.glasses >= waterData.goal ? (
           <Text style={styles.waterDone}>Ціль виконана!</Text>
-        )}
+        ) : null}
+        <View style={styles.waterFooter}>
+          <Ionicons
+            name="notifications-outline"
+            size={14}
+            color={waterRemindersOn ? '#4285F4' : Colors.textMuted}
+          />
+          <Text style={styles.waterReminderLabel}>Нагадування</Text>
+          <Switch
+            value={waterRemindersOn}
+            onValueChange={toggleWaterReminders}
+            trackColor={{ false: Colors.border, true: 'rgba(66,133,244,0.4)' }}
+            thumbColor={waterRemindersOn ? '#4285F4' : Colors.textMuted}
+            style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+          />
+        </View>
       </View>
 
       {/* Today's plan from AI */}
@@ -504,6 +557,12 @@ const styles = StyleSheet.create({
   waterCount: { color: Colors.textMuted, fontSize: 13 },
   glassesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   waterDone: { color: Colors.success, fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  waterFooter: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderTopWidth: 1, borderTopColor: Colors.border,
+    paddingTop: Spacing.sm, marginTop: 2,
+  },
+  waterReminderLabel: { color: Colors.textSecondary, fontSize: 13, flex: 1 },
   bigLogBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: Spacing.sm, backgroundColor: Colors.primary,
