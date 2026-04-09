@@ -71,15 +71,19 @@ export default function ProgressScreen() {
   }
 
   async function handleSaveMeasurement() {
+    function parseMeasure(v: string): number | undefined {
+      const n = parseFloat(v);
+      return !isNaN(n) && n > 0 ? n : undefined;
+    }
     const entry: BodyMeasurement = {
       date: getLocalDateString(new Date()),
-      waist: measureForm.waist ? Number(measureForm.waist) : undefined,
-      chest: measureForm.chest ? Number(measureForm.chest) : undefined,
-      hips: measureForm.hips ? Number(measureForm.hips) : undefined,
-      bicep: measureForm.bicep ? Number(measureForm.bicep) : undefined,
-      thigh: measureForm.thigh ? Number(measureForm.thigh) : undefined,
+      waist: parseMeasure(measureForm.waist),
+      chest: parseMeasure(measureForm.chest),
+      hips: parseMeasure(measureForm.hips),
+      bicep: parseMeasure(measureForm.bicep),
+      thigh: parseMeasure(measureForm.thigh),
     };
-    if (!Object.values(entry).slice(1).some(Boolean)) {
+    if (!Object.values(entry).slice(1).some((v) => v !== undefined)) {
       Alert.alert('Введи хоча б один вимір');
       return;
     }

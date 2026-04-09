@@ -162,7 +162,10 @@ export default function LogWorkoutScreen() {
     setExName(''); setExSets(''); setExReps(''); setExWeight('');
     setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
     setOverloadHint('');
-    setRestTimerVisible(true);
+    // Auto-open rest timer only for strength-type workouts (has sets/reps/weight)
+    if (ex.sets || ex.reps || ex.weight) {
+      setRestTimerVisible(true);
+    }
   }
 
   function removeExercise(i: number) {
@@ -171,6 +174,14 @@ export default function LogWorkoutScreen() {
 
   async function handleSave() {
     if (!duration || isNaN(Number(duration))) { Alert.alert('Вкажи тривалість тренування (в хвилинах)'); return; }
+    const isCardioType = CARDIO_TYPES.includes(workoutType);
+    if (exercises.length === 0 && !totalDistance) {
+      Alert.alert(
+        isCardioType ? 'Додай дистанцію або вправи' : 'Додай хоча б одну вправу',
+        isCardioType ? 'Для кардіо тренування вкажи дистанцію або додай вправи.' : 'Запишіть вправи, щоб відстежувати прогрес.'
+      );
+      return;
+    }
 
     setSaving(true);
     try {

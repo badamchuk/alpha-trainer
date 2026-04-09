@@ -137,7 +137,7 @@ export async function scheduleWaterReminders(
 
   for (let i = 0; i < glasses; i++) {
     const offsetMinutes = Math.round(i * intervalMinutes);
-    const hour = startHour + Math.floor(offsetMinutes / 60);
+    const hour = Math.min(endHour, startHour + Math.floor(offsetMinutes / 60));
     const minute = offsetMinutes % 60;
     const msg = messages[i % messages.length];
 
