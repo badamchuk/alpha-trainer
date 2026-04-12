@@ -4,36 +4,41 @@ import { useState, useEffect } from 'react';
 export type Lang = 'uk' | 'en';
 
 const STORAGE_KEY = '@alpha_trainer:language';
+const EXERCISE_LANG_KEY = '@alpha_trainer:exercise_language';
 
 let _lang: Lang = 'uk';
-const _subscribers: Array<(lang: Lang) => void> = [];
+let _exerciseLang: Lang = 'en'; // default: exercises in English
+const _subscribers: Array<() => void> = [];
 
 export async function loadLanguage(): Promise<void> {
   try {
-    const stored = await AsyncStorage.getItem(STORAGE_KEY);
-    if (stored === 'uk' || stored === 'en') {
-      _lang = stored;
-    }
+    const [stored, storedEx] = await Promise.all([
+      AsyncStorage.getItem(STORAGE_KEY),
+      AsyncStorage.getItem(EXERCISE_LANG_KEY),
+    ]);
+    if (stored === 'uk' || stored === 'en') _lang = stored;
+    if (storedEx === 'uk' || storedEx === 'en') _exerciseLang = storedEx;
   } catch {
-    // default to uk
+    // defaults
   }
 }
 
-export function getCurrentLang(): Lang {
-  return _lang;
-}
+export function getCurrentLang(): Lang { return _lang; }
+export function getCurrentExerciseLang(): Lang { return _exerciseLang; }
 
 export async function setLanguage(lang: Lang): Promise<void> {
   _lang = lang;
-  try {
-    await AsyncStorage.setItem(STORAGE_KEY, lang);
-  } catch {
-    // ignore
-  }
-  _subscribers.forEach((fn) => fn(lang));
+  try { await AsyncStorage.setItem(STORAGE_KEY, lang); } catch {}
+  _subscribers.forEach((fn) => fn());
 }
 
-function subscribe(fn: (lang: Lang) => void): () => void {
+export async function setExerciseLanguage(lang: Lang): Promise<void> {
+  _exerciseLang = lang;
+  try { await AsyncStorage.setItem(EXERCISE_LANG_KEY, lang); } catch {}
+  _subscribers.forEach((fn) => fn());
+}
+
+function subscribe(fn: () => void): () => void {
   _subscribers.push(fn);
   return () => {
     const i = _subscribers.indexOf(fn);
@@ -191,6 +196,9 @@ const translations: Record<Lang, Record<string, StringValue>> = {
     exerciseLibrary: 'Бібліотека вправ',
     allMusclesFilter: 'Всі',
     languagePickerTitle: 'Оберіть мову',
+    exerciseLangLabel: 'Мова вправ',
+    exerciseLangHint: 'Назви вправ у бібліотеці та при записі',
+    appLangLabel: 'Мова додатку',
   },
 
   en: {
@@ -338,6 +346,9 @@ const translations: Record<Lang, Record<string, StringValue>> = {
     exerciseLibrary: 'Exercise library',
     allMusclesFilter: 'All',
     languagePickerTitle: 'Choose language',
+    exerciseLangLabel: 'Exercise language',
+    exerciseLangHint: 'Exercise names in the library and logging',
+    appLangLabel: 'App language',
   },
 };
 
@@ -345,9 +356,13 @@ const translations: Record<Lang, Record<string, StringValue>> = {
 
 export function useLocale() {
   const [lang, setLangState] = useState<Lang>(_lang);
+  const [exerciseLang, setExerciseLangState] = useState<Lang>(_exerciseLang);
 
   useEffect(() => {
-    const unsub = subscribe((l) => setLangState(l));
+    const unsub = subscribe(() => {
+      setLangState(_lang);
+      setExerciseLangState(_exerciseLang);
+    });
     return unsub;
   }, []);
 
@@ -358,9 +373,11 @@ export function useLocale() {
     return val;
   }
 
-  async function changeLang(l: Lang) {
-    await setLanguage(l);
-  }
-
-  return { lang, t, setLanguage: changeLang };
+  return {
+    lang,
+    exerciseLang,
+    t,
+    setLanguage,
+    setExerciseLanguage,
+  };
 }

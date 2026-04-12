@@ -14,7 +14,7 @@ import { scheduleWorkoutReminders, scheduleWaterReminders } from '../../services
 import { computeWaterGoal, setWaterGoal } from '../../services/water';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile } from '../../types';
-import { loadLanguage, setLanguage, useLocale, Lang } from '../../services/i18n';
+import { loadLanguage, setLanguage, setExerciseLanguage, useLocale, Lang } from '../../services/i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -46,7 +46,7 @@ const TOTAL_STEPS = 7;
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { lang, t, setLanguage: changeLang } = useLocale();
+  const { lang, exerciseLang, t, setLanguage: changeLang, setExerciseLanguage: changeExerciseLang } = useLocale();
   const [step, setStep] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -237,7 +237,7 @@ export default function OnboardingScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {step === 0 && <StepWelcome lang={lang} onLangChange={changeLang} />}
+            {step === 0 && <StepWelcome lang={lang} onLangChange={changeLang} exerciseLang={exerciseLang} onExerciseLangChange={changeExerciseLang} />}
             {step === 1 && <StepName name={name} setName={setName} />}
             {step === 2 && (
               <StepBody age={age} setAge={setAge} weight={weight} setWeight={setWeight}
@@ -299,10 +299,16 @@ export default function OnboardingScreen() {
 
 // ─── STEPS ────────────────────────────────────────────────────────────────────
 
-function StepWelcome({ lang, onLangChange }: { lang: Lang; onLangChange: (l: Lang) => void }) {
+function StepWelcome({
+  lang, onLangChange, exerciseLang, onExerciseLangChange,
+}: {
+  lang: Lang; onLangChange: (l: Lang) => void;
+  exerciseLang: Lang; onExerciseLangChange: (l: Lang) => void;
+}) {
   return (
     <View style={styles.stepContent}>
-      {/* Language picker */}
+      {/* App language picker */}
+      <Text style={styles.langSectionLabel}>{lang === 'uk' ? 'Мова додатку' : 'App language'}</Text>
       <View style={styles.langPicker}>
         <TouchableOpacity
           style={[styles.langBtn, lang === 'uk' && styles.langBtnActive]}
@@ -315,6 +321,23 @@ function StepWelcome({ lang, onLangChange }: { lang: Lang; onLangChange: (l: Lan
           onPress={() => onLangChange('en')}
         >
           <Text style={[styles.langBtnText, lang === 'en' && styles.langBtnTextActive]}>🇬🇧 English</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Exercise language picker */}
+      <Text style={styles.langSectionLabel}>{lang === 'uk' ? 'Мова вправ' : 'Exercise names'}</Text>
+      <View style={styles.langPicker}>
+        <TouchableOpacity
+          style={[styles.langBtn, exerciseLang === 'uk' && styles.langBtnActive]}
+          onPress={() => onExerciseLangChange('uk')}
+        >
+          <Text style={[styles.langBtnText, exerciseLang === 'uk' && styles.langBtnTextActive]}>🇺🇦 Українська</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.langBtn, exerciseLang === 'en' && styles.langBtnActive]}
+          onPress={() => onExerciseLangChange('en')}
+        >
+          <Text style={[styles.langBtnText, exerciseLang === 'en' && styles.langBtnTextActive]}>🇬🇧 English</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.bigIcon}>
@@ -784,6 +807,11 @@ const styles = StyleSheet.create({
   featureText: { color: Colors.textSecondary, fontSize: 14 },
 
   // Language picker
+  langSectionLabel: {
+    color: Colors.textMuted, fontSize: 11, fontWeight: '600',
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    alignSelf: 'center', marginBottom: Spacing.xs,
+  },
   langPicker: {
     flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg, alignSelf: 'center',
   },

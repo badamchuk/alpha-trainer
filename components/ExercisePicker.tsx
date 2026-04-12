@@ -37,17 +37,18 @@ interface Props {
 }
 
 export default function ExercisePicker({ visible, onClose, onSelect }: Props) {
-  const { lang, t } = useLocale();
+  const { lang, exerciseLang, t } = useLocale();
   const [query, setQuery] = useState('');
   const [activeGroup, setActiveGroup] = useState<MuscleGroup | null>(null);
 
+  // Search matches both languages; display uses exerciseLang
   const filtered = useMemo(
-    () => searchExercises(query, lang, activeGroup),
-    [query, lang, activeGroup],
+    () => searchExercises(query, exerciseLang, activeGroup),
+    [query, exerciseLang, activeGroup],
   );
 
   function handleSelect(exercise: Exercise) {
-    const name = getExerciseName(exercise, lang);
+    const name = getExerciseName(exercise, exerciseLang);
     onSelect(name);
     onClose();
     setQuery('');
@@ -71,6 +72,10 @@ export default function ExercisePicker({ visible, onClose, onSelect }: Props) {
               <Text style={styles.title}>{t('exerciseLibrary')}</Text>
               <Text style={styles.subtitle}>
                 {filtered.length} {lang === 'uk' ? 'вправ' : 'exercises'}
+                {'  '}
+                <Text style={styles.langBadge}>
+                  {exerciseLang === 'en' ? 'EN' : 'УК'}
+                </Text>
               </Text>
             </View>
             <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
@@ -83,7 +88,7 @@ export default function ExercisePicker({ visible, onClose, onSelect }: Props) {
             <Ionicons name="search-outline" size={18} color={Colors.textMuted} style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder={lang === 'uk' ? 'Пошук вправи...' : 'Search exercise...'}
+              placeholder={lang === 'uk' ? 'Пошук вправи (UK або EN)...' : 'Search exercise (UK or EN)...'}
               placeholderTextColor={Colors.textMuted}
               value={query}
               onChangeText={setQuery}
@@ -152,7 +157,7 @@ export default function ExercisePicker({ visible, onClose, onSelect }: Props) {
               </View>
             )}
             renderItem={({ item }) => {
-              const name = getExerciseName(item, lang);
+              const name = getExerciseName(item, exerciseLang);
               const color = MUSCLE_GROUP_COLORS[item.muscleGroup];
               const groupLabel = MUSCLE_GROUP_LABELS[item.muscleGroup][lang];
               return (
@@ -205,6 +210,7 @@ const styles = StyleSheet.create({
   headerLeft: { flex: 1 },
   title: { ...Typography.h3, fontSize: 17 },
   subtitle: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
+  langBadge: { color: Colors.primary, fontWeight: '700' },
   closeBtn: { padding: 4 },
   searchRow: {
     flexDirection: 'row',
