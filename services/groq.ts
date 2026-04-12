@@ -67,9 +67,27 @@ function buildSystemContext(
     .map((g) => `- ${g.title}: ${g.target}`)
     .join('\n');
   const workoutHistory = recentWorkouts
-    .slice(0, 7)
-    .map((w) => `${w.date} — ${w.workoutType} (${w.duration} хв)${w.notes ? ': ' + w.notes : ''}`)
-    .join('\n');
+    .slice(0, 5)
+    .map((w) => {
+      const rating = w.rating ? ` ⭐${w.rating}` : '';
+      const header = `${w.date} — ${w.workoutType} (${w.duration} хв)${rating}`;
+      const lines: string[] = [];
+      const cardioStats: string[] = [];
+      if (w.totalDistance) cardioStats.push(`${w.totalDistance}км`);
+      if (w.totalCalories) cardioStats.push(`${w.totalCalories}ккал`);
+      if (w.avgHeartRate) cardioStats.push(`ЧСС: ${w.avgHeartRate}/${w.maxHeartRate ?? '?'}`);
+      if (cardioStats.length > 0) lines.push(`  ↳ ${cardioStats.join(', ')}`);
+      for (const e of w.exercises) {
+        if (e.sets && e.reps && e.weight) lines.push(`  • ${e.name}: ${e.sets}×${e.reps} @ ${e.weight}кг`);
+        else if (e.sets && e.reps) lines.push(`  • ${e.name}: ${e.sets}×${e.reps}`);
+        else if (e.distance) lines.push(`  • ${e.name}: ${e.distance}км`);
+        else if (e.duration) lines.push(`  • ${e.name}: ${e.duration}хв`);
+        else lines.push(`  • ${e.name}`);
+      }
+      if (w.notes) lines.push(`  Нотатки: ${w.notes}`);
+      return [header, ...lines].join('\n');
+    })
+    .join('\n\n');
   const equipment = profile.equipment.length > 0 ? profile.equipment.join(', ') : 'немає';
   const days = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
   const availDays = profile.availableDays.map((d) => days[d]).join(', ');
@@ -93,10 +111,15 @@ function buildSystemContext(
 АКТИВНІ ЦІЛІ:
 ${goalsList || 'Цілі не встановлено'}
 
-ОСТАННІ 7 ТРЕНУВАНЬ:
+ОСТАННІ 5 ТРЕНУВАНЬ (детально):
 ${workoutHistory || 'Тренувань ще немає'}
 
-Давай конкретні, персоналізовані поради. Враховуй рівень підготовки, цілі та останні тренування. Будь мотивуючим але реалістичним.${memoryBlock}`;
+Давай конкретні, персоналізовані поради на основі реальних даних тренувань:
+- Аналізуй прогресію ваг і об'єму (чи збільшується навантаження?)
+- Звертай увагу на паузи між тренуваннями (перетренованість / недостатнє навантаження)
+- Пропонуй конкретні ваги/повтори на наступне тренування
+- Якщо спортсмен повторює одні й ті ж вправи — давай варіації
+Будь мотивуючим але реалістичним.${memoryBlock}`;
 }
 
 export async function chat(
