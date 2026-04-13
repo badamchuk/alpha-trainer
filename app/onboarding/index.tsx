@@ -15,6 +15,10 @@ import { computeWaterGoal, setWaterGoal } from '../../services/water';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile } from '../../types';
 import { loadLanguage, setLanguage, setExerciseLanguage, useLocale, Lang } from '../../services/i18n';
+import {
+  initGoogleSignIn, signIn, signOut, isSignedIn, getCurrentUser,
+  backupToGoogleDrive, restoreFromGoogleDrive, getBackupInfo,
+} from '../../services/googleDrive';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -47,6 +51,9 @@ const TOTAL_STEPS = 7;
 export default function OnboardingScreen() {
   const router = useRouter();
   const { lang, exerciseLang, t, setLanguage: changeLang, setExerciseLanguage: changeExerciseLang } = useLocale();
+  const [driveUser, setDriveUser] = useState<string | null>(null);
+  const [driveBackupDate, setDriveBackupDate] = useState<string | null>(null);
+  const [driveLoading, setDriveLoading] = useState(false);
   const [step, setStep] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -71,6 +78,22 @@ export default function OnboardingScreen() {
   useEffect(() => {
     async function load() {
       await loadLanguage();
+      // Init Google Sign-In (WEB_CLIENT_ID is set after google-services.json is added)
+      try {
+        initGoogleSignIn('YOUR_WEB_CLIENT_ID');
+        const signedIn = await isSignedIn();
+        if (signedIn) {
+          const user = await getCurrentUser();
+          if (user) {
+            setDriveUser(user.user.email);
+            const info = await getBackupInfo();
+            if (info.exists && info.modifiedTime) {
+              setDriveBackupDate(new Date(info.modifiedTime).toLocaleDateString());
+            }
+          }
+        }
+      } catch {}
+
       const profile = await getUserProfile();
       if (profile) {
         setIsEditing(true);
@@ -195,6 +218,73 @@ export default function OnboardingScreen() {
     router.replace('/(tabs)');
   }
 
+  async function handleDriveSignIn() {
+    setDriveLoading(true);
+    try {
+      const user = await signIn();
+      setDriveUser(user.user.email);
+      const info = await getBackupInfo();
+      if (info.exists && info.modifiedTime) {
+        setDriveBackupDate(new Date(info.modifiedTime).toLocaleDateString());
+      }
+    } catch (e: any) {
+      Alert.alert('Помилка входу', e?.message ?? String(e));
+    } finally {
+      setDriveLoading(false);
+    }
+  }
+
+  async function handleDriveBackup() {
+    setDriveLoading(true);
+    try {
+      const result = await backupToGoogleDrive();
+      if (result.success) {
+        const date = new Date().toLocaleDateString();
+        setDriveBackupDate(date);
+        Alert.alert('Резервна копія збережена', `Google Drive — ${date}`);
+      } else {
+        Alert.alert('Помилка резервної копії', result.error);
+      }
+    } finally {
+      setDriveLoading(false);
+    }
+  }
+
+  async function handleDriveRestore() {
+    Alert.alert(
+      'Відновити дані?',
+      'Поточні дані будуть замінені даними з Google Drive. Продовжити?',
+      [
+        { text: 'Скасувати', style: 'cancel' },
+        {
+          text: 'Відновити', style: 'destructive',
+          onPress: async () => {
+            setDriveLoading(true);
+            try {
+              const result = await restoreFromGoogleDrive();
+              if (result.success) {
+                Alert.alert(
+                  'Дані відновлено',
+                  `Копія від ${result.createdAt ? new Date(result.createdAt).toLocaleDateString() : '–'}.\nПерезапусти додаток.`
+                );
+              } else {
+                Alert.alert('Помилка відновлення', result.error);
+              }
+            } finally {
+              setDriveLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  async function handleDriveSignOut() {
+    await signOut();
+    setDriveUser(null);
+    setDriveBackupDate(null);
+  }
+
   function toggleDay(day: number) {
     setAvailableDays((prev) =>
       prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
@@ -253,27 +343,38 @@ export default function OnboardingScreen() {
               <StepEquipment selected={equipment} toggle={toggleEquipment} />
             )}
             {step === 6 && (
-              <StepGemini
-                geminiKey={geminiKey}
-                setGeminiKey={setGeminiKey}
-                groqKey={groqKey}
-                setGroqKey={setGroqKey}
-                showKey={showKey}
-                setShowKey={setShowKey}
-                keyVerified={keyVerified}
-                setKeyVerified={setKeyVerified}
-                groqKeyVerified={groqKeyVerified}
-                setGroqKeyVerified={setGroqKeyVerified}
-                verifyKey={verifyKey}
-                verifyGroqKey={verifyGroqKey}
-                enableNotifications={enableNotifications}
-                setEnableNotifications={setEnableNotifications}
-                reminderHour={reminderHour}
-                setReminderHour={setReminderHour}
-                reminderMinute={reminderMinute}
-                setReminderMinute={setReminderMinute}
-                name={name}
-              />
+              <>
+                <StepGemini
+                  geminiKey={geminiKey}
+                  setGeminiKey={setGeminiKey}
+                  groqKey={groqKey}
+                  setGroqKey={setGroqKey}
+                  showKey={showKey}
+                  setShowKey={setShowKey}
+                  keyVerified={keyVerified}
+                  setKeyVerified={setKeyVerified}
+                  groqKeyVerified={groqKeyVerified}
+                  setGroqKeyVerified={setGroqKeyVerified}
+                  verifyKey={verifyKey}
+                  verifyGroqKey={verifyGroqKey}
+                  enableNotifications={enableNotifications}
+                  setEnableNotifications={setEnableNotifications}
+                  reminderHour={reminderHour}
+                  setReminderHour={setReminderHour}
+                  reminderMinute={reminderMinute}
+                  setReminderMinute={setReminderMinute}
+                  name={name}
+                />
+                <DriveBackupSection
+                  driveUser={driveUser}
+                  driveBackupDate={driveBackupDate}
+                  loading={driveLoading}
+                  onSignIn={handleDriveSignIn}
+                  onBackup={handleDriveBackup}
+                  onRestore={handleDriveRestore}
+                  onSignOut={handleDriveSignOut}
+                />
+              </>
             )}
           </ScrollView>
         </Animated.View>
@@ -754,6 +855,113 @@ function StepGemini({
     </View>
   );
 }
+
+// ─── GOOGLE DRIVE BACKUP SECTION ─────────────────────────────────────────────
+
+function DriveBackupSection({
+  driveUser, driveBackupDate, loading, onSignIn, onBackup, onRestore, onSignOut,
+}: {
+  driveUser: string | null;
+  driveBackupDate: string | null;
+  loading: boolean;
+  onSignIn: () => void;
+  onBackup: () => void;
+  onRestore: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <View style={driveStyles.section}>
+      <View style={driveStyles.header}>
+        <Ionicons name="cloud-outline" size={20} color="#4285F4" />
+        <Text style={driveStyles.title}>Google Drive Backup</Text>
+      </View>
+      <Text style={driveStyles.hint}>
+        Автоматично зберігає всі тренування, цілі та налаштування в твій Google Drive.
+        {'\n'}При зміні телефону — відновлення в один дотик.
+      </Text>
+
+      {!driveUser ? (
+        <TouchableOpacity
+          style={[driveStyles.btn, driveStyles.btnPrimary]}
+          onPress={onSignIn}
+          disabled={loading}
+        >
+          <Ionicons name="logo-google" size={16} color="#FFF" />
+          <Text style={driveStyles.btnPrimaryText}>
+            {loading ? 'Підключення...' : 'Увійти через Google'}
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        <>
+          <View style={driveStyles.accountRow}>
+            <View style={driveStyles.accountInfo}>
+              <Ionicons name="checkmark-circle" size={16} color="#2ECC71" />
+              <Text style={driveStyles.accountEmail}>{driveUser}</Text>
+            </View>
+            <TouchableOpacity onPress={onSignOut}>
+              <Text style={driveStyles.signOutText}>Вийти</Text>
+            </TouchableOpacity>
+          </View>
+
+          {driveBackupDate && (
+            <Text style={driveStyles.lastBackup}>
+              Остання копія: {driveBackupDate}
+            </Text>
+          )}
+
+          <View style={driveStyles.actions}>
+            <TouchableOpacity
+              style={[driveStyles.btn, driveStyles.btnBackup]}
+              onPress={onBackup}
+              disabled={loading}
+            >
+              <Ionicons name="cloud-upload-outline" size={16} color="#FFF" />
+              <Text style={driveStyles.btnPrimaryText}>
+                {loading ? 'Зберігаю...' : 'Зберегти зараз'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[driveStyles.btn, driveStyles.btnRestore]}
+              onPress={onRestore}
+              disabled={loading}
+            >
+              <Ionicons name="cloud-download-outline" size={16} color={Colors.primary} />
+              <Text style={driveStyles.btnRestoreText}>Відновити</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+const driveStyles = StyleSheet.create({
+  section: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: Spacing.md, marginTop: Spacing.lg, gap: Spacing.sm,
+  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  title: { ...Typography.h3, fontSize: 15 },
+  hint: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
+  accountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  accountInfo: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  accountEmail: { color: Colors.textPrimary, fontSize: 13, fontWeight: '600' },
+  signOutText: { color: Colors.error, fontSize: 13 },
+  lastBackup: { color: Colors.textMuted, fontSize: 12 },
+  actions: { flexDirection: 'row', gap: Spacing.sm },
+  btn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, borderRadius: BorderRadius.md, paddingVertical: 10,
+  },
+  btnPrimary: { backgroundColor: '#4285F4' },
+  btnPrimaryText: { color: '#FFF', fontWeight: '600', fontSize: 14 },
+  btnBackup: { backgroundColor: Colors.primary },
+  btnRestore: {
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.primary,
+  },
+  btnRestoreText: { color: Colors.primary, fontWeight: '600', fontSize: 14 },
+});
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 
