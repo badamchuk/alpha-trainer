@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, KeyboardAvoidingView, Platform, Alert, Modal, FlatList,
@@ -58,6 +58,21 @@ export default function LogWorkoutScreen() {
   const [overloadHint, setOverloadHint] = useState('');
   // Exercise picker
   const [pickerVisible, setPickerVisible] = useState(false);
+
+  // Superset mode
+  const [supersetMode, setSupersetMode] = useState(false);
+  const [currentSupersetId, setCurrentSupersetId] = useState<string | null>(null);
+
+  function toggleSupersetMode() {
+    if (supersetMode) {
+      setSupersetMode(false);
+      setCurrentSupersetId(null);
+    } else {
+      const newId = `ss_${Date.now()}`;
+      setSupersetMode(true);
+      setCurrentSupersetId(newId);
+    }
+  }
 
   // Timer state
   const [timerRunning, setTimerRunning] = useState(false);
@@ -162,6 +177,7 @@ export default function LogWorkoutScreen() {
       distance: exDistance ? Number(exDistance) : undefined,
       calories: exCalories ? Number(exCalories) : undefined,
       watts: exWatts ? Number(exWatts) : undefined,
+      supersetId: supersetMode && currentSupersetId ? currentSupersetId : undefined,
     };
     setExercises([...exercises, ex]);
     setExName(''); setExSets(''); setExReps(''); setExWeight('');
@@ -382,31 +398,22 @@ export default function LogWorkoutScreen() {
             </View>
           </View>
 
-          {exercises.map((ex, i) => (
-            <View key={i} style={styles.exerciseItem}>
-              <View style={styles.exerciseLeft}>
-                <Text style={styles.exerciseName}>{ex.name}</Text>
-                <Text style={styles.exerciseMeta}>
-                  {[
-                    ex.sets && `${ex.sets} підх.`,
-                    ex.reps && `${ex.reps} повт.`,
-                    ex.weight && `${ex.weight} кг`,
-                    ex.duration && `${ex.duration} хв`,
-                    ex.distance && `${ex.distance} км`,
-                    ex.calories && `${ex.calories} ккал`,
-                    ex.watts && `${ex.watts} вт`,
-                  ].filter(Boolean).join(' · ')}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => removeExercise(i)}>
-                <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-          ))}
+          {renderExerciseGroups(exercises, removeExercise)}
 
           {/* Add Exercise Form */}
           <View style={styles.exerciseForm}>
-            <Text style={styles.formSubtitle}>{t('addExercise')}</Text>
+            <View style={styles.formHeader}>
+              <Text style={styles.formSubtitle}>{t('addExercise')}</Text>
+              <TouchableOpacity
+                style={[styles.supersetToggle, supersetMode && styles.supersetToggleActive]}
+                onPress={toggleSupersetMode}
+              >
+                <Ionicons name="link-outline" size={14} color={supersetMode ? '#FFF' : Colors.textSecondary} />
+                <Text style={[styles.supersetToggleText, supersetMode && styles.supersetToggleTextActive]}>
+                  Суперсет
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Library button — prominent, full width */}
             <TouchableOpacity
@@ -572,6 +579,89 @@ export default function LogWorkoutScreen() {
   );
 }
 
+// ─── SUPERSET COLORS ─────────────────────────────────────────────────────────
+
+const SUPERSET_COLORS = ['#E63946', '#2EC4B6', '#F4A261', '#9B59B6', '#2ECC71', '#E91E63'];
+
+function getSupersetColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff;
+  return SUPERSET_COLORS[hash % SUPERSET_COLORS.length];
+}
+
+function renderExerciseMeta(ex: ExerciseLog): string {
+  return [
+    ex.sets && `${ex.sets} підх.`,
+    ex.reps && `${ex.reps} повт.`,
+    ex.weight && `${ex.weight} кг`,
+    ex.duration && `${ex.duration} хв`,
+    ex.distance && `${ex.distance} км`,
+    ex.calories && `${ex.calories} ккал`,
+    ex.watts && `${ex.watts} вт`,
+  ].filter(Boolean).join(' · ');
+}
+
+function renderExerciseGroups(
+  exercises: ExerciseLog[],
+  onRemove: (i: number) => void,
+): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  let i = 0;
+  // group consecutive exercises with the same supersetId
+  const seenSupersets = new Map<string, number>(); // id → group index
+
+  while (i < exercises.length) {
+    const ex = exercises[i];
+    if (ex.supersetId) {
+      const ssId = ex.supersetId;
+      const color = getSupersetColor(ssId);
+      // Collect all exercises with this supersetId
+      const group: Array<{ ex: ExerciseLog; idx: number }> = [];
+      for (let j = 0; j < exercises.length; j++) {
+        if (exercises[j].supersetId === ssId) group.push({ ex: exercises[j], idx: j });
+      }
+      // Only render group once (when we hit the first member)
+      if (!seenSupersets.has(ssId)) {
+        seenSupersets.set(ssId, nodes.length);
+        nodes.push(
+          <View key={`ss_${ssId}`} style={[styles.supersetGroup, { borderLeftColor: color }]}>
+            <View style={styles.supersetHeader}>
+              <Ionicons name="link-outline" size={12} color={color} />
+              <Text style={[styles.supersetLabel, { color }]}>СУПЕРСЕТ</Text>
+            </View>
+            {group.map(({ ex: gEx, idx }) => (
+              <View key={idx} style={styles.exerciseItem}>
+                <View style={styles.exerciseLeft}>
+                  <Text style={styles.exerciseName}>{gEx.name}</Text>
+                  <Text style={styles.exerciseMeta}>{renderExerciseMeta(gEx)}</Text>
+                </View>
+                <TouchableOpacity onPress={() => onRemove(idx)}>
+                  <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        );
+      }
+      i++;
+    } else {
+      nodes.push(
+        <View key={i} style={styles.exerciseItem}>
+          <View style={styles.exerciseLeft}>
+            <Text style={styles.exerciseName}>{ex.name}</Text>
+            <Text style={styles.exerciseMeta}>{renderExerciseMeta(ex)}</Text>
+          </View>
+          <TouchableOpacity onPress={() => onRemove(i)}>
+            <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      );
+      i++;
+    }
+  }
+  return nodes;
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
@@ -616,7 +706,34 @@ const styles = StyleSheet.create({
     padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
     marginTop: Spacing.xs, gap: Spacing.xs,
   },
-  formSubtitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: Spacing.xs },
+  formHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
+  formSubtitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
+  supersetToggle: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: Colors.surfaceElevated,
+  },
+  supersetToggleActive: {
+    backgroundColor: Colors.primary, borderColor: Colors.primary,
+  },
+  supersetToggleText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
+  supersetToggleTextActive: { color: '#FFF' },
+  supersetGroup: {
+    borderLeftWidth: 3, borderLeftColor: Colors.primary,
+    borderRadius: BorderRadius.md, marginBottom: Spacing.xs,
+    paddingLeft: Spacing.xs,
+  },
+  supersetHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingBottom: 4, paddingLeft: 2,
+  },
+  supersetLabel: {
+    fontSize: 10, fontWeight: '700', letterSpacing: 0.8,
+  },
   addExBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 4, backgroundColor: Colors.primary, borderRadius: BorderRadius.md,

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert,
   TextInput, KeyboardAvoidingView, Platform,
@@ -494,28 +494,7 @@ export default function WorkoutDetailScreen() {
         {workout.exercises.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Вправи</Text>
-            {workout.exercises.map((ex, i) => (
-              <View key={i} style={styles.exerciseRow}>
-                <View style={styles.exerciseNumber}>
-                  <Text style={styles.exerciseNumberText}>{i + 1}</Text>
-                </View>
-                <View style={styles.exerciseBody}>
-                  <Text style={styles.exerciseNameView}>{ex.name}</Text>
-                  <Text style={styles.exerciseMetaView}>
-                    {[
-                      ex.sets && `${ex.sets} підх.`,
-                      ex.reps && `× ${ex.reps} повт.`,
-                      ex.weight && `${ex.weight} кг`,
-                      ex.duration && `${ex.duration} хв`,
-                      ex.distance && `${ex.distance} км`,
-                      ex.calories && `${ex.calories} ккал`,
-                      ex.watts && `${ex.watts} вт`,
-                    ].filter(Boolean).join('  ')}
-                  </Text>
-                  {ex.notes && <Text style={styles.exerciseNotes}>{ex.notes}</Text>}
-                </View>
-              </View>
-            ))}
+            {renderDetailExercises(workout.exercises)}
           </View>
         )}
 
@@ -550,6 +529,89 @@ function StatItem({ icon, label, value }: { icon: any; label: string; value: str
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
+}
+
+// ─── SUPERSET HELPERS ────────────────────────────────────────────────────────
+
+const SUPERSET_COLORS_DETAIL = ['#E63946', '#2EC4B6', '#F4A261', '#9B59B6', '#2ECC71', '#E91E63'];
+
+function getSupersetColorDetail(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff;
+  return SUPERSET_COLORS_DETAIL[hash % SUPERSET_COLORS_DETAIL.length];
+}
+
+function renderDetailExercises(exercises: ExerciseLog[]): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  const seen = new Set<string>();
+  let counter = 1;
+
+  for (let i = 0; i < exercises.length; i++) {
+    const ex = exercises[i];
+    if (ex.supersetId && !seen.has(ex.supersetId)) {
+      seen.add(ex.supersetId);
+      const color = getSupersetColorDetail(ex.supersetId);
+      const group = exercises.filter((e) => e.supersetId === ex.supersetId);
+      nodes.push(
+        <View key={`ss_${ex.supersetId}`} style={[styles.supersetGroupView, { borderLeftColor: color }]}>
+          <View style={styles.supersetHeaderView}>
+            <Ionicons name="link-outline" size={12} color={color} />
+            <Text style={[styles.supersetLabelView, { color }]}>СУПЕРСЕТ</Text>
+          </View>
+          {group.map((gEx, gi) => {
+            const num = counter++;
+            return (
+              <View key={gi} style={styles.exerciseRow}>
+                <View style={styles.exerciseNumber}>
+                  <Text style={styles.exerciseNumberText}>{num}</Text>
+                </View>
+                <View style={styles.exerciseBody}>
+                  <Text style={styles.exerciseNameView}>{gEx.name}</Text>
+                  <Text style={styles.exerciseMetaView}>
+                    {[
+                      gEx.sets && `${gEx.sets} підх.`,
+                      gEx.reps && `× ${gEx.reps} повт.`,
+                      gEx.weight && `${gEx.weight} кг`,
+                      gEx.duration && `${gEx.duration} хв`,
+                      gEx.distance && `${gEx.distance} км`,
+                      gEx.calories && `${gEx.calories} ккал`,
+                      gEx.watts && `${gEx.watts} вт`,
+                    ].filter(Boolean).join('  ')}
+                  </Text>
+                  {gEx.notes && <Text style={styles.exerciseNotes}>{gEx.notes}</Text>}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      );
+    } else if (!ex.supersetId) {
+      const num = counter++;
+      nodes.push(
+        <View key={i} style={styles.exerciseRow}>
+          <View style={styles.exerciseNumber}>
+            <Text style={styles.exerciseNumberText}>{num}</Text>
+          </View>
+          <View style={styles.exerciseBody}>
+            <Text style={styles.exerciseNameView}>{ex.name}</Text>
+            <Text style={styles.exerciseMetaView}>
+              {[
+                ex.sets && `${ex.sets} підх.`,
+                ex.reps && `× ${ex.reps} повт.`,
+                ex.weight && `${ex.weight} кг`,
+                ex.duration && `${ex.duration} хв`,
+                ex.distance && `${ex.distance} км`,
+                ex.calories && `${ex.calories} ккал`,
+                ex.watts && `${ex.watts} вт`,
+              ].filter(Boolean).join('  ')}
+            </Text>
+            {ex.notes && <Text style={styles.exerciseNotes}>{ex.notes}</Text>}
+          </View>
+        </View>
+      );
+    }
+  }
+  return nodes;
 }
 
 const styles = StyleSheet.create({
@@ -600,6 +662,15 @@ const styles = StyleSheet.create({
   exerciseNameView: { ...Typography.body, fontWeight: '600' },
   exerciseMetaView: { color: Colors.textMuted, fontSize: 13, marginTop: 2 },
   exerciseNotes: { color: Colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 2 },
+  supersetGroupView: {
+    borderLeftWidth: 3, borderRadius: BorderRadius.md,
+    paddingLeft: Spacing.xs, marginBottom: Spacing.xs,
+  },
+  supersetHeaderView: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingBottom: 4, paddingLeft: 2,
+  },
+  supersetLabelView: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
   notesCard: {
     backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
     padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,

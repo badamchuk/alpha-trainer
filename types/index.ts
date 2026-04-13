@@ -32,6 +32,7 @@ export interface ExerciseLog {
   calories?: number; // kcal
   watts?: number;    // average power (rowing, cycling)
   notes?: string;
+  supersetId?: string; // exercises sharing the same supersetId form a superset
 }
 
 export interface WorkoutEntry {
