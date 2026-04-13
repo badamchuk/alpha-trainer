@@ -377,6 +377,364 @@ export function getMuscleGroupBalance(workouts: WorkoutEntry[]): MuscleGroupData
     .sort((a, b) => b.count - a.count);
 }
 
+// ─── Strength Score ───────────────────────────────────────────────────────────
+
+// Key compound lifts used for score — matches by keywords
+const KEY_LIFTS = [
+  { name: 'Squat',      keywords: ['squat', 'присідан', 'back squat', 'front squat', 'паузове присідання'],  weight: 1.2 },
+  { name: 'Deadlift',   keywords: ['deadlift', 'станова', 'rdl', 'rack pull', 'румунська'],                  weight: 1.3 },
+  { name: 'Bench',      keywords: ['bench', 'жим лежачи', 'жим леж'],                                       weight: 1.0 },
+  { name: 'OHP',        keywords: ['overhead', 'жим стоячи', 'military press', 'ohp', 'жим сидячи'],        weight: 0.8 },
+  { name: 'Row',        keywords: ['barbell row', 'тяга штанги', 'bent over', 'pendlay'],                   weight: 0.7 },
+];
+
+export interface StrengthScoreResult {
+  score: number;          // 0–1000
+  level: 'beginner' | 'novice' | 'intermediate' | 'advanced' | 'elite';
+  lifts: { name: string; estimated1RM: number; lastDate: string }[];
+}
+
+export function getStrengthScore(
+  workouts: WorkoutEntry[],
+  bodyWeightKg: number
+): StrengthScoreResult {
+  const lifts: StrengthScoreResult['lifts'] = [];
+  let weightedSum = 0;
+  let weightTotal = 0;
+
+  for (const lift of KEY_LIFTS) {
+    let best1RM = 0;
+    let lastDate = '';
+    for (const w of workouts) {
+      for (const e of w.exercises) {
+        const n = e.name.toLowerCase();
+        if (lift.keywords.some((k) => n.includes(k))) {
+          const rm = estimate1RM(e.weight || 0, e.reps || 1);
+          if (rm > best1RM) { best1RM = rm; lastDate = w.date; }
+        }
+      }
+    }
+    if (best1RM > 0) {
+      lifts.push({ name: lift.name, estimated1RM: best1RM, lastDate });
+      weightedSum += (best1RM / (bodyWeightKg || 75)) * lift.weight;
+      weightTotal += lift.weight;
+    }
+  }
+
+  if (lifts.length === 0) return { score: 0, level: 'beginner', lifts: [] };
+
+  const avgRatio = weightedSum / weightTotal;
+  // avgRatio: ~0.5 = beginner, ~1.0 = novice, ~1.5 = intermediate, ~2.0 = advanced, ~2.5+ = elite
+  const score = Math.min(1000, Math.round(avgRatio * 400));
+
+  const level: StrengthScoreResult['level'] =
+    score < 200 ? 'beginner' :
+    score < 400 ? 'novice' :
+    score < 600 ? 'intermediate' :
+    score < 800 ? 'advanced' : 'elite';
+
+  return { score, level, lifts };
+}
+
+// ─── Volume Landmarks ─────────────────────────────────────────────────────────
+
+// Evidence-based weekly set ranges (RP Strength / Mike Israetel)
+const VOLUME_TARGETS: Record<string, { mev: number; mav: number; mrv: number; label: string; color: string }> = {
+  chest:      { mev: 6,  mav: 12, mrv: 20, label: 'Груди',    color: '#E63946' },
+  back:       { mev: 8,  mav: 16, mrv: 25, label: 'Спина',    color: '#3498DB' },
+  shoulders:  { mev: 6,  mav: 14, mrv: 22, label: 'Плечі',    color: '#9B59B6' },
+  biceps:     { mev: 6,  mav: 12, mrv: 20, label: 'Біцепс',   color: '#F4A261' },
+  triceps:    { mev: 4,  mav: 10, mrv: 18, label: 'Трицепс',  color: '#2ECC71' },
+  legs:       { mev: 6,  mav: 14, mrv: 22, label: 'Квадри',   color: '#2EC4B6' },
+  hamstrings: { mev: 4,  mav: 10, mrv: 16, label: 'Задня ст.', color: '#E67E22' },
+  glutes:     { mev: 4,  mav: 10, mrv: 16, label: 'Сідниці',  color: '#FF6B6B' },
+  core:       { mev: 4,  mav: 12, mrv: 20, label: 'Прес/Кор', color: '#1ABC9C' },
+  calves:     { mev: 4,  mav: 8,  mrv: 16, label: 'Литки',    color: '#F1C40F' },
+};
+
+// Map exercise muscle group (from exercises.ts MuscleGroup) to volume target key
+const MG_TO_VT: Record<string, string> = {
+  chest: 'chest', back: 'back', shoulders: 'shoulders',
+  biceps: 'biceps', triceps: 'triceps', legs: 'legs',
+  hamstrings: 'hamstrings', glutes: 'glutes', core: 'core', calves: 'calves',
+};
+
+export type VolumeLandmarkStatus = 'low' | 'optimal' | 'high' | 'overreaching';
+
+export interface VolumeLandmark {
+  group: string;
+  label: string;
+  color: string;
+  weeklySets: number;
+  mev: number;
+  mav: number;
+  mrv: number;
+  status: VolumeLandmarkStatus;
+  pct: number; // 0–100 fill for bar
+}
+
+export function getVolumeLandmarks(
+  workouts: WorkoutEntry[],
+  weekStartDate: string, // YYYY-MM-DD
+  weekEndDate: string,
+): VolumeLandmark[] {
+  const weekWorkouts = workouts.filter((w) => w.date >= weekStartDate && w.date <= weekEndDate);
+  const setCounts: Record<string, number> = {};
+
+  for (const w of weekWorkouts) {
+    for (const e of w.exercises) {
+      // Try to match via exercise library (muscleGroup in name keywords)
+      const name = e.name.toLowerCase();
+      // Keyword-based fallback matching
+      let matched = '';
+      if (/bench|жим леж|грудн|chest|зведення/.test(name)) matched = 'chest';
+      else if (/squat|присідан|leg press|жим ногами|квадр/.test(name)) matched = 'legs';
+      else if (/deadlift|станов|row|тяга|rdl|rack pull|підтягуван|lat/.test(name)) matched = 'back';
+      else if (/shoulder|плеч|ohp|military|lateral|arnold|жим сто/.test(name)) matched = 'shoulders';
+      else if (/bicep|біцепс|curl|hammer|згинан/.test(name)) matched = 'biceps';
+      else if (/tricep|трицепс|розгинан|pushdown|skull/.test(name)) matched = 'triceps';
+      else if (/rdl|romanian|nordic|curl|leg curl|hamstring|задня|підколін/.test(name)) matched = 'hamstrings';
+      else if (/glute|сідниц|hip thrust|гіперекстен/.test(name)) matched = 'glutes';
+      else if (/abs|прес|crunch|plank|планка|core|підйом ніг/.test(name)) matched = 'core';
+      else if (/calf|литк|gastro/.test(name)) matched = 'calves';
+
+      if (matched) {
+        setCounts[matched] = (setCounts[matched] || 0) + (e.sets || 1);
+      }
+    }
+  }
+
+  return Object.entries(VOLUME_TARGETS)
+    .map(([group, target]) => {
+      const sets = setCounts[group] || 0;
+      const status: VolumeLandmarkStatus =
+        sets < target.mev ? 'low' :
+        sets <= target.mav ? 'optimal' :
+        sets <= target.mrv ? 'high' : 'overreaching';
+      const pct = Math.min(100, Math.round((sets / target.mrv) * 100));
+      return { group, label: target.label, color: target.color, weeklySets: sets, mev: target.mev, mav: target.mav, mrv: target.mrv, status, pct };
+    })
+    .filter((v) => v.weeklySets > 0 || true) // show all groups
+    .sort((a, b) => b.weeklySets - a.weeklySets);
+}
+
+// ─── Recovery Score ───────────────────────────────────────────────────────────
+
+export interface RecoveryScoreResult {
+  score: number; // 0–100
+  level: 'rest' | 'easy' | 'moderate' | 'hard' | 'peak';
+  color: string;
+  factors: { label: string; impact: number }[];
+}
+
+export function getRecoveryScore(workouts: WorkoutEntry[], today: string): RecoveryScoreResult {
+  const sorted = [...workouts].sort((a, b) => b.date.localeCompare(a.date));
+  const recent = sorted.slice(0, 10);
+
+  let score = 70;
+  const factors: { label: string; impact: number }[] = [];
+
+  // Factor 1: days since last workout
+  if (recent.length === 0) {
+    factors.push({ label: 'Давно не тренувався', impact: +5 });
+    score += 5;
+  } else {
+    const lastDate = recent[0].date;
+    const daysDiff = Math.floor(
+      (new Date(today).getTime() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    if (daysDiff === 0) {
+      factors.push({ label: 'Тренування сьогодні', impact: -20 });
+      score -= 20;
+    } else if (daysDiff === 1) {
+      factors.push({ label: 'Тренування вчора', impact: -10 });
+      score -= 10;
+    } else if (daysDiff >= 2 && daysDiff <= 3) {
+      factors.push({ label: '2–3 дні відпочинку', impact: +10 });
+      score += 10;
+    } else {
+      factors.push({ label: '4+ дні відпочинку', impact: +5 });
+      score += 5;
+    }
+  }
+
+  // Factor 2: workouts this week (Mon–Sun)
+  const weekStart = today.slice(0, 8) + '01'; // rough cutoff — last 7 days
+  const cutoff = new Date(today);
+  cutoff.setDate(cutoff.getDate() - 7);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const weekCount = sorted.filter((w) => w.date >= cutoffStr).length;
+  if (weekCount >= 6) {
+    factors.push({ label: '6+ тренувань за тиждень', impact: -15 });
+    score -= 15;
+  } else if (weekCount === 5) {
+    factors.push({ label: '5 тренувань за тиждень', impact: -5 });
+    score -= 5;
+  } else if (weekCount <= 2) {
+    factors.push({ label: 'Мало тренувань цього тижня', impact: +5 });
+    score += 5;
+  }
+
+  // Factor 3: last workout intensity (rating + duration)
+  if (recent.length > 0) {
+    const last = recent[0];
+    if (last.duration && last.duration > 90) {
+      factors.push({ label: 'Довге тренування (>90хв)', impact: -8 });
+      score -= 8;
+    }
+    if (last.rating) {
+      if (last.rating <= 2) {
+        factors.push({ label: 'Погане самопочуття минулого разу', impact: -5 });
+        score -= 5;
+      } else if (last.rating >= 5) {
+        factors.push({ label: 'Відмінне самопочуття', impact: +5 });
+        score += 5;
+      }
+    }
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  const level: RecoveryScoreResult['level'] =
+    score < 30 ? 'rest' :
+    score < 50 ? 'easy' :
+    score < 70 ? 'moderate' :
+    score < 85 ? 'hard' : 'peak';
+
+  const color =
+    score < 30 ? '#E63946' :
+    score < 50 ? '#E67E22' :
+    score < 70 ? '#F4A261' :
+    score < 85 ? '#2ECC71' : '#1ABC9C';
+
+  return { score, level, color, factors };
+}
+
+// ─── Progressive Overload Suggestion ─────────────────────────────────────────
+
+export interface OverloadSuggestion {
+  lastWeight: number;
+  lastReps: number;
+  lastSets: number;
+  lastDate: string;
+  suggestedWeight: number;
+  suggestedReps: number | string;
+  message: string; // short hint
+}
+
+export function getOverloadSuggestion(
+  workouts: WorkoutEntry[],
+  exerciseName: string
+): OverloadSuggestion | null {
+  const key = exerciseName.toLowerCase().trim();
+  const sorted = [...workouts].sort((a, b) => b.date.localeCompare(a.date));
+
+  // Find last two appearances
+  const appearances: Array<{ date: string; weight: number; reps: number; sets: number }> = [];
+  for (const w of sorted) {
+    const match = w.exercises.find((e) => e.name.toLowerCase().trim() === key);
+    if (match && match.weight && match.reps) {
+      appearances.push({
+        date: w.date,
+        weight: match.weight,
+        reps: match.reps,
+        sets: match.sets || 1,
+      });
+      if (appearances.length >= 2) break;
+    }
+  }
+
+  if (appearances.length === 0) return null;
+
+  const last = appearances[0];
+  const prev = appearances[1];
+
+  // Determine increment based on movement type
+  const isCompound = /squat|deadlift|bench|press|row|станов|присід|жим|тяга/.test(key);
+  const increment = isCompound ? 2.5 : 1.25;
+
+  let suggestedWeight = last.weight;
+  let suggestedReps: number | string = last.reps;
+  let message = '';
+
+  if (!prev) {
+    // Only one session — suggest slight increase
+    suggestedWeight = last.weight + increment;
+    message = `Минулого разу: ${last.weight}кг × ${last.reps}. Спробуй +${increment}кг`;
+  } else {
+    const sameWeight = last.weight === prev.weight;
+    const moreReps = last.reps > prev.reps;
+    const moreWeight = last.weight > prev.weight;
+
+    if (moreWeight) {
+      // Already progressing on weight — keep going if reps were good
+      if (last.reps >= 6) {
+        suggestedWeight = last.weight + increment;
+        message = `Прогресуєш (+${increment}кг від ${last.weight}кг)`;
+      } else {
+        suggestedWeight = last.weight;
+        suggestedReps = `${last.reps + 1}–${last.reps + 2}`;
+        message = `Збільш кількість повторів до ${last.reps + 1}–${last.reps + 2}`;
+      }
+    } else if (sameWeight && moreReps) {
+      // Same weight, more reps — time to increase weight
+      suggestedWeight = last.weight + increment;
+      message = `Готовий до +${increment}кг (повтори зросли)`;
+    } else if (sameWeight && last.reps >= 10) {
+      // Hit 10+ reps at same weight — definitely increase
+      suggestedWeight = last.weight + increment;
+      message = `${last.reps} повт. @ ${last.weight}кг → +${increment}кг`;
+    } else {
+      // Same or less — hold weight, focus on reps
+      suggestedWeight = last.weight;
+      suggestedReps = `${last.reps + 1}`;
+      message = `Утримуй ${last.weight}кг, цільуйся в ${last.reps + 1} повт.`;
+    }
+  }
+
+  return {
+    lastWeight: last.weight,
+    lastReps: last.reps,
+    lastSets: last.sets,
+    lastDate: last.date,
+    suggestedWeight,
+    suggestedReps,
+    message,
+  };
+}
+
+// ─── Personal Records ─────────────────────────────────────────────────────────
+
+export interface PersonalRecord {
+  exerciseName: string;
+  weight: number;
+  reps: number;
+  estimated1RM: number;
+  date: string;
+}
+
+export function getPersonalRecords(workouts: WorkoutEntry[]): PersonalRecord[] {
+  const records = new Map<string, PersonalRecord>();
+  for (const w of workouts) {
+    for (const e of w.exercises) {
+      if (!e.weight || !e.reps) continue;
+      const key = e.name.trim().toLowerCase();
+      const rm = estimate1RM(e.weight, e.reps);
+      const existing = records.get(key);
+      if (!existing || rm > existing.estimated1RM) {
+        records.set(key, {
+          exerciseName: e.name.trim(),
+          weight: e.weight,
+          reps: e.reps,
+          estimated1RM: rm,
+          date: w.date,
+        });
+      }
+    }
+  }
+  return Array.from(records.values()).sort((a, b) => b.estimated1RM - a.estimated1RM);
+}
+
 // ─── Generic per-type summary ─────────────────────────────────────────────────
 
 export interface TypeSummary {

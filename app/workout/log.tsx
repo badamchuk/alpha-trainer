@@ -7,9 +7,9 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { addWorkout, getWorkouts } from '../../services/storage';
-import { WorkoutEntry, ExerciseLog, WorkoutType } from '../../types';
+import { WorkoutEntry, ExerciseLog, WorkoutType, SetType } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
-import { computePace, formatPace } from '../../services/analytics';
+import { computePace, formatPace, getOverloadSuggestion } from '../../services/analytics';
 import RestTimer from '../../components/RestTimer';
 import { getTemplates, saveTemplate, WorkoutTemplate } from '../../services/templates';
 import { useLocale } from '../../services/i18n';
@@ -122,22 +122,26 @@ export default function LogWorkoutScreen() {
   const [exDistance, setExDistance] = useState('');
   const [exCalories, setExCalories] = useState('');
   const [exWatts, setExWatts] = useState('');
+  const [exRpe, setExRpe] = useState<number | undefined>(undefined);
+  const [exSetType, setExSetType] = useState<SetType>('normal');
 
   async function lookupOverloadHint(name: string) {
     if (!name.trim()) { setOverloadHint(''); return; }
     const all = await getWorkouts();
-    for (const w of all) {
-      const ex = w.exercises.find((e) => e.name.toLowerCase().trim() === name.toLowerCase().trim());
-      if (ex) {
-        const parts: string[] = [];
-        if (ex.weight) parts.push(`${ex.weight} кг`);
-        if (ex.reps) parts.push(`${ex.reps} повт.`);
-        if (ex.sets) parts.push(`${ex.sets} підх.`);
-        setOverloadHint(parts.length ? t('overloadLastTime', parts.join(' × ')) : '');
-        return;
-      }
+    const suggestion = getOverloadSuggestion(all, name);
+    if (suggestion) {
+      setOverloadHint(suggestion.message);
+      // Auto-fill suggested values
+      if (!exWeight) setExWeight(String(suggestion.suggestedWeight));
+      if (!exReps) setExReps(String(
+        typeof suggestion.suggestedReps === 'number'
+          ? suggestion.suggestedReps
+          : suggestion.lastReps
+      ));
+      if (!exSets) setExSets(String(suggestion.lastSets));
+    } else {
+      setOverloadHint('');
     }
-    setOverloadHint('');
   }
 
   async function openTemplates() {
@@ -178,10 +182,13 @@ export default function LogWorkoutScreen() {
       calories: exCalories ? Number(exCalories) : undefined,
       watts: exWatts ? Number(exWatts) : undefined,
       supersetId: supersetMode && currentSupersetId ? currentSupersetId : undefined,
+      rpe: exRpe,
+      setType: exSetType !== 'normal' ? exSetType : undefined,
     };
     setExercises([...exercises, ex]);
     setExName(''); setExSets(''); setExReps(''); setExWeight('');
     setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
+    setExRpe(undefined); setExSetType('normal');
     setOverloadHint('');
     // Auto-open rest timer only for strength-type workouts (has sets/reps/weight)
     if (ex.sets || ex.reps || ex.weight) {
@@ -476,14 +483,46 @@ export default function LogWorkoutScreen() {
                 <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                   value={exWatts} onChangeText={setExWatts} keyboardType="numeric" />
               </View>
-              <View style={[styles.rowItem, { flex: 2 }]}>
-                <Text style={styles.miniLabel}> </Text>
-                <TouchableOpacity style={styles.addExBtn} onPress={addExercise}>
-                  <Ionicons name="add" size={20} color="#FFF" />
-                  <Text style={styles.addExBtnText}>{t('add')}</Text>
-                </TouchableOpacity>
+              <View style={styles.rowItem}>
+                <Text style={styles.miniLabel}>RPE (1–10)</Text>
+                <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                  value={exRpe !== undefined ? String(exRpe) : ''}
+                  onChangeText={(v) => {
+                    const n = Number(v);
+                    setExRpe(v === '' ? undefined : (n >= 1 && n <= 10 ? n : exRpe));
+                  }}
+                  keyboardType="numeric" />
               </View>
             </View>
+
+            {/* Set type tags */}
+            <View style={styles.setTypeRow}>
+              {(['normal', 'warmup', 'dropset', 'failure'] as SetType[]).map((type) => {
+                const labels: Record<SetType, string> = {
+                  normal: 'Звичайний', warmup: 'Розминка', dropset: 'Дроп-сет', failure: 'Відмова',
+                };
+                const colors: Record<SetType, string> = {
+                  normal: Colors.primary, warmup: '#3498DB', dropset: '#F4A261', failure: '#E63946',
+                };
+                const active = exSetType === type;
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    style={[styles.setTypeChip, active && { backgroundColor: colors[type] + '25', borderColor: colors[type] }]}
+                    onPress={() => setExSetType(type)}
+                  >
+                    <Text style={[styles.setTypeChipText, active && { color: colors[type] }]}>
+                      {labels[type]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity style={styles.addExBtn} onPress={addExercise}>
+              <Ionicons name="add" size={20} color="#FFF" />
+              <Text style={styles.addExBtnText}>{t('add')}</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Notes */}
@@ -590,7 +629,11 @@ function getSupersetColor(id: string): string {
 }
 
 function renderExerciseMeta(ex: ExerciseLog): string {
+  const SET_TYPE_LABELS: Record<string, string> = {
+    warmup: '🔵 Розм.', dropset: '🟠 Дроп', failure: '🔴 Відмова',
+  };
   return [
+    ex.setType && ex.setType !== 'normal' && SET_TYPE_LABELS[ex.setType],
     ex.sets && `${ex.sets} підх.`,
     ex.reps && `${ex.reps} повт.`,
     ex.weight && `${ex.weight} кг`,
@@ -598,6 +641,7 @@ function renderExerciseMeta(ex: ExerciseLog): string {
     ex.distance && `${ex.distance} км`,
     ex.calories && `${ex.calories} ккал`,
     ex.watts && `${ex.watts} вт`,
+    ex.rpe && `RPE ${ex.rpe}`,
   ].filter(Boolean).join(' · ');
 }
 
@@ -711,6 +755,15 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   formSubtitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
+  setTypeRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4,
+  },
+  setTypeChip: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.surfaceElevated,
+  },
+  setTypeChipText: { color: Colors.textMuted, fontSize: 11, fontWeight: '600' },
   supersetToggle: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.border,

@@ -18,7 +18,12 @@ import {
   estimateCalories,
   getHRZoneSummary, HRZoneSummary,
   getMuscleGroupBalance, MuscleGroupData,
+  getStrengthScore, StrengthScoreResult,
+  getVolumeLandmarks, VolumeLandmark,
+  getPersonalRecords as getPersonalRecordsAnalytics,
 } from '../../services/analytics';
+import { startOfWeek, endOfWeek } from 'date-fns';
+import { getLocalDateString as toDateStr } from '../../services/storage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -44,6 +49,8 @@ export default function ProgressScreen() {
   const [measureModalVisible, setMeasureModalVisible] = useState(false);
   const [measureForm, setMeasureForm] = useState({ waist: '', chest: '', hips: '', bicep: '', thigh: '' });
   const [profile, setProfile] = useState<any>(null);
+  const [strengthScore, setStrengthScore] = useState<StrengthScoreResult | null>(null);
+  const [volumeLandmarks, setVolumeLandmarks] = useState<VolumeLandmark[]>([]);
 
   async function loadData() {
     const [w, s, r, wl, ms, p] = await Promise.all([
@@ -64,6 +71,14 @@ export default function ProgressScreen() {
     setExerciseNames(getAllExerciseNames(w));
     if (p?.age) setHrZones(getHRZoneSummary(w, p.age));
     setMuscleGroups(getMuscleGroupBalance(w));
+    if (p?.weight) {
+      const ss = getStrengthScore(w, p.weight);
+      setStrengthScore(ss.lifts.length > 0 ? ss : null);
+    }
+    // Volume landmarks for current week
+    const weekStart = toDateStr(startOfWeek(new Date(), { weekStartsOn: 1 }));
+    const weekEnd = toDateStr(endOfWeek(new Date(), { weekStartsOn: 1 }));
+    setVolumeLandmarks(getVolumeLandmarks(w, weekStart, weekEnd));
   }
 
   function selectExercise(name: string) {
@@ -320,6 +335,62 @@ export default function ProgressScreen() {
               <RunStatCard label="Сер. оцінка" value={`${strengthStats.avgRating}/5`} icon="star-outline" color="#F4A261" />
             )}
           </View>
+        </View>
+      )}
+
+      {/* Strength Score */}
+      {strengthScore && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Strength Score</Text>
+          <View style={styles.strengthScoreCard}>
+            <View style={styles.strengthScoreLeft}>
+              <Text style={styles.strengthScoreNum}>{strengthScore.score}</Text>
+              <Text style={styles.strengthScoreMax}>/1000</Text>
+            </View>
+            <View style={styles.strengthScoreRight}>
+              <Text style={[styles.strengthScoreLevel, { color: SCORE_COLORS[strengthScore.level] }]}>
+                {SCORE_LEVEL_LABELS[strengthScore.level]}
+              </Text>
+              {strengthScore.lifts.map((lift) => (
+                <Text key={lift.name} style={styles.strengthLiftRow}>
+                  {lift.name}: <Text style={styles.strengthLiftVal}>{lift.estimated1RM} кг 1RM</Text>
+                </Text>
+              ))}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Volume Landmarks */}
+      {volumeLandmarks.some((v) => v.weeklySets > 0) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Об'єм цього тижня</Text>
+          <Text style={styles.sectionHint}>MEV = мінімум · MAV = ціль · MRV = максимум</Text>
+          {volumeLandmarks.filter((v) => v.weeklySets > 0).map((v) => (
+            <View key={v.group} style={styles.volumeRow}>
+              <View style={styles.volumeRowLeft}>
+                <Text style={styles.volumeLabel}>{v.label}</Text>
+                <Text style={styles.volumeSets}>{v.weeklySets} підх.</Text>
+              </View>
+              <View style={styles.volumeBarContainer}>
+                <View style={styles.volumeBarBg}>
+                  <View style={[styles.volumeBarFill, {
+                    width: `${v.pct}%` as any,
+                    backgroundColor: v.status === 'low' ? '#95A5A6' : v.status === 'optimal' ? '#2ECC71' : v.status === 'high' ? '#F4A261' : '#E63946',
+                  }]} />
+                  {/* MEV marker */}
+                  <View style={[styles.volumeMarker, { left: `${Math.round((v.mev / v.mrv) * 100)}%` as any }]} />
+                  {/* MAV marker */}
+                  <View style={[styles.volumeMarker, { left: `${Math.round((v.mav / v.mrv) * 100)}%` as any, backgroundColor: Colors.textSecondary }]} />
+                </View>
+                <Text style={[styles.volumeStatus, {
+                  color: v.status === 'low' ? Colors.textMuted : v.status === 'optimal' ? '#2ECC71' : v.status === 'high' ? '#F4A261' : '#E63946',
+                }]}>
+                  {v.status === 'low' ? 'Мало' : v.status === 'optimal' ? 'Норма' : v.status === 'high' ? 'Багато' : 'Перевантаж'}
+                </Text>
+              </View>
+            </View>
+          ))}
         </View>
       )}
 
@@ -730,6 +801,13 @@ export default function ProgressScreen() {
   );
 }
 
+const SCORE_COLORS: Record<string, string> = {
+  beginner: '#95A5A6', novice: '#3498DB', intermediate: '#2ECC71', advanced: '#F4A261', elite: '#E63946',
+};
+const SCORE_LEVEL_LABELS: Record<string, string> = {
+  beginner: 'Початківець', novice: 'Новачок', intermediate: 'Середній', advanced: 'Просунутий', elite: 'Еліта',
+};
+
 function RunStatCard({ icon, color, value, label }: {
   icon: any; color: string; value: string; label: string;
 }) {
@@ -770,7 +848,36 @@ const styles = StyleSheet.create({
   bigStatUnit: { fontSize: 11, color: Colors.textMuted, textAlign: 'center' },
   bigStatLabel: { fontSize: 12, color: Colors.textSecondary, fontWeight: '600' },
   section: { marginBottom: Spacing.xl },
-  sectionTitle: { ...Typography.h3, fontSize: 16, marginBottom: Spacing.md },
+  sectionTitle: { ...Typography.h3, fontSize: 16, marginBottom: Spacing.xs },
+  sectionHint: { color: Colors.textMuted, fontSize: 11, marginBottom: Spacing.md },
+  strengthScoreCard: {
+    flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border, padding: Spacing.md, gap: Spacing.lg,
+  },
+  strengthScoreLeft: { alignItems: 'center', justifyContent: 'center' },
+  strengthScoreNum: { fontSize: 48, fontWeight: '800', color: Colors.textPrimary, lineHeight: 52 },
+  strengthScoreMax: { color: Colors.textMuted, fontSize: 13 },
+  strengthScoreRight: { flex: 1, justifyContent: 'center', gap: 4 },
+  strengthScoreLevel: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  strengthLiftRow: { color: Colors.textSecondary, fontSize: 13 },
+  strengthLiftVal: { color: Colors.textPrimary, fontWeight: '600' },
+  volumeRow: {
+    flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  volumeRowLeft: { width: 80 },
+  volumeLabel: { color: Colors.textPrimary, fontSize: 13, fontWeight: '600' },
+  volumeSets: { color: Colors.textMuted, fontSize: 11 },
+  volumeBarContainer: { flex: 1, gap: 2 },
+  volumeBarBg: {
+    height: 8, backgroundColor: Colors.border, borderRadius: 4, overflow: 'hidden', position: 'relative',
+  },
+  volumeBarFill: { height: '100%', borderRadius: 4 },
+  volumeMarker: {
+    position: 'absolute', top: 0, width: 2, height: '100%',
+    backgroundColor: Colors.textMuted, opacity: 0.6,
+  },
+  volumeStatus: { fontSize: 10, fontWeight: '600', alignSelf: 'flex-end' },
   heatmapContainer: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border },
   heatmap: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: Spacing.sm },
   heatmapCell: {

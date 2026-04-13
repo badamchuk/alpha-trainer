@@ -22,6 +22,8 @@ export interface Goal {
   completed: boolean;
 }
 
+export type SetType = 'normal' | 'warmup' | 'dropset' | 'failure';
+
 export interface ExerciseLog {
   name: string;
   sets?: number;
@@ -33,6 +35,8 @@ export interface ExerciseLog {
   watts?: number;    // average power (rowing, cycling)
   notes?: string;
   supersetId?: string; // exercises sharing the same supersetId form a superset
+  rpe?: number;        // Rate of Perceived Exertion 1–10
+  setType?: SetType;   // normal | warmup | dropset | failure
 }
 
 export interface WorkoutEntry {

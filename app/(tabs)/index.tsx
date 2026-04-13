@@ -15,6 +15,7 @@ import { getDailyAdvice as groqDailyAdvice, initGroq } from '../../services/groq
 import { getTodayPlan, WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS } from '../../services/planParser';
 import { UserProfile, WorkoutEntry, TrainingPlan, DayPlan } from '../../types';
 import { getWaterData, addGlass, removeGlass, setWaterGoal, computeWaterGoal } from '../../services/water';
+import { getRecoveryScore, RecoveryScoreResult } from '../../services/analytics';
 import { scheduleWaterReminders, cancelWaterReminders, requestPermissions } from '../../services/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -31,6 +32,7 @@ export default function TodayScreen() {
   const [weekWorkoutDates, setWeekWorkoutDates] = useState<Set<string>>(new Set());
   const [waterData, setWaterData] = useState({ glasses: 0, goal: 8 });
   const [waterRemindersOn, setWaterRemindersOn] = useState(false);
+  const [recovery, setRecovery] = useState<RecoveryScoreResult | null>(null);
 
   const today = getLocalDateString(new Date());
   const todayFormatted = format(new Date(), 'EEEE, d MMMM', { locale: uk });
@@ -74,6 +76,9 @@ export default function TodayScreen() {
       allWorkouts.filter((w) => w.date >= weekStartStr && w.date <= weekEndStr).map((w) => w.date)
     );
     setWeekWorkoutDates(dates);
+
+    // Recovery score
+    setRecovery(getRecoveryScore(allWorkouts, today));
   }
 
   async function loadAdvice(p: UserProfile) {
@@ -202,6 +207,9 @@ export default function TodayScreen() {
         <StatCard label={t('thisWeekLabel')} value={`${stats.weeklyWorkouts}`} unit={t('trainingsUnit')} icon="calendar-outline" color={Colors.success} />
         <StatCard label={t('totalLabel')} value={`${stats.totalWorkouts}`} unit={t('trainingsUnit')} icon="trophy-outline" color={Colors.accent} />
       </View>
+
+      {/* Recovery Score */}
+      {recovery && <RecoveryWidget recovery={recovery} />}
 
       {/* Weekly Tracker */}
       <WeeklyTracker
@@ -385,6 +393,41 @@ export default function TodayScreen() {
   );
 }
 
+// ─── Recovery Widget ──────────────────────────────────────────────────────────
+
+const RECOVERY_LEVEL_LABELS: Record<string, string> = {
+  rest: 'Відпочинок', easy: 'Легке', moderate: 'Помірне', hard: 'Важке', peak: 'Пік',
+};
+const RECOVERY_LEVEL_SUBLABELS: Record<string, string> = {
+  rest: 'Тілу потрібен відпочинок',
+  easy: 'Підійде легке кардіо або йога',
+  moderate: 'Можна тренуватись помірно',
+  hard: 'Готовий до важкого тренування',
+  peak: 'Відмінна форма — максимум!',
+};
+
+function RecoveryWidget({ recovery }: { recovery: RecoveryScoreResult }) {
+  const pct = recovery.score;
+  return (
+    <View style={styles.recoveryCard}>
+      <View style={styles.recoveryLeft}>
+        <Text style={styles.recoveryTitle}>Готовність</Text>
+        <Text style={[styles.recoveryLevel, { color: recovery.color }]}>
+          {RECOVERY_LEVEL_LABELS[recovery.level]}
+        </Text>
+        <Text style={styles.recoverySub}>{RECOVERY_LEVEL_SUBLABELS[recovery.level]}</Text>
+      </View>
+      <View style={styles.recoveryRight}>
+        <Text style={[styles.recoveryScore, { color: recovery.color }]}>{pct}</Text>
+        <Text style={styles.recoveryScoreLabel}>/ 100</Text>
+        <View style={styles.recoveryBar}>
+          <View style={[styles.recoveryFill, { width: `${pct}%` as any, backgroundColor: recovery.color }]} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 const DAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
 // availableDays uses 0=Sun,1=Mon,...,6=Sat — convert to Mon-first index
 const JS_TO_MON_FIRST: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 0: 6 };
@@ -470,7 +513,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 8,
   },
   logBtnText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
-  statsRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg },
+  statsRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm },
+  recoveryCard: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
+    marginBottom: Spacing.lg,
+  },
+  recoveryLeft: { flex: 1 },
+  recoveryTitle: { color: Colors.textMuted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
+  recoveryLevel: { fontSize: 18, fontWeight: '700', marginTop: 2 },
+  recoverySub: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
+  recoveryRight: { alignItems: 'flex-end', gap: 2 },
+  recoveryScore: { fontSize: 32, fontWeight: '800', lineHeight: 36 },
+  recoveryScoreLabel: { color: Colors.textMuted, fontSize: 12 },
+  recoveryBar: {
+    width: 80, height: 4, backgroundColor: Colors.border,
+    borderRadius: 2, marginTop: 4, overflow: 'hidden',
+  },
+  recoveryFill: { height: '100%', borderRadius: 2 },
   statCard: {
     flex: 1, backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
     padding: Spacing.sm, alignItems: 'center', gap: 2,
