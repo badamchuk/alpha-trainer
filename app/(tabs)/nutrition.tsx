@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   TextInput, Alert, Modal, ActivityIndicator, RefreshControl, FlatList,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -301,8 +302,11 @@ export default function NutritionScreen() {
       </ScrollView>
 
       {/* ── ADD MEAL MODAL ── */}
-      <Modal visible={addVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+      <Modal visible={addVisible} transparent animationType="slide" onRequestClose={() => { setAddVisible(false); setFoodText(''); setParsed(null); setMealName(''); }}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Що ти їв?</Text>
@@ -311,41 +315,46 @@ export default function NutritionScreen() {
               </TouchableOpacity>
             </View>
 
-            <TextInput
-              style={styles.foodInput}
-              placeholder={'Наприклад: 2 яйця, жменя шпинату, хліб з хумусом...'}
-              placeholderTextColor={Colors.textMuted}
-              value={foodText}
-              onChangeText={setFoodText}
-              multiline
-              numberOfLines={3}
-            />
-
-            <TouchableOpacity
-              style={[styles.parseBtn, (parsing || !foodText.trim()) && { opacity: 0.5 }]}
-              onPress={handleParse}
-              disabled={parsing || !foodText.trim()}
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
             >
-              {parsing ? (
-                <ActivityIndicator color="#FFF" size="small" />
-              ) : (
-                <Ionicons name="sparkles-outline" size={16} color="#FFF" />
-              )}
-              <Text style={styles.parseBtnText}>
-                {parsing ? 'Рахую...' : 'Розрахувати КБЖУ (AI)'}
-              </Text>
-            </TouchableOpacity>
+              <TextInput
+                style={styles.foodInput}
+                placeholder={'Наприклад: 2 яйця, жменя шпинату, хліб з хумусом...'}
+                placeholderTextColor={Colors.textMuted}
+                value={foodText}
+                onChangeText={setFoodText}
+                multiline
+                numberOfLines={3}
+                autoFocus
+              />
 
-            {parsed && (
-              <View style={styles.parsedResult}>
-                <View style={styles.parsedTotals}>
-                  <PillStat label="ккал" value={parsed.total.calories} color={Colors.primary} />
-                  <PillStat label="Білки" value={`${parsed.total.protein}г`} color="#E63946" />
-                  <PillStat label="Вугл." value={`${parsed.total.carbs}г`} color="#F4A261" />
-                  <PillStat label="Жири" value={`${parsed.total.fat}г`} color="#3498DB" />
-                </View>
+              <TouchableOpacity
+                style={[styles.parseBtn, (parsing || !foodText.trim()) && { opacity: 0.5 }]}
+                onPress={handleParse}
+                disabled={parsing || !foodText.trim()}
+              >
+                {parsing ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Ionicons name="sparkles-outline" size={16} color="#FFF" />
+                )}
+                <Text style={styles.parseBtnText}>
+                  {parsing ? 'Рахую...' : 'Розрахувати КБЖУ (AI)'}
+                </Text>
+              </TouchableOpacity>
 
-                <ScrollView style={{ maxHeight: 160 }} showsVerticalScrollIndicator={false}>
+              {parsed && (
+                <View style={styles.parsedResult}>
+                  <View style={styles.parsedTotals}>
+                    <PillStat label="ккал" value={parsed.total.calories} color={Colors.primary} />
+                    <PillStat label="Білки" value={`${parsed.total.protein}г`} color="#E63946" />
+                    <PillStat label="Вугл." value={`${parsed.total.carbs}г`} color="#F4A261" />
+                    <PillStat label="Жири" value={`${parsed.total.fat}г`} color="#3498DB" />
+                  </View>
+
                   {parsed.meals.map((item, i) => (
                     <View key={i} style={styles.parsedItem}>
                       <Text style={styles.parsedItemName}>{item.name}</Text>
@@ -353,24 +362,25 @@ export default function NutritionScreen() {
                       <Text style={styles.parsedItemCal}>{item.calories} ккал</Text>
                     </View>
                   ))}
-                </ScrollView>
 
-                <TextInput
-                  style={styles.mealNameInput}
-                  placeholder="Назва (Сніданок, Обід...)"
-                  placeholderTextColor={Colors.textMuted}
-                  value={mealName}
-                  onChangeText={setMealName}
-                />
+                  <TextInput
+                    style={styles.mealNameInput}
+                    placeholder="Назва (Сніданок, Обід...)"
+                    placeholderTextColor={Colors.textMuted}
+                    value={mealName}
+                    onChangeText={setMealName}
+                    returnKeyType="done"
+                  />
 
-                <TouchableOpacity style={styles.saveBtn} onPress={handleSaveMeal}>
-                  <Ionicons name="checkmark" size={18} color="#FFF" />
-                  <Text style={styles.saveBtnText}>Зберегти</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                  <TouchableOpacity style={styles.saveBtn} onPress={handleSaveMeal}>
+                    <Ionicons name="checkmark" size={18} color="#FFF" />
+                    <Text style={styles.saveBtnText}>Зберегти</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── GOALS MODAL ── */}
@@ -600,7 +610,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: Spacing.lg, paddingBottom: 40,
     borderWidth: 1, borderColor: Colors.border,
-    maxHeight: '90%',
+    maxHeight: '92%',
+    flexShrink: 1,
   },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   modalTitle: { ...Typography.h3, fontSize: 18 },

@@ -593,7 +593,10 @@ export default function LogWorkoutScreen() {
 
       {/* Save Template Modal */}
       <Modal visible={saveTemplateVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <View style={[styles.modalCard, { padding: Spacing.lg }]}>
             <Text style={styles.modalTitle}>{t('saveTemplateTitle')}</Text>
             <TextInput
@@ -603,6 +606,8 @@ export default function LogWorkoutScreen() {
               value={templateName}
               onChangeText={setTemplateName}
               autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleSaveTemplate}
             />
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -616,7 +621,7 @@ export default function LogWorkoutScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </KeyboardAvoidingView>
   );
