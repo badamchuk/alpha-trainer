@@ -237,7 +237,7 @@ export default function WorkoutDetailScreen() {
   if (editing) {
     const editColor = TYPE_COLORS[workoutType] || Colors.textMuted;
     return (
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.container}>
           <View style={styles.header}>
             <TouchableOpacity onPress={cancelEdit}>
@@ -249,7 +249,7 @@ export default function WorkoutDetailScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {/* Workout Type */}
             <Text style={styles.label}>Тип тренування</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeList}>

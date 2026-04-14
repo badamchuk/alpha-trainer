@@ -249,7 +249,7 @@ export default function LogWorkoutScreen() {
   const selectedType = WORKOUT_TYPES.find((t) => t.id === workoutType)!;
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -267,7 +267,7 @@ export default function LogWorkoutScreen() {
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Workout Type */}
           <Text style={styles.label}>{t('workoutTypeLabel')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeList}>

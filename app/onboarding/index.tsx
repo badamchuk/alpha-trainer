@@ -255,7 +255,7 @@ export default function OnboardingScreen() {
   const progress = (step / (TOTAL_STEPS - 1)) * 100;
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.container}>
 
         {/* Header */}
