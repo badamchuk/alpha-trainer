@@ -207,6 +207,28 @@ export async function generateTrainingPlan(
   return callWithFallback([{ role: 'user', content: prompt }]);
 }
 
+export interface NutritionParseResult {
+  meals: { name: string; qty: string; calories: number; protein: number; carbs: number; fat: number }[];
+  total: { calories: number; protein: number; carbs: number; fat: number };
+}
+
+export async function parseNutritionText(text: string): Promise<NutritionParseResult> {
+  const prompt = `Ти нутриціолог. Розрахуй КБЖУ для описаної їжі.
+Використовуй стандартні порції де не вказана вага. Відповідь ТІЛЬКИ у форматі JSON без жодних пояснень:
+{
+  "meals": [
+    { "name": "Назва продукту", "qty": "кількість", "calories": 0, "protein": 0, "carbs": 0, "fat": 0 }
+  ],
+  "total": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0 }
+}
+
+Їжа: ${text}`;
+
+  const raw = await callWithFallback([{ role: 'user', content: prompt }]);
+  const json = raw.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+  return JSON.parse(json) as NutritionParseResult;
+}
+
 export async function getDailyAdvice(
   profile: UserProfile,
   goals: Goal[],

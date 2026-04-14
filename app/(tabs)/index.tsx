@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  RefreshControl, ActivityIndicator, Alert, Switch,
+  RefreshControl, ActivityIndicator, Alert, Switch, Modal, TextInput,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,12 +10,13 @@ import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getUserProfile, getGoals, getRecentWorkouts, getStats, getWorkoutsForDate, getTrainingPlan, getCachedDailyAdvice, saveDailyAdviceCache, getLocalDateString, getWorkouts } from '../../services/storage';
 import { useLocale } from '../../services/i18n';
-import { getDailyAdvice as geminiDailyAdvice } from '../../services/gemini';
+import { getDailyAdvice as geminiDailyAdvice, initGemini } from '../../services/gemini';
 import { getDailyAdvice as groqDailyAdvice, initGroq } from '../../services/groq';
 import { getTodayPlan, WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS } from '../../services/planParser';
 import { UserProfile, WorkoutEntry, TrainingPlan, DayPlan } from '../../types';
 import { getWaterData, addGlass, removeGlass, setWaterGoal, computeWaterGoal } from '../../services/water';
-import { getRecoveryScore, RecoveryScoreResult } from '../../services/analytics';
+import { getRecoveryScore, RecoveryScoreResult, WellbeingSnapshot } from '../../services/analytics';
+import { getTodayWellbeing, saveWellbeingEntry, WellbeingEntry } from '../../services/wellbeing';
 import { scheduleWaterReminders, cancelWaterReminders, requestPermissions } from '../../services/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -32,7 +33,17 @@ export default function TodayScreen() {
   const [weekWorkoutDates, setWeekWorkoutDates] = useState<Set<string>>(new Set());
   const [waterData, setWaterData] = useState({ glasses: 0, goal: 8 });
   const [waterRemindersOn, setWaterRemindersOn] = useState(false);
+  const [reminderStart, setReminderStart] = useState(8);
+  const [reminderEnd, setReminderEnd] = useState(22);
+  const [reminderSettingsVisible, setReminderSettingsVisible] = useState(false);
+  const [editStart, setEditStart] = useState(8);
+  const [editEnd, setEditEnd] = useState(22);
   const [recovery, setRecovery] = useState<RecoveryScoreResult | null>(null);
+  const [wellbeing, setWellbeing] = useState<WellbeingEntry | null>(null);
+  const [wellbeingModalVisible, setWellbeingModalVisible] = useState(false);
+  const [wbMood, setWbMood] = useState<1|2|3|4|5>(3);
+  const [wbSleep, setWbSleep] = useState('7');
+  const [wbStress, setWbStress] = useState<1|2|3|4|5>(3);
 
   const today = getLocalDateString(new Date());
   const todayFormatted = format(new Date(), 'EEEE, d MMMM', { locale: uk });
@@ -67,6 +78,14 @@ export default function TodayScreen() {
     const remindersFlag = await AsyncStorage.getItem('@alpha_trainer:water_reminders');
     setWaterRemindersOn(remindersFlag === 'true');
 
+    // Load reminder time range
+    const rangeJson = await AsyncStorage.getItem('@alpha_trainer:water_reminder_range');
+    if (rangeJson) {
+      const range = JSON.parse(rangeJson);
+      setReminderStart(range.start ?? 8);
+      setReminderEnd(range.end ?? 22);
+    }
+
     // Build set of logged workout dates for current week
     const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }); // Monday
     const weekEnd = addDays(weekStart, 6);
@@ -77,8 +96,13 @@ export default function TodayScreen() {
     );
     setWeekWorkoutDates(dates);
 
-    // Recovery score
-    setRecovery(getRecoveryScore(allWorkouts, today));
+    // Recovery score + wellbeing
+    const wb = await getTodayWellbeing(today);
+    setWellbeing(wb);
+    const wbSnapshot: WellbeingSnapshot | undefined = wb
+      ? { mood: wb.mood, sleep: wb.sleep, stress: wb.stress }
+      : undefined;
+    setRecovery(getRecoveryScore(allWorkouts, today, wbSnapshot));
   }
 
   async function loadAdvice(p: UserProfile) {
@@ -100,6 +124,7 @@ export default function TodayScreen() {
         initGroq(p.groqApiKey);
         text = await groqDailyAdvice(p, goals, recent);
       } else {
+        initGemini(p.geminiApiKey);
         text = await geminiDailyAdvice(p, goals, recent);
       }
       setAdvice(text);
@@ -140,15 +165,66 @@ export default function TodayScreen() {
         );
         return;
       }
-      await scheduleWaterReminders(waterData.goal);
+      await scheduleWaterReminders(waterData.goal, reminderStart, reminderEnd);
       await AsyncStorage.setItem('@alpha_trainer:water_reminders', 'true');
       setWaterRemindersOn(true);
     }
   }
 
+  async function saveReminderRange(start: number, end: number) {
+    setReminderStart(start);
+    setReminderEnd(end);
+    await AsyncStorage.setItem('@alpha_trainer:water_reminder_range', JSON.stringify({ start, end }));
+    if (waterRemindersOn) {
+      await scheduleWaterReminders(waterData.goal, start, end);
+    }
+    setReminderSettingsVisible(false);
+  }
+
+  async function handleSaveWellbeing() {
+    const sleepVal = parseFloat(wbSleep.replace(',', '.'));
+    const entry: WellbeingEntry = {
+      date: today,
+      mood: wbMood,
+      sleep: isNaN(sleepVal) ? 7 : Math.max(0, Math.min(12, sleepVal)),
+      stress: wbStress,
+    };
+    await saveWellbeingEntry(entry);
+    setWellbeing(entry);
+    setWellbeingModalVisible(false);
+    const wbSnapshot: WellbeingSnapshot = { mood: entry.mood, sleep: entry.sleep, stress: entry.stress };
+    const allWorkouts = await getWorkouts();
+    setRecovery(getRecoveryScore(allWorkouts, today, wbSnapshot));
+  }
+
+  function openWellbeingModal() {
+    if (wellbeing) {
+      setWbMood(wellbeing.mood);
+      setWbSleep(String(wellbeing.sleep));
+      setWbStress(wellbeing.stress);
+    } else {
+      setWbMood(3);
+      setWbSleep('7');
+      setWbStress(3);
+    }
+    setWellbeingModalVisible(true);
+  }
+
   const dayOfWeek = new Date().getDay(); // 0=Sun
-  const workoutDayNames: Record<number, string> = { 0: 'Відпочинок', 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб' };
   const isWorkoutDay = profile?.availableDays?.includes(dayOfWeek);
+
+  // Find next workout day
+  const nextWorkoutDayName = (() => {
+    if (!profile?.availableDays?.length || isWorkoutDay) return null;
+    const dayNames: Record<number, string> = { 0: 'неділя', 1: 'понеділок', 2: 'вівторок', 3: 'середа', 4: 'четвер', 5: 'п\'ятниця', 6: 'субота' };
+    for (let i = 1; i <= 7; i++) {
+      const next = (dayOfWeek + i) % 7;
+      if (profile.availableDays.includes(next)) {
+        return i === 1 ? 'завтра' : `через ${i} дні — ${dayNames[next]}`;
+      }
+    }
+    return null;
+  })();
 
   return (
     <ScrollView
@@ -187,6 +263,8 @@ export default function TodayScreen() {
                 ? t('workoutsLoggedToday', todayWorkouts.length)
                 : isWorkoutDay
                 ? t('workoutNotLogged')
+                : nextWorkoutDayName
+                ? `Наступне тренування: ${nextWorkoutDayName}`
                 : t('relax')}
             </Text>
           </View>
@@ -210,6 +288,9 @@ export default function TodayScreen() {
 
       {/* Recovery Score */}
       {recovery && <RecoveryWidget recovery={recovery} />}
+
+      {/* Wellbeing Card */}
+      <WellbeingCard wellbeing={wellbeing} onOpen={openWellbeingModal} />
 
       {/* Weekly Tracker */}
       <WeeklyTracker
@@ -252,7 +333,19 @@ export default function TodayScreen() {
             size={14}
             color={waterRemindersOn ? '#4285F4' : Colors.textMuted}
           />
-          <Text style={styles.waterReminderLabel}>{t('waterRemindersLabel')}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.waterReminderLabel}>{t('waterRemindersLabel')}</Text>
+            {waterRemindersOn && (
+              <TouchableOpacity
+                onPress={() => { setEditStart(reminderStart); setEditEnd(reminderEnd); setReminderSettingsVisible(true); }}
+                hitSlop={{ top: 6, bottom: 6, left: 0, right: 0 }}
+              >
+                <Text style={styles.waterReminderRange}>
+                  {String(reminderStart).padStart(2, '0')}:00 – {String(reminderEnd).padStart(2, '0')}:00  ✎
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <Switch
             value={waterRemindersOn}
             onValueChange={toggleWaterReminders}
@@ -333,7 +426,7 @@ export default function TodayScreen() {
               <View style={styles.workoutItemLeft}>
                 <View style={[styles.workoutDot, { backgroundColor: Colors.success }]} />
                 <View>
-                  <Text style={styles.workoutItemTitle}>{w.workoutType}</Text>
+                  <Text style={styles.workoutItemTitle}>{WORKOUT_TYPE_LABELS[w.workoutType] || w.workoutType}</Text>
                   <Text style={styles.workoutItemSub}>{w.duration} хв • {w.exercises.length} вправ</Text>
                 </View>
               </View>
@@ -389,6 +482,111 @@ export default function TodayScreen() {
         <Ionicons name="add-circle-outline" size={22} color="#FFF" />
         <Text style={styles.bigLogBtnText}>{t('logTraining')}</Text>
       </TouchableOpacity>
+
+      {/* Water Reminder Range Modal */}
+      <Modal visible={reminderSettingsVisible} transparent animationType="fade">
+        <View style={styles.wbOverlay}>
+          <View style={styles.wbCard}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
+              <Text style={styles.wbTitle}>Час нагадувань</Text>
+              <TouchableOpacity onPress={() => setReminderSettingsVisible(false)}>
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.wbLabel}>Початок</Text>
+            <View style={styles.hourRow}>
+              <TouchableOpacity style={styles.hourBtn} onPress={() => setEditStart(Math.max(0, editStart - 1))}>
+                <Ionicons name="remove" size={20} color={Colors.textPrimary} />
+              </TouchableOpacity>
+              <Text style={styles.hourVal}>{String(editStart).padStart(2, '0')}:00</Text>
+              <TouchableOpacity style={styles.hourBtn} onPress={() => setEditStart(Math.min(editEnd - 1, editStart + 1))}>
+                <Ionicons name="add" size={20} color={Colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.wbLabel, { marginTop: Spacing.md }]}>Кінець</Text>
+            <View style={styles.hourRow}>
+              <TouchableOpacity style={styles.hourBtn} onPress={() => setEditEnd(Math.max(editStart + 1, editEnd - 1))}>
+                <Ionicons name="remove" size={20} color={Colors.textPrimary} />
+              </TouchableOpacity>
+              <Text style={styles.hourVal}>{String(editEnd).padStart(2, '0')}:00</Text>
+              <TouchableOpacity style={styles.hourBtn} onPress={() => setEditEnd(Math.min(23, editEnd + 1))}>
+                <Ionicons name="add" size={20} color={Colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.hourHint}>
+              Нагадування розподіляться рівномірно між {String(editStart).padStart(2, '0')}:00 і {String(editEnd).padStart(2, '0')}:00
+            </Text>
+
+            <TouchableOpacity style={styles.wbSaveBtn} onPress={() => saveReminderRange(editStart, editEnd)}>
+              <Text style={styles.wbSaveBtnText}>Зберегти</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Wellbeing Modal */}
+      <Modal visible={wellbeingModalVisible} transparent animationType="fade">
+        <View style={styles.wbOverlay}>
+          <View style={styles.wbCard}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
+              <Text style={styles.wbTitle}>Як ти себе почуваєш?</Text>
+              <TouchableOpacity onPress={() => setWellbeingModalVisible(false)}>
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.wbLabel}>Настрій</Text>
+            <View style={styles.wbRow}>
+              {(['😞','😕','😐','🙂','😄'] as const).map((emoji, i) => {
+                const val = (i + 1) as 1|2|3|4|5;
+                return (
+                  <TouchableOpacity
+                    key={val}
+                    style={[styles.wbOption, wbMood === val && styles.wbOptionActive]}
+                    onPress={() => setWbMood(val)}
+                  >
+                    <Text style={{ fontSize: 22 }}>{emoji}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={[styles.wbLabel, { marginTop: Spacing.sm }]}>Сон (годин)</Text>
+            <TextInput
+              style={styles.wbInput}
+              value={wbSleep}
+              onChangeText={setWbSleep}
+              keyboardType="decimal-pad"
+              placeholder="7"
+              placeholderTextColor={Colors.textMuted}
+            />
+
+            <Text style={[styles.wbLabel, { marginTop: Spacing.sm }]}>Стрес</Text>
+            <View style={styles.wbRow}>
+              {(['Немає','Мало','Середній','Багато','Дуже'] as const).map((label, i) => {
+                const val = (i + 1) as 1|2|3|4|5;
+                const color = ['#2ECC71','#A3D977','#F4A261','#E67E22','#E63946'][i];
+                return (
+                  <TouchableOpacity
+                    key={val}
+                    style={[styles.wbStressBtn, wbStress === val && { backgroundColor: color, borderColor: color }]}
+                    onPress={() => setWbStress(val)}
+                  >
+                    <Text style={[styles.wbStressBtnText, wbStress === val && { color: '#FFF' }]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity style={styles.wbSaveBtn} onPress={handleSaveWellbeing}>
+              <Text style={styles.wbSaveBtnText}>Зберегти</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -425,6 +623,29 @@ function RecoveryWidget({ recovery }: { recovery: RecoveryScoreResult }) {
         </View>
       </View>
     </View>
+  );
+}
+
+// ─── Wellbeing Card ───────────────────────────────────────────────────────────
+
+const MOOD_EMOJIS = ['😞','😕','😐','🙂','😄'];
+const STRESS_LABELS = ['', 'Немає', 'Мало', 'Середній', 'Багато', 'Дуже'];
+
+function WellbeingCard({ wellbeing, onOpen }: { wellbeing: WellbeingEntry | null; onOpen: () => void }) {
+  return (
+    <TouchableOpacity style={styles.wbSummaryCard} onPress={onOpen} activeOpacity={0.8}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.wbSummaryTitle}>Самопочуття сьогодні</Text>
+        {wellbeing ? (
+          <Text style={styles.wbSummaryText}>
+            {MOOD_EMOJIS[wellbeing.mood - 1]}  Сон: {wellbeing.sleep}г  ·  Стрес: {STRESS_LABELS[wellbeing.stress]}
+          </Text>
+        ) : (
+          <Text style={styles.wbSummaryHint}>Як спалось? Як самопочуття? — впливає на готовність</Text>
+        )}
+      </View>
+      <Ionicons name={wellbeing ? 'create-outline' : 'add-circle-outline'} size={20} color={Colors.primary} />
+    </TouchableOpacity>
   );
 }
 
@@ -626,11 +847,61 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: Colors.border,
     paddingTop: Spacing.sm, marginTop: 2,
   },
-  waterReminderLabel: { color: Colors.textSecondary, fontSize: 13, flex: 1 },
+  waterReminderLabel: { color: Colors.textSecondary, fontSize: 13 },
+  waterReminderRange: { color: '#4285F4', fontSize: 11, fontWeight: '600', marginTop: 1 },
+  hourRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.lg, marginTop: 4 },
+  hourBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  hourVal: { fontSize: 28, fontWeight: '800', color: Colors.textPrimary, minWidth: 80, textAlign: 'center' },
+  hourHint: { color: Colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: Spacing.md, lineHeight: 18 },
   bigLogBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: Spacing.sm, backgroundColor: Colors.primary,
     borderRadius: BorderRadius.lg, padding: Spacing.md,
   },
   bigLogBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
+  // Wellbeing
+  wbSummaryCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
+    marginBottom: Spacing.md, gap: Spacing.sm,
+  },
+  wbSummaryTitle: { color: Colors.textPrimary, fontWeight: '600', fontSize: 14 },
+  wbSummaryText: { color: Colors.textSecondary, fontSize: 13, marginTop: 2 },
+  wbSummaryHint: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
+  wbOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  wbCard: {
+    backgroundColor: Colors.surface, borderRadius: 20,
+    padding: Spacing.lg, width: '90%',
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  wbTitle: { ...Typography.h3, fontSize: 17 },
+  wbLabel: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: 8 },
+  wbRow: { flexDirection: 'row', gap: 8 },
+  wbOption: {
+    flex: 1, alignItems: 'center', paddingVertical: 8,
+    borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.surfaceElevated,
+  },
+  wbOptionActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '18' },
+  wbInput: {
+    backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.border,
+    color: Colors.textPrimary, fontSize: 16, padding: Spacing.sm,
+  },
+  wbStressBtn: {
+    flex: 1, alignItems: 'center', paddingVertical: 7,
+    borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.surfaceElevated,
+  },
+  wbStressBtnText: { color: Colors.textSecondary, fontSize: 10, fontWeight: '600' },
+  wbSaveBtn: {
+    backgroundColor: Colors.primary, borderRadius: BorderRadius.md,
+    paddingVertical: 13, alignItems: 'center', marginTop: Spacing.md,
+  },
+  wbSaveBtnText: { color: '#FFF', fontWeight: '700', fontSize: 15 },
 });

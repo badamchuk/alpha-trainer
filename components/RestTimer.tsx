@@ -5,6 +5,7 @@ import { Colors, Spacing, BorderRadius } from '../constants/theme';
 interface Props {
   visible: boolean;
   onClose: () => void;
+  autoStart?: boolean;
 }
 
 const PRESETS = [
@@ -14,7 +15,7 @@ const PRESETS = [
   { label: '3хв', secs: 180 },
 ];
 
-export default function RestTimer({ visible, onClose }: Props) {
+export default function RestTimer({ visible, onClose, autoStart }: Props) {
   const [preset, setPreset] = useState(90);
   const [remaining, setRemaining] = useState(90);
   const [running, setRunning] = useState(false);
@@ -25,6 +26,9 @@ export default function RestTimer({ visible, onClose }: Props) {
       if (intervalRef.current) clearInterval(intervalRef.current);
       setRunning(false);
       setRemaining(preset);
+    } else if (autoStart) {
+      setRemaining(preset);
+      setRunning(true);
     }
   }, [visible]);
 

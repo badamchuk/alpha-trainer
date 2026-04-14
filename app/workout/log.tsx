@@ -6,7 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
-import { addWorkout, getWorkouts } from '../../services/storage';
+import { addWorkout, getWorkouts, getLocalDateString } from '../../services/storage';
 import { WorkoutEntry, ExerciseLog, WorkoutType, SetType } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
 import { computePace, formatPace, getOverloadSuggestion } from '../../services/analytics';
@@ -36,9 +36,7 @@ export default function LogWorkoutScreen() {
   const router = useRouter();
   const { t } = useLocale();
   const [workoutType, setWorkoutType] = useState<WorkoutType>('strength');
-  const now = new Date();
-  const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const [date, setDate] = useState(localToday);
+  const [date, setDate] = useState(() => getLocalDateString(new Date()));
   const [duration, setDuration] = useState('');
   const [notes, setNotes] = useState('');
   const [rating, setRating] = useState<1 | 2 | 3 | 4 | 5 | undefined>(undefined);
@@ -170,17 +168,23 @@ export default function LogWorkoutScreen() {
     Alert.alert(t('templateSaved'));
   }
 
+  function parseNum(v: string): number | undefined {
+    if (!v.trim()) return undefined;
+    const n = Number(v.replace(',', '.'));
+    return isNaN(n) || n < 0 ? undefined : n;
+  }
+
   function addExercise() {
     if (!exName.trim()) { Alert.alert(t('enterExerciseName')); return; }
     const ex: ExerciseLog = {
       name: exName.trim(),
-      sets: exSets ? Number(exSets) : undefined,
-      reps: exReps ? Number(exReps) : undefined,
-      weight: exWeight ? Number(exWeight) : undefined,
-      duration: exDuration ? Number(exDuration) : undefined,
-      distance: exDistance ? Number(exDistance) : undefined,
-      calories: exCalories ? Number(exCalories) : undefined,
-      watts: exWatts ? Number(exWatts) : undefined,
+      sets: parseNum(exSets),
+      reps: parseNum(exReps),
+      weight: parseNum(exWeight),
+      duration: parseNum(exDuration),
+      distance: parseNum(exDistance),
+      calories: parseNum(exCalories),
+      watts: parseNum(exWatts),
       supersetId: supersetMode && currentSupersetId ? currentSupersetId : undefined,
       rpe: exRpe,
       setType: exSetType !== 'normal' ? exSetType : undefined,
@@ -540,7 +544,7 @@ export default function LogWorkoutScreen() {
       </View>
 
       {/* Rest Timer Modal */}
-      <RestTimer visible={restTimerVisible} onClose={() => setRestTimerVisible(false)} />
+      <RestTimer visible={restTimerVisible} onClose={() => setRestTimerVisible(false)} autoStart />
 
       {/* Exercise Picker Modal */}
       <ExercisePicker

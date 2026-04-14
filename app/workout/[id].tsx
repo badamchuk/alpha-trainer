@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { format, parseISO } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
-import { getWorkouts, deleteWorkout, updateWorkout } from '../../services/storage';
+import { getWorkouts, deleteWorkout, updateWorkout, addWorkout } from '../../services/storage';
 import { WorkoutEntry, ExerciseLog, WorkoutType } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
 import { computePace, formatPace } from '../../services/analytics';
@@ -70,6 +70,7 @@ export default function WorkoutDetailScreen() {
   const [exDistance, setExDistance] = useState('');
   const [exCalories, setExCalories] = useState('');
   const [exWatts, setExWatts] = useState('');
+  const [editingExIdx, setEditingExIdx] = useState<number | null>(null);
   // Cardio edit fields
   const [totalDistance, setTotalDistance] = useState('');
   const [avgHeartRate, setAvgHeartRate] = useState('');
@@ -104,25 +105,54 @@ export default function WorkoutDetailScreen() {
 
   function cancelEdit() {
     setEditing(false);
+    clearExForm();
+  }
+
+  function clearExForm() {
     setExName(''); setExSets(''); setExReps(''); setExWeight('');
     setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
+    setEditingExIdx(null);
+  }
+
+  function startEditExercise(idx: number) {
+    const ex = exercises[idx];
+    setExName(ex.name);
+    setExSets(ex.sets !== undefined ? String(ex.sets) : '');
+    setExReps(ex.reps !== undefined ? String(ex.reps) : '');
+    setExWeight(ex.weight !== undefined ? String(ex.weight) : '');
+    setExDuration(ex.duration !== undefined ? String(ex.duration) : '');
+    setExDistance(ex.distance !== undefined ? String(ex.distance) : '');
+    setExCalories(ex.calories !== undefined ? String(ex.calories) : '');
+    setExWatts(ex.watts !== undefined ? String(ex.watts) : '');
+    setEditingExIdx(idx);
+  }
+
+  function parseNum(v: string): number | undefined {
+    if (!v.trim()) return undefined;
+    const n = Number(v.replace(',', '.'));
+    return isNaN(n) || n < 0 ? undefined : n;
   }
 
   function addExercise() {
     if (!exName.trim()) { Alert.alert(t('enterExerciseName')); return; }
     const ex: ExerciseLog = {
       name: exName.trim(),
-      sets: exSets ? Number(exSets) : undefined,
-      reps: exReps ? Number(exReps) : undefined,
-      weight: exWeight ? Number(exWeight) : undefined,
-      duration: exDuration ? Number(exDuration) : undefined,
-      distance: exDistance ? Number(exDistance) : undefined,
-      calories: exCalories ? Number(exCalories) : undefined,
-      watts: exWatts ? Number(exWatts) : undefined,
+      sets: parseNum(exSets),
+      reps: parseNum(exReps),
+      weight: parseNum(exWeight),
+      duration: parseNum(exDuration),
+      distance: parseNum(exDistance),
+      calories: parseNum(exCalories),
+      watts: parseNum(exWatts),
     };
-    setExercises([...exercises, ex]);
-    setExName(''); setExSets(''); setExReps(''); setExWeight('');
-    setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
+    if (editingExIdx !== null) {
+      const updated = [...exercises];
+      updated[editingExIdx] = ex;
+      setExercises(updated);
+    } else {
+      setExercises([...exercises, ex]);
+    }
+    clearExForm();
   }
 
   async function handleSave() {
@@ -168,6 +198,17 @@ export default function WorkoutDetailScreen() {
         onPress: async () => { await deleteWorkout(id!); router.back(); },
       },
     ]);
+  }
+
+  async function handleDuplicate() {
+    if (!workout) return;
+    const dup = {
+      ...workout,
+      id: Date.now().toString(),
+      completedAt: new Date().toISOString(),
+    };
+    await addWorkout(dup);
+    router.replace(`/workout/${dup.id}`);
   }
 
   if (!workout) {
@@ -298,8 +339,8 @@ export default function WorkoutDetailScreen() {
             {/* Exercises list */}
             <Text style={styles.label}>Вправи</Text>
             {exercises.map((ex, i) => (
-              <View key={i} style={styles.exerciseItem}>
-                <View style={styles.exerciseLeft}>
+              <View key={i} style={[styles.exerciseItem, editingExIdx === i && styles.exerciseItemEditing]}>
+                <TouchableOpacity style={styles.exerciseLeft} onPress={() => startEditExercise(i)}>
                   <Text style={styles.exerciseName}>{ex.name}</Text>
                   <Text style={styles.exerciseMeta}>
                     {[
@@ -312,16 +353,23 @@ export default function WorkoutDetailScreen() {
                       ex.watts && `${ex.watts} вт`,
                     ].filter(Boolean).join(' · ')}
                   </Text>
-                </View>
-                <TouchableOpacity onPress={() => setExercises(exercises.filter((_, idx) => idx !== i))}>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { setExercises(exercises.filter((_, idx) => idx !== i)); if (editingExIdx === i) clearExForm(); }}>
                   <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
                 </TouchableOpacity>
               </View>
             ))}
 
-            {/* Add exercise form */}
+            {/* Add/edit exercise form */}
             <View style={styles.exerciseForm}>
-              <Text style={styles.formSubtitle}>Додати вправу</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.formSubtitle}>{editingExIdx !== null ? 'Редагувати вправу' : 'Додати вправу'}</Text>
+                {editingExIdx !== null && (
+                  <TouchableOpacity onPress={clearExForm}>
+                    <Text style={{ color: Colors.textMuted, fontSize: 13 }}>Скасувати</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               <TextInput
                 style={styles.input}
                 placeholder="Назва вправи"
@@ -371,9 +419,9 @@ export default function WorkoutDetailScreen() {
                 </View>
                 <View style={[styles.rowItem, { flex: 2 }]}>
                   <Text style={styles.miniLabel}> </Text>
-                  <TouchableOpacity style={styles.addExBtn} onPress={addExercise}>
-                    <Ionicons name="add" size={20} color="#FFF" />
-                    <Text style={styles.addExBtnText}>Додати</Text>
+                  <TouchableOpacity style={[styles.addExBtn, editingExIdx !== null && { backgroundColor: Colors.accent }]} onPress={addExercise}>
+                    <Ionicons name={editingExIdx !== null ? 'checkmark' : 'add'} size={20} color="#FFF" />
+                    <Text style={styles.addExBtnText}>{editingExIdx !== null ? 'Зберегти' : 'Додати'}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -405,6 +453,9 @@ export default function WorkoutDetailScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('workoutDetailTitle')}</Text>
         <View style={styles.headerActions}>
+          <TouchableOpacity onPress={handleDuplicate} style={styles.iconBtn}>
+            <Ionicons name="copy-outline" size={22} color={Colors.textSecondary} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={enterEdit} style={styles.iconBtn}>
             <Ionicons name="create-outline" size={22} color={Colors.textSecondary} />
           </TouchableOpacity>
@@ -726,6 +777,7 @@ const styles = StyleSheet.create({
     padding: Spacing.sm, paddingHorizontal: Spacing.md,
     marginBottom: Spacing.xs, borderWidth: 1, borderColor: Colors.border,
   },
+  exerciseItemEditing: { borderColor: Colors.accent, backgroundColor: Colors.accent + '10' },
   exerciseLeft: { flex: 1 },
   exerciseName: { ...Typography.body, fontWeight: '600' },
   exerciseMeta: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },

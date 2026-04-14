@@ -514,7 +514,6 @@ export function getVolumeLandmarks(
       const pct = Math.min(100, Math.round((sets / target.mrv) * 100));
       return { group, label: target.label, color: target.color, weeklySets: sets, mev: target.mev, mav: target.mav, mrv: target.mrv, status, pct };
     })
-    .filter((v) => v.weeklySets > 0 || true) // show all groups
     .sort((a, b) => b.weeklySets - a.weeklySets);
 }
 
@@ -527,7 +526,17 @@ export interface RecoveryScoreResult {
   factors: { label: string; impact: number }[];
 }
 
-export function getRecoveryScore(workouts: WorkoutEntry[], today: string): RecoveryScoreResult {
+export interface WellbeingSnapshot {
+  mood: number;   // 1–5
+  sleep: number;  // hours
+  stress: number; // 1–5
+}
+
+export function getRecoveryScore(
+  workouts: WorkoutEntry[],
+  today: string,
+  wellbeing?: WellbeingSnapshot,
+): RecoveryScoreResult {
   const sorted = [...workouts].sort((a, b) => b.date.localeCompare(a.date));
   const recent = sorted.slice(0, 10);
 
@@ -590,6 +599,34 @@ export function getRecoveryScore(workouts: WorkoutEntry[], today: string): Recov
         factors.push({ label: 'Відмінне самопочуття', impact: +5 });
         score += 5;
       }
+    }
+  }
+
+  // Factor 4: wellbeing (sleep + stress + mood)
+  if (wellbeing) {
+    if (wellbeing.sleep < 5) {
+      factors.push({ label: 'Мало сну (<5 год)', impact: -15 });
+      score -= 15;
+    } else if (wellbeing.sleep < 7) {
+      factors.push({ label: 'Сон 5–7 год', impact: -5 });
+      score -= 5;
+    } else if (wellbeing.sleep >= 8) {
+      factors.push({ label: 'Добрий сон (8+ год)', impact: +10 });
+      score += 10;
+    }
+    if (wellbeing.stress >= 4) {
+      factors.push({ label: 'Високий стрес', impact: -10 });
+      score -= 10;
+    } else if (wellbeing.stress <= 2) {
+      factors.push({ label: 'Низький стрес', impact: +5 });
+      score += 5;
+    }
+    if (wellbeing.mood >= 4) {
+      factors.push({ label: 'Хороший настрій', impact: +5 });
+      score += 5;
+    } else if (wellbeing.mood <= 2) {
+      factors.push({ label: 'Поганий настрій', impact: -5 });
+      score -= 5;
     }
   }
 
@@ -733,6 +770,79 @@ export function getPersonalRecords(workouts: WorkoutEntry[]): PersonalRecord[] {
     }
   }
   return Array.from(records.values()).sort((a, b) => b.estimated1RM - a.estimated1RM);
+}
+
+// ─── Cycling stats ────────────────────────────────────────────────────────────
+
+export interface CyclingTrip {
+  id: string;
+  date: string;
+  distanceKm: number;
+  durationMin: number;
+  speedAvgKmh: number;
+  elevationGain: number | null;
+  avgHeartRate: number | null;
+}
+
+export interface CyclingStats {
+  trips: CyclingTrip[];
+  avgDistanceKm: number;
+  avgDurationMin: number;
+  avgSpeedKmh: number;
+  avgElevationGain: number | null;
+  totalDistanceKm: number;
+  totalTrips: number;
+  bestDistanceKm: number;
+  bestSpeedKmh: number;
+}
+
+function mean(values: number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((s, v) => s + v, 0) / values.length;
+}
+
+function meanOrNull(values: (number | null | undefined)[]): number | null {
+  const valid = values.filter((v): v is number => v != null && isFinite(v) && v > 0);
+  return valid.length > 0 ? Math.round((mean(valid)) * 10) / 10 : null;
+}
+
+export function getCyclingStats(
+  workouts: WorkoutEntry[],
+  lastN = 30,
+): CyclingStats {
+  const cyclingWorkouts = workouts
+    .filter((w) => w.workoutType === 'cycling' && (w.totalDistance ?? 0) > 0)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, lastN);
+
+  const trips: CyclingTrip[] = cyclingWorkouts.map((w) => {
+    const dist = w.totalDistance ?? 0;
+    const dur = w.duration ?? 0;
+    const speedAvgKmh = dur > 0 ? Math.round((dist / (dur / 60)) * 10) / 10 : 0;
+    return {
+      id: w.id,
+      date: w.date,
+      distanceKm: dist,
+      durationMin: dur,
+      speedAvgKmh,
+      elevationGain: w.elevationGain ?? null,
+      avgHeartRate: w.avgHeartRate ?? null,
+    };
+  });
+
+  const totalDistanceKm = trips.reduce((s, t) => s + t.distanceKm, 0);
+
+  return {
+    trips,
+    avgDistanceKm: Math.round(mean(trips.map((t) => t.distanceKm)) * 10) / 10,
+    avgDurationMin: Math.round(mean(trips.map((t) => t.durationMin))),
+    avgSpeedKmh: Math.round(mean(trips.map((t) => t.speedAvgKmh)) * 10) / 10,
+    avgElevationGain: meanOrNull(trips.map((t) => t.elevationGain)),
+    totalDistanceKm: Math.round(totalDistanceKm * 10) / 10,
+    totalTrips: trips.length,
+    bestDistanceKm: trips.length > 0 ? Math.max(...trips.map((t) => t.distanceKm)) : 0,
+    bestSpeedKmh: trips.length > 0 ? Math.max(...trips.map((t) => t.speedAvgKmh)) : 0,
+  };
 }
 
 // ─── Generic per-type summary ─────────────────────────────────────────────────
