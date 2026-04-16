@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   RefreshControl, ActivityIndicator, Alert, Switch, Modal, TextInput,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -147,7 +148,8 @@ export default function TodayScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     await loadData();
-    if (profile) await loadAdvice(profile);
+    const p = await getUserProfile();
+    if (p) await loadAdvice(p);
     setRefreshing(false);
   };
 
@@ -529,7 +531,7 @@ export default function TodayScreen() {
 
       {/* Wellbeing Modal */}
       <Modal visible={wellbeingModalVisible} transparent animationType="fade">
-        <View style={styles.wbOverlay}>
+        <KeyboardAvoidingView style={styles.wbOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.wbCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
               <Text style={styles.wbTitle}>Як ти себе почуваєш?</Text>
@@ -585,7 +587,7 @@ export default function TodayScreen() {
               <Text style={styles.wbSaveBtnText}>Зберегти</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
   );

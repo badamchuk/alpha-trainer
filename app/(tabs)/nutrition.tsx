@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   TextInput, Alert, Modal, ActivityIndicator, RefreshControl, FlatList,
@@ -11,19 +11,27 @@ import { getUserProfile } from '../../services/storage';
 import { getLocalDateString } from '../../services/storage';
 import {
   getDailyNutrition, getNutritionGoals, saveNutritionGoals,
-  addMeal, removeMeal, getDailyTotals,
+  addMeal, removeMeal, updateMeal, getDailyTotals, getNutritionHistory,
   calculateNutritionGoals, getFoodLibrary, saveToFoodLibrary, removeFromFoodLibrary,
   DailyNutrition, NutritionGoals, MealEntry, ParsedFoodItem, SavedMeal, NutritionMode,
 } from '../../services/nutrition';
 import {
   parseNutritionText as geminiParse,
+  nutritionistChatStream as geminiNutritionistStream,
   NutritionParseResult,
   initGemini,
 } from '../../services/gemini';
 import {
   parseNutritionText as groqParse,
+  nutritionistChatStream as groqNutritionistStream,
   initGroq,
 } from '../../services/groq';
+import {
+  getNutritionistChatHistory, saveNutritionistChatHistory, clearNutritionistChatHistory,
+  getRecentWorkouts,
+} from '../../services/storage';
+import { getMemoryEntries, buildMemoryContext } from '../../services/aiMemory';
+import { ChatMessage } from '../../types';
 
 const MODE_LABELS: Record<NutritionMode, string> = {
   cut: 'Схуднення', maintain: 'Підтримка', bulk: 'Набір',
@@ -32,16 +40,36 @@ const MODE_COLORS: Record<NutritionMode, string> = {
   cut: '#E63946', maintain: '#2ECC71', bulk: '#3498DB',
 };
 
+function formatDateLabel(dateStr: string): string {
+  const today = getLocalDateString(new Date());
+  if (dateStr === today) return 'Сьогодні';
+  const yd = new Date(); yd.setDate(yd.getDate() - 1);
+  const yesterday = getLocalDateString(yd);
+  if (dateStr === yesterday) return 'Вчора';
+  const d = new Date(dateStr + 'T12:00:00');
+  const days = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+  const months = ['січ', 'лют', 'бер', 'квіт', 'трав', 'черв', 'лип', 'серп', 'вер', 'жовт', 'лист', 'груд'];
+  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+}
+
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return getLocalDateString(d);
+}
+
 export default function NutritionScreen() {
   const today = getLocalDateString(new Date());
+  const [selectedDate, setSelectedDate] = useState(today);
   const [daily, setDaily] = useState<DailyNutrition>({ date: today, meals: [] });
   const [goals, setGoals] = useState<NutritionGoals | null>(null);
   const [library, setLibrary] = useState<SavedMeal[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [profile, setProfile] = useState<import('../../types').UserProfile | null>(null);
 
-  // Add meal modal
+  // Add / Edit meal modal
   const [addVisible, setAddVisible] = useState(false);
+  const [editingMeal, setEditingMeal] = useState<MealEntry | null>(null); // null = adding new
   const [foodText, setFoodText] = useState('');
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState<NutritionParseResult | null>(null);
@@ -54,13 +82,26 @@ export default function NutritionScreen() {
   // Library modal
   const [libraryVisible, setLibraryVisible] = useState(false);
 
-  async function loadData() {
-    const [d, g, lib, profile] = await Promise.all([
-      getDailyNutrition(today),
+  // Weekly chart
+  const [weekHistory, setWeekHistory] = useState<{ date: string; calories: number }[]>([]);
+
+  // Nutritionist chat modal
+  const [nutritionistVisible, setNutritionistVisible] = useState(false);
+  const [nutMessages, setNutMessages] = useState<ChatMessage[]>([]);
+  const [nutInput, setNutInput] = useState('');
+  const [nutLoading, setNutLoading] = useState(false);
+  const nutListRef = useRef<FlatList>(null);
+
+  async function loadData(date?: string) {
+    const targetDate = date ?? selectedDate;
+    const [d, g, lib, profile, hist] = await Promise.all([
+      getDailyNutrition(targetDate),
       getNutritionGoals(),
       getFoodLibrary(),
       getUserProfile(),
+      getNutritionHistory(7),
     ]);
+    setWeekHistory(hist.map((h) => ({ date: h.date, calories: getDailyTotals(h).calories })));
     setDaily(d);
     setLibrary(lib);
 
@@ -78,11 +119,16 @@ export default function NutritionScreen() {
     }
   }
 
-  useFocusEffect(useCallback(() => { loadData(); }, []));
+  useFocusEffect(useCallback(() => { loadData(selectedDate); }, [selectedDate]));
+
+  function goToDate(newDate: string) {
+    setSelectedDate(newDate);
+    loadData(newDate);
+  }
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(selectedDate);
     setRefreshing(false);
   };
 
@@ -111,12 +157,56 @@ export default function NutritionScreen() {
     }
   }
 
+  function openRepeatMeal(meal: MealEntry) {
+    // Like edit but creates a NEW entry — user can tweak text/name before saving
+    setEditingMeal(null);
+    setFoodText(meal.rawText || meal.name);
+    setMealName(meal.name);
+    setParsed({
+      meals: meal.items.map((it) => ({
+        name: it.name, qty: it.qty,
+        calories: it.calories, protein: it.protein, carbs: it.carbs, fat: it.fat, fiber: it.fiber ?? 0,
+      })),
+      total: {
+        calories: meal.calories, protein: meal.protein, carbs: meal.carbs,
+        fat: meal.fat, fiber: meal.fiber ?? 0,
+      },
+    });
+    setAddVisible(true);
+  }
+
+  function openEditMeal(meal: MealEntry) {
+    setEditingMeal(meal);
+    setFoodText(meal.rawText || meal.name);
+    setMealName(meal.name);
+    // Pre-fill parsed so user can save without re-running AI (only required if they change text)
+    setParsed({
+      meals: meal.items.map((it) => ({
+        name: it.name, qty: it.qty,
+        calories: it.calories, protein: it.protein, carbs: it.carbs, fat: it.fat, fiber: it.fiber ?? 0,
+      })),
+      total: {
+        calories: meal.calories, protein: meal.protein, carbs: meal.carbs,
+        fat: meal.fat, fiber: meal.fiber ?? 0,
+      },
+    });
+    setAddVisible(true);
+  }
+
+  function closeAddModal() {
+    setAddVisible(false);
+    setEditingMeal(null);
+    setFoodText('');
+    setParsed(null);
+    setMealName('');
+  }
+
   async function handleSaveMeal() {
     if (!parsed) return;
     const now = new Date();
-    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const time = editingMeal?.time ?? `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const meal: MealEntry = {
-      id: Date.now().toString(),
+      id: editingMeal?.id ?? Date.now().toString(),
       time,
       name: mealName || 'Прийом їжі',
       rawText: foodText,
@@ -124,26 +214,30 @@ export default function NutritionScreen() {
       protein: parsed.total.protein,
       carbs: parsed.total.carbs,
       fat: parsed.total.fat,
+      fiber: parsed.total.fiber ?? 0,
       items: parsed.meals.map((m) => ({
         name: m.name, qty: m.qty,
         calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat,
+        fiber: m.fiber ?? 0,
       })),
     };
-    const updated = await addMeal(today, meal);
-    setDaily(updated);
 
-    // Save to library for quick reuse
-    await saveToFoodLibrary({
-      name: meal.name,
-      calories: meal.calories, protein: meal.protein, carbs: meal.carbs, fat: meal.fat,
-      items: meal.items,
-    });
+    if (editingMeal) {
+      const updated = await updateMeal(selectedDate, meal);
+      setDaily(updated);
+    } else {
+      const updated = await addMeal(selectedDate, meal);
+      setDaily(updated);
+      // Save to library for quick reuse
+      await saveToFoodLibrary({
+        name: meal.name,
+        calories: meal.calories, protein: meal.protein, carbs: meal.carbs, fat: meal.fat,
+        fiber: meal.fiber, items: meal.items,
+      });
+    }
 
-    setAddVisible(false);
-    setFoodText('');
-    setParsed(null);
-    setMealName('');
-    await loadData();
+    closeAddModal();
+    await loadData(selectedDate);
   }
 
   async function handleQuickAdd(saved: SavedMeal) {
@@ -157,10 +251,10 @@ export default function NutritionScreen() {
       calories: saved.calories, protein: saved.protein, carbs: saved.carbs, fat: saved.fat,
       items: saved.items,
     };
-    const updated = await addMeal(today, meal);
+    const updated = await addMeal(selectedDate, meal);
     setDaily(updated);
     setLibraryVisible(false);
-    await loadData();
+    await loadData(selectedDate);
   }
 
   async function handleDeleteMeal(mealId: string) {
@@ -169,7 +263,7 @@ export default function NutritionScreen() {
       {
         text: 'Видалити', style: 'destructive',
         onPress: async () => {
-          const updated = await removeMeal(today, mealId);
+          const updated = await removeMeal(selectedDate, mealId);
           setDaily(updated);
         },
       },
@@ -182,6 +276,88 @@ export default function NutritionScreen() {
     await saveNutritionGoals(computed);
     setGoals(computed);
     setGoalsVisible(false);
+  }
+
+  async function openNutritionist() {
+    const history = await getNutritionistChatHistory();
+    setNutMessages(history);
+    setNutritionistVisible(true);
+  }
+
+  async function sendNutritionistMessage() {
+    if (!nutInput.trim() || nutLoading) return;
+    if (!profile?.groqApiKey && !profile?.geminiApiKey) {
+      Alert.alert('Потрібен API ключ', 'Додай Gemini або Groq API ключ у профілі.');
+      return;
+    }
+
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: nutInput.trim(),
+      timestamp: new Date().toISOString(),
+    };
+    const updatedMessages = [...nutMessages, userMsg];
+    setNutMessages(updatedMessages);
+    setNutInput('');
+    setNutLoading(true);
+
+    const streamingId = (Date.now() + 1).toString();
+    const streamingMsg: ChatMessage = { id: streamingId, role: 'assistant', content: '', timestamp: new Date().toISOString() };
+    setNutMessages([...updatedMessages, streamingMsg]);
+
+    try {
+      const [nutHist, recentWorkouts, memEntries] = await Promise.all([
+        getNutritionHistory(7),
+        getRecentWorkouts(5),
+        getMemoryEntries(),
+      ]);
+
+      const nutHistSummary = nutHist.map((d) => {
+        const t = getDailyTotals(d);
+        return { date: d.date, calories: t.calories, protein: t.protein, carbs: t.carbs, fat: t.fat };
+      });
+
+      const memBlock = buildMemoryContext(memEntries, recentWorkouts, [], []);
+      const chatHistory = nutMessages.map((m) =>
+        profile?.groqApiKey
+          ? { role: m.role as 'user' | 'assistant', content: m.content }
+          : { role: m.role === 'user' ? 'user' as const : 'model' as const, parts: [{ text: m.content }] }
+      );
+
+      const onChunk = (text: string) => {
+        setNutMessages((prev) => prev.map((m) => m.id === streamingId ? { ...m, content: text } : m));
+        setTimeout(() => nutListRef.current?.scrollToEnd({ animated: false }), 50);
+      };
+
+      let reply: string;
+      if (profile?.groqApiKey) {
+        reply = await groqNutritionistStream(
+          userMsg.content, profile, goals, nutHistSummary, recentWorkouts,
+          chatHistory as { role: 'user' | 'assistant'; content: string }[],
+          onChunk, memBlock
+        );
+      } else {
+        reply = await geminiNutritionistStream(
+          userMsg.content, profile!, goals, nutHistSummary, recentWorkouts,
+          chatHistory as { role: 'user' | 'model'; parts: { text: string }[] }[],
+          onChunk, memBlock
+        );
+      }
+
+      const finalMessages = [...updatedMessages, { ...streamingMsg, content: reply }];
+      setNutMessages(finalMessages);
+      await saveNutritionistChatHistory(finalMessages);
+    } catch (e: any) {
+      const errMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(), role: 'assistant',
+        content: `Помилка: ${e?.message || 'Не вдалося отримати відповідь.'}`,
+        timestamp: new Date().toISOString(),
+      };
+      setNutMessages([...updatedMessages, errMsg]);
+    } finally {
+      setNutLoading(false);
+    }
   }
 
   const totals = getDailyTotals(daily);
@@ -201,6 +377,9 @@ export default function NutritionScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Харчування</Text>
           <View style={styles.headerActions}>
+            <TouchableOpacity onPress={openNutritionist} style={styles.headerBtn}>
+              <Ionicons name="sparkles-outline" size={20} color={Colors.primary} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => setLibraryVisible(true)} style={styles.headerBtn}>
               <Ionicons name="bookmark-outline" size={20} color={Colors.textSecondary} />
             </TouchableOpacity>
@@ -209,6 +388,26 @@ export default function NutritionScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Date navigation */}
+        <View style={styles.dateNav}>
+          <TouchableOpacity onPress={() => goToDate(addDays(selectedDate, -1))} style={styles.dateNavBtn}>
+            <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
+          </TouchableOpacity>
+          <Text style={styles.dateNavLabel}>{formatDateLabel(selectedDate)}</Text>
+          <TouchableOpacity
+            onPress={() => goToDate(addDays(selectedDate, 1))}
+            style={[styles.dateNavBtn, selectedDate >= today && { opacity: 0.3 }]}
+            disabled={selectedDate >= today}
+          >
+            <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Weekly calorie chart */}
+        {weekHistory.length > 1 && goals && (
+          <WeeklyCalChart history={weekHistory} goal={goals.calories} selectedDate={selectedDate} onSelectDate={goToDate} />
+        )}
 
         {/* Calorie ring / summary */}
         {goals ? (
@@ -233,6 +432,9 @@ export default function NutritionScreen() {
               <MacroBar label="Білки" value={totals.protein} goal={goals.protein} pct={proteinPct} color="#E63946" unit="г" />
               <MacroBar label="Вугл." value={totals.carbs} goal={goals.carbs} pct={carbsPct} color="#F4A261" unit="г" />
               <MacroBar label="Жири" value={totals.fat} goal={goals.fat} pct={fatPct} color="#3498DB" unit="г" />
+              {totals.fiber > 0 && (
+                <FiberBar value={totals.fiber} />
+              )}
             </View>
           </View>
         ) : (
@@ -258,7 +460,7 @@ export default function NutritionScreen() {
         {/* Meals list */}
         {daily.meals.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Сьогодні</Text>
+            <Text style={styles.sectionTitle}>Прийоми їжі</Text>
             {daily.meals.map((meal) => (
               <View key={meal.id} style={styles.mealCard}>
                 <View style={styles.mealHeader}>
@@ -268,6 +470,12 @@ export default function NutritionScreen() {
                   </View>
                   <View style={styles.mealHeaderRight}>
                     <Text style={styles.mealCal}>{meal.calories} ккал</Text>
+                    <TouchableOpacity onPress={() => openRepeatMeal(meal)} style={{ padding: 4 }}>
+                      <Ionicons name="copy-outline" size={17} color={Colors.textMuted} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openEditMeal(meal)} style={{ padding: 4 }}>
+                      <Ionicons name="create-outline" size={18} color={Colors.textMuted} />
+                    </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleDeleteMeal(meal.id)} style={{ padding: 4 }}>
                       <Ionicons name="close-circle-outline" size={18} color={Colors.textMuted} />
                     </TouchableOpacity>
@@ -279,6 +487,12 @@ export default function NutritionScreen() {
                   <Text style={styles.mealMacroText}>В: {meal.carbs}г</Text>
                   <Text style={styles.mealMacroDivider}>·</Text>
                   <Text style={styles.mealMacroText}>Ж: {meal.fat}г</Text>
+                  {(meal.fiber ?? 0) > 0 && (
+                    <>
+                      <Text style={styles.mealMacroDivider}>·</Text>
+                      <Text style={[styles.mealMacroText, { color: '#2ECC71' }]}>Кл: {meal.fiber}г</Text>
+                    </>
+                  )}
                 </View>
                 {meal.items.length > 0 && (
                   <View style={styles.mealItems}>
@@ -301,16 +515,16 @@ export default function NutritionScreen() {
         )}
       </ScrollView>
 
-      {/* ── ADD MEAL MODAL ── */}
-      <Modal visible={addVisible} transparent animationType="slide" onRequestClose={() => { setAddVisible(false); setFoodText(''); setParsed(null); setMealName(''); }}>
+      {/* ── ADD / EDIT MEAL MODAL ── */}
+      <Modal visible={addVisible} transparent animationType="slide" onRequestClose={closeAddModal}>
         <KeyboardAvoidingView
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Що ти їв?</Text>
-              <TouchableOpacity onPress={() => { setAddVisible(false); setFoodText(''); setParsed(null); setMealName(''); }}>
+              <Text style={styles.modalTitle}>{editingMeal ? 'Редагувати прийом' : 'Що ти їв?'}</Text>
+              <TouchableOpacity onPress={closeAddModal}>
                 <Ionicons name="close" size={22} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -342,7 +556,7 @@ export default function NutritionScreen() {
                   <Ionicons name="sparkles-outline" size={16} color="#FFF" />
                 )}
                 <Text style={styles.parseBtnText}>
-                  {parsing ? 'Рахую...' : 'Розрахувати КБЖУ (AI)'}
+                  {parsing ? 'Рахую...' : editingMeal ? 'Перерахувати (AI)' : 'Розрахувати КБЖУ (AI)'}
                 </Text>
               </TouchableOpacity>
 
@@ -353,6 +567,9 @@ export default function NutritionScreen() {
                     <PillStat label="Білки" value={`${parsed.total.protein}г`} color="#E63946" />
                     <PillStat label="Вугл." value={`${parsed.total.carbs}г`} color="#F4A261" />
                     <PillStat label="Жири" value={`${parsed.total.fat}г`} color="#3498DB" />
+                    {(parsed.total.fiber ?? 0) > 0 && (
+                      <PillStat label="Клітк." value={`${parsed.total.fiber}г`} color="#2ECC71" />
+                    )}
                   </View>
 
                   {parsed.meals.map((item, i) => (
@@ -447,6 +664,86 @@ export default function NutritionScreen() {
         </View>
       </Modal>
 
+      {/* ── NUTRITIONIST CHAT MODAL ── */}
+      <Modal visible={nutritionistVisible} transparent animationType="slide" onRequestClose={() => setNutritionistVisible(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.nutModal}>
+            <View style={styles.nutHeader}>
+              <View style={styles.nutHeaderLeft}>
+                <Ionicons name="sparkles" size={18} color={Colors.primary} />
+                <Text style={styles.nutTitle}>AI Нутріціолог</Text>
+              </View>
+              <View style={styles.nutHeaderRight}>
+                <TouchableOpacity
+                  onPress={() => {
+                    Alert.alert('Очистити чат?', '', [
+                      { text: 'Скасувати', style: 'cancel' },
+                      { text: 'Очистити', style: 'destructive', onPress: async () => {
+                        await clearNutritionistChatHistory();
+                        setNutMessages([]);
+                      }},
+                    ]);
+                  }}
+                  style={{ padding: 6 }}
+                >
+                  <Ionicons name="trash-outline" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setNutritionistVisible(false)} style={{ padding: 6 }}>
+                  <Ionicons name="close" size={22} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <FlatList
+              ref={nutListRef}
+              data={nutMessages}
+              keyExtractor={(m) => m.id}
+              style={styles.nutList}
+              contentContainerStyle={{ padding: Spacing.md, gap: Spacing.sm }}
+              onContentSizeChange={() => nutListRef.current?.scrollToEnd({ animated: false })}
+              ListEmptyComponent={
+                <View style={styles.nutEmpty}>
+                  <Ionicons name="nutrition-outline" size={40} color={Colors.textMuted} />
+                  <Text style={styles.nutEmptyText}>Запитай свого нутріціолога</Text>
+                  <Text style={styles.nutEmptyHint}>Він бачить твою 7-денну історію харчування та тренувань</Text>
+                </View>
+              }
+              renderItem={({ item }) => (
+                <View style={[styles.nutBubble, item.role === 'user' ? styles.nutBubbleUser : styles.nutBubbleAI]}>
+                  <Text style={[styles.nutBubbleText, item.role === 'user' && { color: '#FFF' }]}>
+                    {item.content || '...'}
+                  </Text>
+                </View>
+              )}
+            />
+
+            <View style={styles.nutInputRow}>
+              <TextInput
+                style={styles.nutInput}
+                placeholder="Запитай про харчування..."
+                placeholderTextColor={Colors.textMuted}
+                value={nutInput}
+                onChangeText={setNutInput}
+                multiline
+                maxLength={500}
+                returnKeyType="send"
+                onSubmitEditing={sendNutritionistMessage}
+              />
+              <TouchableOpacity
+                style={[styles.nutSendBtn, (!nutInput.trim() || nutLoading) && { opacity: 0.4 }]}
+                onPress={sendNutritionistMessage}
+                disabled={!nutInput.trim() || nutLoading}
+              >
+                {nutLoading
+                  ? <ActivityIndicator size="small" color="#FFF" />
+                  : <Ionicons name="send" size={18} color="#FFF" />
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* ── LIBRARY MODAL ── */}
       <Modal visible={libraryVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -507,6 +804,46 @@ export default function NutritionScreen() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+function WeeklyCalChart({ history, goal, selectedDate, onSelectDate }: {
+  history: { date: string; calories: number }[];
+  goal: number;
+  selectedDate: string;
+  onSelectDate: (date: string) => void;
+}) {
+  const days = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+  const maxCal = Math.max(goal, ...history.map((d) => d.calories));
+  const BAR_H = 48;
+  return (
+    <View style={styles.weekChart}>
+      {history.map((d) => {
+        const pct = maxCal > 0 ? d.calories / maxCal : 0;
+        const isSelected = d.date === selectedDate;
+        const overGoal = d.calories > goal;
+        const barColor = overGoal ? '#E63946' : d.calories >= goal * 0.85 ? Colors.primary : Colors.primary + '70';
+        const dayLabel = days[new Date(d.date + 'T12:00:00').getDay()];
+        return (
+          <TouchableOpacity key={d.date} style={styles.weekChartCol} onPress={() => onSelectDate(d.date)}>
+            <Text style={[styles.weekChartCal, isSelected && { color: Colors.primary, fontWeight: '700' }]}>
+              {d.calories > 0 ? d.calories : ''}
+            </Text>
+            <View style={[styles.weekChartBarBg, { height: BAR_H }]}>
+              <View style={[
+                styles.weekChartBarFill,
+                { height: pct * BAR_H, backgroundColor: barColor },
+                isSelected && { backgroundColor: overGoal ? '#E63946' : Colors.primary },
+              ]} />
+            </View>
+            <Text style={[styles.weekChartDay, isSelected && { color: Colors.primary, fontWeight: '700' }]}>
+              {dayLabel}
+            </Text>
+            {isSelected && <View style={styles.weekChartDot} />}
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 function MacroBar({ label, value, goal, pct, color, unit }: {
   label: string; value: number; goal: number; pct: number; color: string; unit: string;
 }) {
@@ -517,6 +854,22 @@ function MacroBar({ label, value, goal, pct, color, unit }: {
       <Text style={styles.macroGoal}>/ {goal}{unit}</Text>
       <View style={styles.macroBarBg}>
         <View style={[styles.macroBarFill, { width: `${pct}%` as any, backgroundColor: color }]} />
+      </View>
+    </View>
+  );
+}
+
+function FiberBar({ value }: { value: number }) {
+  // Daily fiber goal: ~25g (general recommendation)
+  const goal = 25;
+  const pct = Math.min(100, Math.round((value / goal) * 100));
+  return (
+    <View style={styles.macroItem}>
+      <Text style={styles.macroLabel}>Клітк.</Text>
+      <Text style={[styles.macroValue, { color: '#2ECC71' }]}>{value}<Text style={styles.macroUnit}>г</Text></Text>
+      <Text style={styles.macroGoal}>/ {goal}г</Text>
+      <View style={styles.macroBarBg}>
+        <View style={[styles.macroBarFill, { width: `${pct}%` as any, backgroundColor: '#2ECC71' }]} />
       </View>
     </View>
   );
@@ -540,6 +893,16 @@ const styles = StyleSheet.create({
   title: { ...Typography.h1, fontSize: 26 },
   headerActions: { flexDirection: 'row', gap: Spacing.xs },
   headerBtn: { padding: 6 },
+
+  dateNav: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginBottom: Spacing.md, gap: Spacing.sm,
+  },
+  dateNavBtn: { padding: 6 },
+  dateNavLabel: {
+    ...Typography.h3, fontSize: 15, minWidth: 120, textAlign: 'center',
+    color: Colors.textPrimary,
+  },
 
   summaryCard: {
     backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
@@ -689,4 +1052,67 @@ const styles = StyleSheet.create({
   },
   pillStatVal: { fontSize: 15, fontWeight: '700' },
   pillStatLabel: { color: Colors.textMuted, fontSize: 10, marginTop: 1 },
+
+  // Weekly chart
+  weekChart: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: Spacing.sm, paddingBottom: 6, marginBottom: Spacing.md,
+  },
+  weekChartCol: { flex: 1, alignItems: 'center', gap: 3 },
+  weekChartCal: { fontSize: 9, color: Colors.textMuted },
+  weekChartBarBg: {
+    width: '70%', backgroundColor: Colors.border, borderRadius: 3,
+    justifyContent: 'flex-end', overflow: 'hidden',
+  },
+  weekChartBarFill: { width: '100%', borderRadius: 3 },
+  weekChartDay: { fontSize: 11, color: Colors.textMuted },
+  weekChartDot: {
+    width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.primary,
+  },
+
+  // Nutritionist modal
+  nutModal: {
+    flex: 1, backgroundColor: Colors.background,
+    marginTop: 60, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl,
+    overflow: 'hidden',
+  },
+  nutHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  nutHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  nutHeaderRight: { flexDirection: 'row', alignItems: 'center' },
+  nutTitle: { ...Typography.h3, fontSize: 16, color: Colors.textPrimary },
+  nutList: { flex: 1 },
+  nutEmpty: { alignItems: 'center', justifyContent: 'center', paddingTop: 60, gap: Spacing.sm },
+  nutEmptyText: { ...Typography.h3, color: Colors.textSecondary, fontSize: 15 },
+  nutEmptyHint: { color: Colors.textMuted, fontSize: 13, textAlign: 'center', paddingHorizontal: Spacing.lg },
+  nutBubble: {
+    maxWidth: '85%', borderRadius: BorderRadius.lg, padding: Spacing.sm,
+  },
+  nutBubbleUser: {
+    alignSelf: 'flex-end', backgroundColor: Colors.primary,
+  },
+  nutBubbleAI: {
+    alignSelf: 'flex-start', backgroundColor: Colors.surface,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  nutBubbleText: { color: Colors.textPrimary, fontSize: 14, lineHeight: 20 },
+  nutInputRow: {
+    flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm,
+    padding: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  nutInput: {
+    flex: 1, backgroundColor: Colors.background, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md,
+    paddingVertical: 10, color: Colors.textPrimary, fontSize: 14, maxHeight: 100,
+  },
+  nutSendBtn: {
+    width: 42, height: 42, borderRadius: 21, backgroundColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
 });

@@ -14,6 +14,7 @@ export interface ParsedFoodItem {
   protein: number;
   carbs: number;
   fat: number;
+  fiber?: number;
 }
 
 export interface MealEntry {
@@ -25,6 +26,7 @@ export interface MealEntry {
   protein: number;
   carbs: number;
   fat: number;
+  fiber?: number;
   items: ParsedFoodItem[];
 }
 
@@ -51,15 +53,19 @@ export function calculateNutritionGoals(
 ): NutritionGoals {
   const { weight, height, age } = profile;
 
-  // Mifflin-St Jeor BMR (assume male by default — can extend with gender field)
-  const bmr = 10 * weight + 6.25 * height - 5 * age + 5;
+  // Mifflin-St Jeor BMR: male +5, female −161
+  const genderOffset = profile.gender === 'female' ? -161 : 5;
+  const bmr = 10 * weight + 6.25 * height - 5 * age + genderOffset;
 
   // Activity multiplier based on training days + fitness level
   const days = profile.availableDays?.length ?? 3;
-  const activityMultiplier =
+  const baseMultiplier =
     days <= 2 ? 1.375 :
     days <= 4 ? 1.55 :
     days <= 6 ? 1.725 : 1.9;
+  // Advanced athletes burn slightly more at rest (higher muscle mass, metabolic efficiency)
+  const levelOffset = profile.fitnessLevel === 'advanced' ? 0.05 : profile.fitnessLevel === 'intermediate' ? 0.025 : 0;
+  const activityMultiplier = baseMultiplier + levelOffset;
 
   const tdee = Math.round(bmr * activityMultiplier);
 
@@ -125,6 +131,14 @@ export async function removeMeal(date: string, mealId: string): Promise<DailyNut
   return daily;
 }
 
+export async function updateMeal(date: string, meal: MealEntry): Promise<DailyNutrition> {
+  const daily = await getDailyNutrition(date);
+  const idx = daily.meals.findIndex((m) => m.id === meal.id);
+  if (idx !== -1) daily.meals[idx] = meal;
+  await saveDailyNutrition(daily);
+  return daily;
+}
+
 export async function getNutritionHistory(days = 7): Promise<DailyNutrition[]> {
   const all = await getAllNutrition();
   return all.slice(-days);
@@ -139,6 +153,7 @@ export interface SavedMeal {
   protein: number;
   carbs: number;
   fat: number;
+  fiber?: number;
   items: ParsedFoodItem[];
   usageCount: number;
 }
@@ -160,6 +175,7 @@ export async function saveToFoodLibrary(meal: Omit<SavedMeal, 'id' | 'usageCount
     existing.protein = meal.protein;
     existing.carbs = meal.carbs;
     existing.fat = meal.fat;
+    if (meal.fiber !== undefined) existing.fiber = meal.fiber;
   } else {
     lib.push({ ...meal, id: Date.now().toString(), usageCount: 1 });
   }
@@ -180,7 +196,8 @@ export function getDailyTotals(daily: DailyNutrition) {
       protein: acc.protein + m.protein,
       carbs: acc.carbs + m.carbs,
       fat: acc.fat + m.fat,
+      fiber: acc.fiber + (m.fiber ?? 0),
     }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
   );
 }

@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(expo:*)",
+      "Bash(adb:*)",
+      "Bash(git:*)",
+      "WebSearch",
+      "WebFetch"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '\\n⚠️  Сесія завершується. Якщо були суттєві зміни — запусти /finish щоб оновити SNAPSHOT.md'"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -3,6 +3,7 @@ export interface UserProfile {
   age: number;
   weight: number;
   height: number;
+  gender?: 'male' | 'female';
   fitnessLevel: 'beginner' | 'intermediate' | 'advanced';
   availableDays: number[]; // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
   equipment: string[];

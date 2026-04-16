@@ -28,6 +28,10 @@ const ALL_KEYS = [
   '@alpha_trainer:nutrition_library',
   '@alpha_trainer:water_reminders',
   '@alpha_trainer:water_reminder_range',
+  '@alpha_trainer:chat_history',
+  '@alpha_trainer:nutritionist_chat_history',
+  '@alpha_trainer:ai_memory',
+  '@alpha_trainer:daily_advice',
 ];
 
 export interface BackupFile {

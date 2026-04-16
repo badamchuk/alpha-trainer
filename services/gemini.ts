@@ -32,7 +32,57 @@ async function callWithFallback<T>(fn: (model: ReturnType<typeof getModel>) => P
   throw new Error('Всі моделі Gemini недоступні');
 }
 
-function buildSystemContext(profile: UserProfile, goals: Goal[], recentWorkouts: WorkoutEntry[], memoryBlock = ''): string {
+type NutritionDay = { date: string; calories: number; protein: number; carbs: number; fat: number };
+type NutritionGoalSnapshot = { calories: number; protein: number; carbs: number; fat: number; mode: string } | null;
+
+function buildNutritionistContext(
+  profile: UserProfile,
+  nutritionGoals: NutritionGoalSnapshot,
+  nutritionHistory: NutritionDay[],
+  recentWorkouts: WorkoutEntry[],
+  memoryBlock = ''
+): string {
+  const genderLabel = profile.gender === 'female' ? 'жінка' : 'чоловік';
+  const level = profile.fitnessLevel === 'beginner' ? 'початківець' : profile.fitnessLevel === 'intermediate' ? 'середній' : 'просунутий';
+
+  const historyText = nutritionHistory.length > 0
+    ? nutritionHistory.slice(-7).map((d) =>
+        `${d.date}: ${d.calories} ккал | Б:${d.protein}г В:${d.carbs}г Ж:${d.fat}г`
+      ).join('\n')
+    : 'Даних ще немає';
+
+  const workoutText = recentWorkouts.slice(0, 5).map((w) =>
+    `${w.date} — ${w.workoutType} (${w.duration} хв)`
+  ).join('\n') || 'Тренувань ще немає';
+
+  const goalsText = nutritionGoals
+    ? `Ціль: ${nutritionGoals.calories} ккал (режим: ${nutritionGoals.mode === 'cut' ? 'схуднення' : nutritionGoals.mode === 'bulk' ? 'набір маси' : 'підтримка'}) | Б:${nutritionGoals.protein}г В:${nutritionGoals.carbs}г Ж:${nutritionGoals.fat}г`
+    : 'Цілі харчування не встановлено';
+
+  return `Ти персональний AI-нутріціолог в додатку AlphaTrainer. Відповідай українською мовою. Спілкуйся як досвідчений дієтолог та нутріціолог — фахово, але доступно.
+
+ПРОФІЛЬ:
+- Ім'я: ${profile.name}, ${genderLabel}, ${profile.age} років
+- Вага: ${profile.weight} кг, Зріст: ${profile.height} см
+- Рівень активності: ${level}
+
+${goalsText}
+
+ХАРЧУВАННЯ ЗА ОСТАННІ 7 ДНІВ:
+${historyText}
+
+ОСТАННІ ТРЕНУВАННЯ:
+${workoutText}
+
+Давай персоналізовані поради з харчування:
+- Аналізуй дефіцит/профіцит калорій відносно цілі
+- Звертай увагу на баланс макронутрієнтів
+- Пропонуй конкретні продукти та страви
+- Враховуй навантаження тренувань при рекомендаціях
+- Давай практичні поради, не загальні фрази${memoryBlock}`;
+}
+
+function buildSystemContext(profile: UserProfile, goals: Goal[], recentWorkouts: WorkoutEntry[], memoryBlock = '', nutritionSummary = ''): string {
   const goalsList = goals
     .filter((g) => !g.completed)
     .map((g) => `- ${g.title}: ${g.target}`)
@@ -88,7 +138,8 @@ ${workoutHistory || 'Тренувань ще немає'}
 - Звертай увагу на паузи між тренуваннями (перетренованість / недостатнє навантаження)
 - Пропонуй конкретні ваги/повтори на наступне тренування
 - Якщо спортсмен повторює одні й ті ж вправи — давай варіації
-Будь мотивуючим але реалістичним.${memoryBlock}`;
+- Враховуй харчування при рекомендаціях (відновлення, силові показники)
+Будь мотивуючим але реалістичним.${nutritionSummary ? `\n\nХАРЧУВАННЯ (останні 3 дні):\n${nutritionSummary}` : ''}${memoryBlock}`;
 }
 
 export async function chat(
@@ -97,9 +148,10 @@ export async function chat(
   goals: Goal[],
   recentWorkouts: WorkoutEntry[],
   history: { role: 'user' | 'model'; parts: { text: string }[] }[],
-  memoryBlock = ''
+  memoryBlock = '',
+  nutritionSummary = ''
 ): Promise<string> {
-  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock);
+  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock, nutritionSummary);
   return callWithFallback(async (model) => {
     const chatSession = model.startChat({
       history: [
@@ -120,14 +172,45 @@ export async function chatStream(
   recentWorkouts: WorkoutEntry[],
   history: { role: 'user' | 'model'; parts: { text: string }[] }[],
   onChunk: (text: string) => void,
-  memoryBlock = ''
+  memoryBlock = '',
+  nutritionSummary = ''
 ): Promise<string> {
-  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock);
+  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock, nutritionSummary);
   return callWithFallback(async (model) => {
     const chatSession = model.startChat({
       history: [
         { role: 'user', parts: [{ text: systemContext }] },
         { role: 'model', parts: [{ text: 'Зрозумів! Я готовий допомагати тобі з тренуваннями, враховуючи твій профіль та цілі.' }] },
+        ...history,
+      ],
+    });
+    const result = await chatSession.sendMessageStream(message);
+    let fullText = '';
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      fullText += text;
+      onChunk(fullText);
+    }
+    return fullText;
+  });
+}
+
+export async function nutritionistChatStream(
+  message: string,
+  profile: UserProfile,
+  nutritionGoals: NutritionGoalSnapshot,
+  nutritionHistory: NutritionDay[],
+  recentWorkouts: WorkoutEntry[],
+  history: { role: 'user' | 'model'; parts: { text: string }[] }[],
+  onChunk: (text: string) => void,
+  memoryBlock = ''
+): Promise<string> {
+  const systemContext = buildNutritionistContext(profile, nutritionGoals, nutritionHistory, recentWorkouts, memoryBlock);
+  return callWithFallback(async (model) => {
+    const chatSession = model.startChat({
+      history: [
+        { role: 'user', parts: [{ text: systemContext }] },
+        { role: 'model', parts: [{ text: 'Вітаю! Я твій персональний нутріціолог. Бачу твою історію харчування та тренувань. Чим можу допомогти?' }] },
         ...history,
       ],
     });
@@ -259,18 +342,18 @@ export function getActiveModel(): string {
 }
 
 export interface NutritionParseResult {
-  meals: { name: string; qty: string; calories: number; protein: number; carbs: number; fat: number }[];
-  total: { calories: number; protein: number; carbs: number; fat: number };
+  meals: { name: string; qty: string; calories: number; protein: number; carbs: number; fat: number; fiber: number }[];
+  total: { calories: number; protein: number; carbs: number; fat: number; fiber: number };
 }
 
 export async function parseNutritionText(text: string): Promise<NutritionParseResult> {
-  const prompt = `Ти нутриціолог. Розрахуй КБЖУ для описаної їжі.
+  const prompt = `Ти нутриціолог. Розрахуй КБЖУ та клітковину для описаної їжі.
 Використовуй стандартні порції де не вказана вага. Відповідь ТІЛЬКИ у форматі JSON без жодних пояснень:
 {
   "meals": [
-    { "name": "Назва продукту", "qty": "кількість", "calories": 0, "protein": 0, "carbs": 0, "fat": 0 }
+    { "name": "Назва продукту", "qty": "кількість", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0 }
   ],
-  "total": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0 }
+  "total": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0 }
 }
 
 Їжа: ${text}`;

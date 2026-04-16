@@ -13,6 +13,7 @@ import {
   getChatHistory, saveChatHistory, clearChatHistory, saveTrainingPlan,
   getWeightLog, getPersonalRecords,
 } from '../../services/storage';
+import { getNutritionHistory, getDailyTotals } from '../../services/nutrition';
 import { chatStream as geminiChatStream, initGemini, generateTrainingPlan as geminiGeneratePlan, extractMemoryNote as geminiExtractNote } from '../../services/gemini';
 import { chatStream as groqChatStream, initGroq, generateTrainingPlan as groqGeneratePlan, extractMemoryNote as groqExtractNote } from '../../services/groq';
 import { getMemoryEntries, addMemoryEntry, buildMemoryContext } from '../../services/aiMemory';
@@ -44,6 +45,7 @@ export default function TrainerScreen() {
   const [isPlanRequestInFlight, setIsPlanRequestInFlight] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [memoryBlock, setMemoryBlock] = useState('');
+  const [nutritionSummary, setNutritionSummary] = useState('');
   const [planMessage, setPlanMessage] = useState<ChatMessage | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
   const [planSaved, setPlanSaved] = useState(false);
@@ -52,13 +54,22 @@ export default function TrainerScreen() {
   useFocusEffect(
     useCallback(() => {
       async function load() {
-        const [p, history, memEntries, allWorkouts, wl, recs] = await Promise.all([
+        const [p, history, memEntries, allWorkouts, wl, recs, nutHist] = await Promise.all([
           getUserProfile(), getChatHistory(), getMemoryEntries(),
           getRecentWorkouts(100), getWeightLog(), getPersonalRecords(),
+          getNutritionHistory(3),
         ]);
         setProfile(p);
         setMessages(history);
         setMemoryBlock(buildMemoryContext(memEntries, allWorkouts, wl, recs));
+
+        if (nutHist.length > 0) {
+          const summary = nutHist.map((d) => {
+            const t = getDailyTotals(d);
+            return `${d.date}: ${t.calories} ккал | Б:${t.protein}г В:${t.carbs}г Ж:${t.fat}г`;
+          }).join('\n');
+          setNutritionSummary(summary);
+        }
         if (p?.geminiApiKey) initGemini(p.geminiApiKey);
         if (p?.groqApiKey) initGroq(p.groqApiKey);
       }
@@ -141,8 +152,8 @@ export default function TrainerScreen() {
         };
 
         reply = useGroq
-          ? await groqChatStream(text.trim(), profile, goals, recent, groqHistory, onChunk, memoryBlock)
-          : await geminiChatStream(text.trim(), profile, goals, recent, geminiHistory, onChunk, memoryBlock);
+          ? await groqChatStream(text.trim(), profile, goals, recent, groqHistory, onChunk, memoryBlock, nutritionSummary)
+          : await geminiChatStream(text.trim(), profile, goals, recent, geminiHistory, onChunk, memoryBlock, nutritionSummary);
       }
 
       const finalMessages = [...updatedMessages, { ...streamingMsg, content: reply }];

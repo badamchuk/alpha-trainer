@@ -7,6 +7,7 @@ const KEYS = {
   WORKOUTS: '@alpha_trainer:workouts',
   TRAINING_PLAN: '@alpha_trainer:training_plan',
   CHAT_HISTORY: '@alpha_trainer:chat_history',
+  NUTRITIONIST_CHAT_HISTORY: '@alpha_trainer:nutritionist_chat_history',
   DAILY_ADVICE: '@alpha_trainer:daily_advice',
   WEIGHT_LOG: '@alpha_trainer:weight_log',
   MEASUREMENTS: '@alpha_trainer:measurements',
@@ -112,6 +113,20 @@ export async function saveChatHistory(messages: ChatMessage[]): Promise<void> {
 
 export async function clearChatHistory(): Promise<void> {
   await AsyncStorage.removeItem(KEYS.CHAT_HISTORY);
+}
+
+// --- Nutritionist Chat History ---
+export async function getNutritionistChatHistory(): Promise<ChatMessage[]> {
+  const json = await AsyncStorage.getItem(KEYS.NUTRITIONIST_CHAT_HISTORY);
+  return json ? JSON.parse(json) : [];
+}
+
+export async function saveNutritionistChatHistory(messages: ChatMessage[]): Promise<void> {
+  await AsyncStorage.setItem(KEYS.NUTRITIONIST_CHAT_HISTORY, JSON.stringify(messages.slice(-100)));
+}
+
+export async function clearNutritionistChatHistory(): Promise<void> {
+  await AsyncStorage.removeItem(KEYS.NUTRITIONIST_CHAT_HISTORY);
 }
 
 // --- Daily Advice Cache ---

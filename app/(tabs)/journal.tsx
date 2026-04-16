@@ -193,14 +193,21 @@ export default function JournalScreen() {
             </TouchableOpacity>
           </View>
         )}
-        renderItem={({ item }) => <WorkoutCard workout={item} onPress={() => router.push(`/workout/${item.id}`)} onDelete={() => handleDelete(item.id, item.workoutType)} />}
+        renderItem={({ item }) => (
+          <WorkoutCard
+            workout={item}
+            onPress={() => router.push(`/workout/${item.id}`)}
+            onDelete={() => handleDelete(item.id, item.workoutType)}
+            onRepeat={() => router.push(`/workout/log?repeatId=${item.id}`)}
+          />
+        )}
       />
     </View>
   );
 }
 
-function WorkoutCard({ workout, onPress, onDelete }: {
-  workout: WorkoutEntry; onPress: () => void; onDelete: () => void;
+function WorkoutCard({ workout, onPress, onDelete, onRepeat }: {
+  workout: WorkoutEntry; onPress: () => void; onDelete: () => void; onRepeat: () => void;
 }) {
   const color = WORKOUT_TYPE_COLORS[workout.workoutType] || Colors.textMuted;
   const label = WORKOUT_TYPE_LABELS[workout.workoutType] || workout.workoutType;
@@ -245,6 +252,11 @@ function WorkoutCard({ workout, onPress, onDelete }: {
         {workout.notes ? (
           <Text style={styles.cardNotes} numberOfLines={2}>{workout.notes}</Text>
         ) : null}
+
+        <TouchableOpacity style={styles.repeatBtn} onPress={(e) => { e.stopPropagation(); onRepeat(); }}>
+          <Ionicons name="copy-outline" size={14} color={Colors.textMuted} />
+          <Text style={styles.repeatBtnText}>Повторити з правками</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -318,5 +330,10 @@ const styles = StyleSheet.create({
   metaText: { color: Colors.textMuted, fontSize: 12 },
   cardDate: { color: Colors.textSecondary, fontSize: 13, marginBottom: 4 },
   cardExercises: { color: Colors.textMuted, fontSize: 12, marginBottom: 4 },
-  cardNotes: { color: Colors.textSecondary, fontSize: 13, fontStyle: 'italic' },
+  cardNotes: { color: Colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginBottom: 4 },
+  repeatBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 2, marginTop: 2,
+  },
+  repeatBtnText: { color: Colors.textMuted, fontSize: 12 },
 });

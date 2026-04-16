@@ -58,6 +58,7 @@ export default function OnboardingScreen() {
   const [age, setAge] = useState('');
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
+  const [gender, setGender] = useState<'male' | 'female'>('male');
   const [fitnessLevel, setFitnessLevel] = useState<UserProfile['fitnessLevel']>('beginner');
   const [availableDays, setAvailableDays] = useState<number[]>([1, 3, 5]);
   const [equipment, setEquipment] = useState<string[]>([]);
@@ -81,6 +82,7 @@ export default function OnboardingScreen() {
         setAge(profile.age.toString());
         setWeight(profile.weight.toString());
         setHeight(profile.height.toString());
+        if (profile.gender) setGender(profile.gender);
         setFitnessLevel(profile.fitnessLevel);
         setAvailableDays(profile.availableDays);
         setEquipment(profile.equipment);
@@ -173,6 +175,7 @@ export default function OnboardingScreen() {
       age: Number(age),
       weight: Number(weight),
       height: Number(height),
+      gender,
       fitnessLevel,
       availableDays,
       equipment,
@@ -285,7 +288,7 @@ export default function OnboardingScreen() {
             {step === 1 && <StepName name={name} setName={setName} />}
             {step === 2 && (
               <StepBody age={age} setAge={setAge} weight={weight} setWeight={setWeight}
-                height={height} setHeight={setHeight} />
+                height={height} setHeight={setHeight} gender={gender} setGender={setGender} />
             )}
             {step === 3 && (
               <StepFitnessLevel value={fitnessLevel} onChange={setFitnessLevel} />
@@ -437,10 +440,11 @@ function StepName({ name, setName }: { name: string; setName: (v: string) => voi
   );
 }
 
-function StepBody({ age, setAge, weight, setWeight, height, setHeight }: {
+function StepBody({ age, setAge, weight, setWeight, height, setHeight, gender, setGender }: {
   age: string; setAge: (v: string) => void;
   weight: string; setWeight: (v: string) => void;
   height: string; setHeight: (v: string) => void;
+  gender: 'male' | 'female'; setGender: (v: 'male' | 'female') => void;
 }) {
   return (
     <View style={styles.stepContent}>
@@ -448,7 +452,27 @@ function StepBody({ age, setAge, weight, setWeight, height, setHeight }: {
         <Ionicons name="body-outline" size={32} color={Colors.primary} />
       </View>
       <Text style={styles.stepTitle}>Твої параметри</Text>
-      <Text style={styles.stepDesc}>Потрібно для розрахунку навантаження і норм</Text>
+      <Text style={styles.stepDesc}>Потрібно для розрахунку навантаження і норм харчування</Text>
+
+      <Text style={[styles.metricLabel, { alignSelf: 'flex-start', marginBottom: 8, marginTop: 8 }]}>Стать</Text>
+      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20, alignSelf: 'stretch' }}>
+        {(['male', 'female'] as const).map((g) => (
+          <TouchableOpacity
+            key={g}
+            style={[
+              styles.genderBtn,
+              gender === g && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary },
+            ]}
+            onPress={() => setGender(g)}
+          >
+            <Text style={{ fontSize: 28 }}>{g === 'male' ? '👨' : '👩'}</Text>
+            <Text style={[styles.genderBtnText, gender === g && { color: Colors.primary, fontWeight: '700' }]}>
+              {g === 'male' ? 'Чоловік' : 'Жінка'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <View style={styles.metricsGrid}>
         <MetricInput label="Вік" unit="років" value={age} onChange={setAge} placeholder="25" />
         <MetricInput label="Вага" unit="кг" value={weight} onChange={setWeight} placeholder="75" />
@@ -966,6 +990,12 @@ const styles = StyleSheet.create({
     width: '100%', textAlign: 'center',
   },
   metricUnit: { color: Colors.textMuted, fontSize: 12 },
+  genderBtn: {
+    flex: 1, flexDirection: 'column', alignItems: 'center', gap: 6,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border, padding: Spacing.md,
+  },
+  genderBtnText: { color: Colors.textSecondary, fontSize: 14 },
 
   // Fitness level
   levelCard: {

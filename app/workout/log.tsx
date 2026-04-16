@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, KeyboardAvoidingView, Platform, Alert, Modal, FlatList,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { addWorkout, getWorkouts, getLocalDateString } from '../../services/storage';
@@ -35,6 +35,7 @@ const RATINGS = [1, 2, 3, 4, 5] as const;
 export default function LogWorkoutScreen() {
   const router = useRouter();
   const { t } = useLocale();
+  const { repeatId } = useLocalSearchParams<{ repeatId?: string }>();
   const [workoutType, setWorkoutType] = useState<WorkoutType>('strength');
   const [date, setDate] = useState(() => getLocalDateString(new Date()));
   const [duration, setDuration] = useState('');
@@ -42,6 +43,7 @@ export default function LogWorkoutScreen() {
   const [rating, setRating] = useState<1 | 2 | 3 | 4 | 5 | undefined>(undefined);
   const [exercises, setExercises] = useState<ExerciseLog[]>([]);
   const [saving, setSaving] = useState(false);
+  const [repeatingFrom, setRepeatingFrom] = useState<string | null>(null); // workout type label for banner
 
   // Rest timer
   const [restTimerVisible, setRestTimerVisible] = useState(false);
@@ -76,6 +78,20 @@ export default function LogWorkoutScreen() {
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Load repeat workout if repeatId provided
+  useEffect(() => {
+    if (!repeatId) return;
+    getWorkouts().then((all) => {
+      const src = all.find((w) => w.id === repeatId);
+      if (!src) return;
+      setWorkoutType(src.workoutType as WorkoutType);
+      setExercises(src.exercises.map((e) => ({ ...e })));
+      setNotes(src.notes || '');
+      // Don't copy duration/rating/date — those are for the new session
+      setRepeatingFrom(src.workoutType);
+    });
+  }, [repeatId]);
 
   useEffect(() => {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
@@ -266,6 +282,13 @@ export default function LogWorkoutScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {repeatingFrom && (
+          <View style={styles.repeatBanner}>
+            <Ionicons name="copy-outline" size={14} color={Colors.primary} />
+            <Text style={styles.repeatBannerText}>Повторення тренування — відредагуй і збережи як нове</Text>
+          </View>
+        )}
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Workout Type */}
@@ -717,6 +740,12 @@ function renderExerciseGroups(
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  repeatBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: Colors.primary + '15', borderBottomWidth: 1,
+    borderBottomColor: Colors.primary + '30', paddingHorizontal: Spacing.md, paddingVertical: 8,
+  },
+  repeatBannerText: { color: Colors.primary, fontSize: 13, flex: 1 },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: Spacing.md, paddingTop: 56, paddingBottom: Spacing.md,

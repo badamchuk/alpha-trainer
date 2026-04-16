@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, RefreshControl, Dimensions,
-  TouchableOpacity, TextInput, Modal, Alert,
+  TouchableOpacity, TextInput, Modal, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -739,7 +739,7 @@ export default function ProgressScreen() {
 
       {/* Measurements modal */}
       <Modal visible={measureModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={[styles.modalCard, { width: '90%' }]}>
             <Text style={styles.modalTitle}>Заміри тіла (см)</Text>
             {[
@@ -768,12 +768,12 @@ export default function ProgressScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Weight log modal */}
       <Modal visible={weightModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Записати вагу</Text>
             <TextInput
@@ -795,7 +795,7 @@ export default function ProgressScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
   );
