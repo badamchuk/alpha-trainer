@@ -253,7 +253,7 @@ function WorkoutCard({ workout, onPress, onDelete, onRepeat }: {
           <Text style={styles.cardNotes} numberOfLines={2}>{workout.notes}</Text>
         ) : null}
 
-        <TouchableOpacity style={styles.repeatBtn} onPress={(e) => { e.stopPropagation(); onRepeat(); }}>
+        <TouchableOpacity style={styles.repeatBtn} onPress={onRepeat}>
           <Ionicons name="copy-outline" size={14} color={Colors.textMuted} />
           <Text style={styles.repeatBtnText}>Повторити з правками</Text>
         </TouchableOpacity>
