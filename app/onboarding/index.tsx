@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Alert, Switch, KeyboardAvoidingView, Platform,
-  Animated, Dimensions, Linking,
+  Animated, Dimensions, Linking, Modal,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
@@ -51,11 +52,14 @@ export default function OnboardingScreen() {
   const [backupLoading, setBackupLoading] = useState(false);
   const [step, setStep] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
+  const [profileTab, setProfileTab] = useState<'personal' | 'training' | 'ai'>('personal');
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   // Form state
   const [name, setName] = useState('');
-  const [age, setAge] = useState('');
+  const [age, setAge] = useState('');           // kept for wizard validation display
+  const [birthDate, setBirthDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
   const [gender, setGender] = useState<'male' | 'female'>('male');
@@ -88,6 +92,9 @@ export default function OnboardingScreen() {
         setEquipment(profile.equipment);
         setGeminiKey(profile.geminiApiKey || '');
         setGroqKey(profile.groqApiKey || '');
+        if (profile.birthDate) {
+          setBirthDate(new Date(profile.birthDate + 'T12:00:00'));
+        }
         if (profile.geminiApiKey) setKeyVerified(true);
         if (profile.groqApiKey) setGroqKeyVerified(true);
       }
@@ -112,7 +119,7 @@ export default function OnboardingScreen() {
       case 0: return null; // welcome
       case 1: return !name.trim() ? "Введи своє ім'я" : null;
       case 2:
-        if (!age || isNaN(Number(age)) || Number(age) < 10 || Number(age) > 100) return 'Введи коректний вік (10–100)';
+        if (!birthDate) return 'Вкажи дату народження';
         if (!weight || isNaN(Number(weight)) || Number(weight) < 30) return 'Введи коректну вагу';
         if (!height || isNaN(Number(height)) || Number(height) < 100) return 'Введи коректний зріст';
         return null;
@@ -172,7 +179,8 @@ export default function OnboardingScreen() {
   async function handleSave() {
     const profile: UserProfile = {
       name: name.trim(),
-      age: Number(age),
+      age: birthDate ? calcAgeFromDate(birthDate) : Number(age),
+      birthDate: birthDate ? birthDateStr(birthDate) : undefined,
       weight: Number(weight),
       height: Number(height),
       gender,
@@ -199,6 +207,50 @@ export default function OnboardingScreen() {
     }
 
     router.replace('/(tabs)');
+  }
+
+  function calcAgeFromDate(d: Date): number {
+    const today = new Date();
+    let years = today.getFullYear() - d.getFullYear();
+    const notYet = today.getMonth() < d.getMonth() ||
+      (today.getMonth() === d.getMonth() && today.getDate() < d.getDate());
+    if (notYet) years--;
+    return Math.max(10, years);
+  }
+
+  function birthDateStr(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  async function handleSaveEditing() {
+    if (!name.trim()) { Alert.alert('', "Введи своє ім'я"); return; }
+    if (!birthDate) { Alert.alert('', 'Вкажи дату народження'); return; }
+    if (!weight || isNaN(Number(weight)) || Number(weight) < 30) { Alert.alert('', 'Некоректна вага'); return; }
+    if (!height || isNaN(Number(height)) || Number(height) < 100) { Alert.alert('', 'Некоректний зріст'); return; }
+    if (availableDays.length === 0) { Alert.alert('', 'Вибери хоча б один день тренувань'); return; }
+
+    const profile: UserProfile = {
+      name: name.trim(),
+      age: calcAgeFromDate(birthDate),
+      birthDate: birthDateStr(birthDate),
+      weight: Number(weight), height: Number(height),
+      gender, fitnessLevel, availableDays, equipment,
+      geminiApiKey: geminiKey.trim(),
+      groqApiKey: groqKey.trim() || undefined,
+      onboardingComplete: true,
+    };
+    await saveUserProfile(profile);
+    if (geminiKey.trim()) initGemini(geminiKey.trim());
+    if (groqKey.trim()) initGroq(groqKey.trim());
+    if (enableNotifications) {
+      await scheduleWorkoutReminders(availableDays, Number(reminderHour), Number(reminderMinute));
+    }
+    const waterGoal = computeWaterGoal(profile);
+    await setWaterGoal(waterGoal);
+    const remindersFlag = await AsyncStorage.getItem('@alpha_trainer:water_reminders');
+    if (remindersFlag === 'true') await scheduleWaterReminders(waterGoal);
+
+    Alert.alert('Збережено', 'Профіль оновлено', [{ text: 'OK', onPress: () => router.back() }]);
   }
 
   async function handleExportBackup() {
@@ -254,6 +306,269 @@ export default function OnboardingScreen() {
     );
   }
 
+  // ─── EDITING MODE: 3-tab profile settings ──────────────────────────────────
+  if (isEditing) {
+    const TABS = [
+      { id: 'personal' as const, label: 'Особисті дані', icon: 'person-outline' as const },
+      { id: 'training' as const, label: 'Тренування', icon: 'barbell-outline' as const },
+      { id: 'ai' as const, label: 'AI-моделі', icon: 'sparkles-outline' as const },
+    ];
+
+    return (
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.container}>
+          {/* Header */}
+          <View style={[styles.header, { paddingTop: 52 }]}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={22} color={Colors.textSecondary} />
+            </TouchableOpacity>
+            <Text style={[styles.stepTitle, { fontSize: 20 }]}>Профіль</Text>
+            <View style={{ width: 40 }} />
+          </View>
+
+          {/* Tab bar */}
+          <View style={settingsStyles.tabBar}>
+            {TABS.map((tab) => (
+              <TouchableOpacity
+                key={tab.id}
+                style={[settingsStyles.tabBtn, profileTab === tab.id && settingsStyles.tabBtnActive]}
+                onPress={() => setProfileTab(tab.id)}
+              >
+                <Ionicons
+                  name={tab.icon}
+                  size={17}
+                  color={profileTab === tab.id ? Colors.primary : Colors.textMuted}
+                />
+                <Text style={[settingsStyles.tabLabel, profileTab === tab.id && settingsStyles.tabLabelActive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Tab content */}
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: Spacing.md, paddingBottom: 20, gap: Spacing.lg }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* ── Personal data ── */}
+            {profileTab === 'personal' && (
+              <>
+                {/* Language */}
+                <View style={settingsStyles.section}>
+                  <Text style={settingsStyles.sectionTitle}>Мова</Text>
+                  <Text style={styles.langSectionLabel}>{lang === 'uk' ? 'Мова додатку' : 'App language'}</Text>
+                  <View style={styles.langPicker}>
+                    {(['uk', 'en'] as Lang[]).map((l) => (
+                      <TouchableOpacity key={l} style={[styles.langBtn, lang === l && styles.langBtnActive]} onPress={() => changeLang(l)}>
+                        <Text style={[styles.langBtnText, lang === l && styles.langBtnTextActive]}>
+                          {l === 'uk' ? '🇺🇦 Українська' : '🇬🇧 English'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.langSectionLabel}>{lang === 'uk' ? 'Мова вправ' : 'Exercise names'}</Text>
+                  <View style={styles.langPicker}>
+                    {(['uk', 'en'] as Lang[]).map((l) => (
+                      <TouchableOpacity key={l} style={[styles.langBtn, exerciseLang === l && styles.langBtnActive]} onPress={() => changeExerciseLang(l)}>
+                        <Text style={[styles.langBtnText, exerciseLang === l && styles.langBtnTextActive]}>
+                          {l === 'uk' ? '🇺🇦 Українська' : '🇬🇧 English'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Name */}
+                <View style={settingsStyles.section}>
+                  <Text style={settingsStyles.sectionTitle}>Ім'я</Text>
+                  <TextInput
+                    style={styles.bigInput}
+                    placeholder="Твоє ім'я"
+                    placeholderTextColor={Colors.textMuted}
+                    value={name}
+                    onChangeText={setName}
+                    returnKeyType="done"
+                  />
+                </View>
+
+                {/* Gender */}
+                <View style={settingsStyles.section}>
+                  <Text style={settingsStyles.sectionTitle}>Стать</Text>
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    {(['male', 'female'] as const).map((g) => (
+                      <TouchableOpacity
+                        key={g}
+                        style={[styles.genderBtn, gender === g && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]}
+                        onPress={() => setGender(g)}
+                      >
+                        <Text style={{ fontSize: 28 }}>{g === 'male' ? '👨' : '👩'}</Text>
+                        <Text style={[styles.genderBtnText, gender === g && { color: Colors.primary, fontWeight: '700' }]}>
+                          {g === 'male' ? 'Чоловік' : 'Жінка'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Body params */}
+                <View style={settingsStyles.section}>
+                  <Text style={settingsStyles.sectionTitle}>Параметри тіла</Text>
+                  <Text style={settingsStyles.sectionHint}>Впливають на розрахунок TDEE та норм харчування</Text>
+                  <View style={styles.metricsGrid}>
+                    {/* Date of birth */}
+                    <TouchableOpacity style={[styles.metricCard, { flex: 1.3 }]} onPress={() => setShowDatePicker(true)}>
+                      <Text style={styles.metricLabel}>Дата народж.</Text>
+                      {birthDate ? (
+                        <>
+                          <Text style={[styles.metricInput, { fontSize: 15 }]}>
+                            {`${String(birthDate.getDate()).padStart(2, '0')}.${String(birthDate.getMonth() + 1).padStart(2, '0')}.${birthDate.getFullYear()}`}
+                          </Text>
+                          <Text style={styles.metricUnit}>{calcDisplayAge(birthDate)} років</Text>
+                        </>
+                      ) : (
+                        <Ionicons name="calendar-outline" size={28} color={Colors.primary} style={{ marginVertical: 4 }} />
+                      )}
+                    </TouchableOpacity>
+                    <MetricInput label="Вага" unit="кг" value={weight} onChange={setWeight} placeholder="75" />
+                    <MetricInput label="Зріст" unit="см" value={height} onChange={setHeight} placeholder="175" />
+                  </View>
+                </View>
+              </>
+            )}
+
+            {/* ── Training params ── */}
+            {profileTab === 'training' && (
+              <>
+                {/* Fitness level */}
+                <View style={settingsStyles.section}>
+                  <Text style={settingsStyles.sectionTitle}>Рівень підготовки</Text>
+                  {FITNESS_LEVELS.map((l) => (
+                    <TouchableOpacity
+                      key={l.id}
+                      style={[styles.levelCard, fitnessLevel === l.id && styles.levelCardActive]}
+                      onPress={() => setFitnessLevel(l.id as UserProfile['fitnessLevel'])}
+                    >
+                      <View style={[styles.levelIcon, fitnessLevel === l.id && styles.levelIconActive]}>
+                        <Ionicons name={l.icon as any} size={22} color={fitnessLevel === l.id ? Colors.primary : Colors.textMuted} />
+                      </View>
+                      <View style={styles.levelText}>
+                        <Text style={[styles.levelTitle, fitnessLevel === l.id && { color: Colors.primary }]}>{l.label}</Text>
+                        <Text style={styles.levelDesc}>{l.desc}</Text>
+                      </View>
+                      {fitnessLevel === l.id && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Days */}
+                <View style={settingsStyles.section}>
+                  <Text style={settingsStyles.sectionTitle}>Дні тренувань</Text>
+                  <View style={styles.daysGrid}>
+                    {WEEK_DAYS.map((d) => (
+                      <TouchableOpacity
+                        key={d.id}
+                        style={[styles.dayCard, availableDays.includes(d.id) && styles.dayCardActive]}
+                        onPress={() => toggleDay(d.id)}
+                      >
+                        <Text style={[styles.dayLabel, availableDays.includes(d.id) && styles.dayLabelActive]}>{d.label}</Text>
+                        {availableDays.includes(d.id) && (
+                          <View style={styles.dayCheck}><Ionicons name="checkmark" size={10} color="#FFF" /></View>
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.daysCount}>
+                    {availableDays.length > 0
+                      ? `Вибрано ${availableDays.length} ${availableDays.length === 1 ? 'день' : availableDays.length < 5 ? 'дні' : 'днів'} на тиждень`
+                      : 'Вибери хоча б один день'}
+                  </Text>
+                </View>
+
+                {/* Equipment */}
+                <View style={settingsStyles.section}>
+                  <Text style={settingsStyles.sectionTitle}>Обладнання</Text>
+                  <View style={styles.equipGrid}>
+                    {EQUIPMENT_OPTIONS.map((e) => (
+                      <TouchableOpacity
+                        key={e.id}
+                        style={[styles.equipCard, equipment.includes(e.id) && styles.equipCardActive]}
+                        onPress={() => toggleEquipment(e.id)}
+                      >
+                        <Ionicons name={e.icon as any} size={20} color={equipment.includes(e.id) ? Colors.primary : Colors.textMuted} />
+                        <Text style={[styles.equipLabel, equipment.includes(e.id) && { color: Colors.primary }]}>{e.id}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Notifications */}
+                <View style={styles.notifSection}>
+                  <View style={styles.notifRow}>
+                    <Ionicons name="notifications-outline" size={20} color={Colors.textSecondary} />
+                    <Text style={styles.notifLabel}>Нагадування про тренування</Text>
+                    <Switch
+                      value={enableNotifications}
+                      onValueChange={setEnableNotifications}
+                      trackColor={{ false: Colors.border, true: Colors.primary }}
+                      thumbColor="#FFF"
+                    />
+                  </View>
+                  {enableNotifications && (
+                    <View style={styles.timeRow}>
+                      <Text style={styles.timeLabel}>Час нагадування:</Text>
+                      <TextInput style={styles.timeInput} value={reminderHour} onChangeText={setReminderHour} keyboardType="numeric" maxLength={2} />
+                      <Text style={styles.timeSep}>:</Text>
+                      <TextInput style={styles.timeInput} value={reminderMinute} onChangeText={setReminderMinute} keyboardType="numeric" maxLength={2} />
+                    </View>
+                  )}
+                </View>
+              </>
+            )}
+
+            {/* ── AI models ── */}
+            {profileTab === 'ai' && (
+              <>
+                <StepGemini
+                  geminiKey={geminiKey} setGeminiKey={setGeminiKey}
+                  groqKey={groqKey} setGroqKey={setGroqKey}
+                  showKey={showKey} setShowKey={setShowKey}
+                  keyVerified={keyVerified} setKeyVerified={setKeyVerified}
+                  groqKeyVerified={groqKeyVerified} setGroqKeyVerified={setGroqKeyVerified}
+                  verifyKey={verifyKey} verifyGroqKey={verifyGroqKey}
+                  enableNotifications={false} setEnableNotifications={() => {}}
+                  reminderHour={reminderHour} setReminderHour={setReminderHour}
+                  reminderMinute={reminderMinute} setReminderMinute={setReminderMinute}
+                  name={name}
+                />
+                <BackupSection loading={backupLoading} onExport={handleExportBackup} onImport={handleImportBackup} />
+              </>
+            )}
+          </ScrollView>
+
+          {/* Save button */}
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.nextBtn} onPress={handleSaveEditing}>
+              <Ionicons name="checkmark-circle-outline" size={20} color="#FFF" />
+              <Text style={styles.nextBtnText}>Зберегти зміни</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Date picker */}
+        <BirthDatePickerModal
+          visible={showDatePicker}
+          value={birthDate}
+          onConfirm={(d) => { setBirthDate(d); setShowDatePicker(false); }}
+          onClose={() => setShowDatePicker(false)}
+        />
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ─── WIZARD MODE (new users) ──────────────────────────────────────────────────
   const isLastStep = step === TOTAL_STEPS - 1;
   const progress = (step / (TOTAL_STEPS - 1)) * 100;
 
@@ -287,7 +602,8 @@ export default function OnboardingScreen() {
             {step === 0 && <StepWelcome lang={lang} onLangChange={changeLang} exerciseLang={exerciseLang} onExerciseLangChange={changeExerciseLang} />}
             {step === 1 && <StepName name={name} setName={setName} />}
             {step === 2 && (
-              <StepBody age={age} setAge={setAge} weight={weight} setWeight={setWeight}
+              <StepBody birthDate={birthDate} onOpenDatePicker={() => setShowDatePicker(true)}
+                weight={weight} setWeight={setWeight}
                 height={height} setHeight={setHeight} gender={gender} setGender={setGender} />
             )}
             {step === 3 && (
@@ -347,9 +663,116 @@ export default function OnboardingScreen() {
         </View>
 
       </View>
+
+      {/* Date picker */}
+      <BirthDatePickerModal
+        visible={showDatePicker}
+        value={birthDate}
+        onConfirm={(d) => { setBirthDate(d); setShowDatePicker(false); }}
+        onClose={() => setShowDatePicker(false)}
+      />
     </KeyboardAvoidingView>
   );
 }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function calcDisplayAge(d: Date): number {
+  const today = new Date();
+  let years = today.getFullYear() - d.getFullYear();
+  const notYet = today.getMonth() < d.getMonth() ||
+    (today.getMonth() === d.getMonth() && today.getDate() < d.getDate());
+  if (notYet) years--;
+  return Math.max(0, years);
+}
+
+// ─── BirthDate picker ────────────────────────────────────────────────────────
+
+function BirthDatePickerModal({
+  visible, value, onConfirm, onClose,
+}: {
+  visible: boolean;
+  value: Date | null;
+  onConfirm: (d: Date) => void;
+  onClose: () => void;
+}) {
+  const [temp, setTemp] = useState<Date>(value ?? new Date(2000, 0, 1));
+
+  // Sync temp when modal opens
+  useEffect(() => {
+    if (visible) setTemp(value ?? new Date(2000, 0, 1));
+  }, [visible]);
+
+  const maxDate = new Date();
+  maxDate.setFullYear(maxDate.getFullYear() - 10);
+  const minDate = new Date();
+  minDate.setFullYear(minDate.getFullYear() - 100);
+
+  if (!visible) return null;
+
+  if (Platform.OS === 'android') {
+    return (
+      <DateTimePicker
+        value={temp}
+        mode="date"
+        display="spinner"
+        maximumDate={maxDate}
+        minimumDate={minDate}
+        onChange={(_, date) => {
+          if (date) onConfirm(date);
+          else onClose();
+        }}
+      />
+    );
+  }
+
+  // iOS — show in a modal sheet
+  return (
+    <Modal transparent animationType="slide" visible={visible}>
+      <TouchableOpacity style={bpStyles.backdrop} activeOpacity={1} onPress={onClose} />
+      <View style={bpStyles.sheet}>
+        <View style={bpStyles.sheetHeader}>
+          <TouchableOpacity onPress={onClose}>
+            <Text style={bpStyles.cancelBtn}>Скасувати</Text>
+          </TouchableOpacity>
+          <Text style={bpStyles.sheetTitle}>Дата народження</Text>
+          <TouchableOpacity onPress={() => onConfirm(temp)}>
+            <Text style={bpStyles.doneBtn}>Готово</Text>
+          </TouchableOpacity>
+        </View>
+        <DateTimePicker
+          value={temp}
+          mode="date"
+          display="spinner"
+          maximumDate={maxDate}
+          minimumDate={minDate}
+          onChange={(_, date) => { if (date) setTemp(date); }}
+          style={{ width: '100%' }}
+          locale="uk"
+        />
+      </View>
+    </Modal>
+  );
+}
+
+const bpStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  sheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    paddingBottom: 32,
+  },
+  sheetHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  sheetTitle: { color: Colors.textPrimary, fontWeight: '700', fontSize: 16 },
+  cancelBtn: { color: Colors.textSecondary, fontSize: 15 },
+  doneBtn: { color: Colors.primary, fontSize: 15, fontWeight: '700' },
+});
 
 // ─── STEPS ────────────────────────────────────────────────────────────────────
 
@@ -440,12 +863,14 @@ function StepName({ name, setName }: { name: string; setName: (v: string) => voi
   );
 }
 
-function StepBody({ age, setAge, weight, setWeight, height, setHeight, gender, setGender }: {
-  age: string; setAge: (v: string) => void;
+function StepBody({ birthDate, onOpenDatePicker, weight, setWeight, height, setHeight, gender, setGender }: {
+  birthDate: Date | null; onOpenDatePicker: () => void;
   weight: string; setWeight: (v: string) => void;
   height: string; setHeight: (v: string) => void;
   gender: 'male' | 'female'; setGender: (v: 'male' | 'female') => void;
 }) {
+  const ageDisplay = birthDate ? calcDisplayAge(birthDate) : null;
+
   return (
     <View style={styles.stepContent}>
       <View style={styles.stepIcon}>
@@ -459,10 +884,7 @@ function StepBody({ age, setAge, weight, setWeight, height, setHeight, gender, s
         {(['male', 'female'] as const).map((g) => (
           <TouchableOpacity
             key={g}
-            style={[
-              styles.genderBtn,
-              gender === g && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary },
-            ]}
+            style={[styles.genderBtn, gender === g && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]}
             onPress={() => setGender(g)}
           >
             <Text style={{ fontSize: 28 }}>{g === 'male' ? '👨' : '👩'}</Text>
@@ -474,7 +896,20 @@ function StepBody({ age, setAge, weight, setWeight, height, setHeight, gender, s
       </View>
 
       <View style={styles.metricsGrid}>
-        <MetricInput label="Вік" unit="років" value={age} onChange={setAge} placeholder="25" />
+        {/* Date of birth card */}
+        <TouchableOpacity style={[styles.metricCard, { flex: 1.3 }]} onPress={onOpenDatePicker}>
+          <Text style={styles.metricLabel}>Дата народж.</Text>
+          {birthDate ? (
+            <>
+              <Text style={[styles.metricInput, { fontSize: 15 }]}>
+                {`${String(birthDate.getDate()).padStart(2, '0')}.${String(birthDate.getMonth() + 1).padStart(2, '0')}.${birthDate.getFullYear()}`}
+              </Text>
+              <Text style={styles.metricUnit}>{ageDisplay} років</Text>
+            </>
+          ) : (
+            <Ionicons name="calendar-outline" size={28} color={Colors.primary} style={{ marginVertical: 4 }} />
+          )}
+        </TouchableOpacity>
         <MetricInput label="Вага" unit="кг" value={weight} onChange={setWeight} placeholder="75" />
         <MetricInput label="Зріст" unit="см" value={height} onChange={setHeight} placeholder="175" />
       </View>
@@ -1131,4 +1566,32 @@ const styles = StyleSheet.create({
     textAlign: 'center', fontWeight: '700',
   },
   timeSep: { color: Colors.textPrimary, fontSize: 20, fontWeight: '700' },
+});
+
+// ─── Settings mode styles ─────────────────────────────────────────────────────
+
+const settingsStyles = StyleSheet.create({
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: Colors.background,
+  },
+  tabBtn: {
+    flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: Spacing.sm, gap: 3,
+    borderBottomWidth: 2, borderBottomColor: 'transparent',
+  },
+  tabBtnActive: { borderBottomColor: Colors.primary },
+  tabLabel: { color: Colors.textMuted, fontSize: 11, fontWeight: '600' },
+  tabLabelActive: { color: Colors.primary },
+  section: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: Spacing.md, gap: Spacing.sm,
+  },
+  sectionTitle: {
+    color: Colors.textPrimary, fontSize: 15, fontWeight: '700', marginBottom: 2,
+  },
+  sectionHint: { color: Colors.textMuted, fontSize: 12, marginBottom: Spacing.xs },
 });

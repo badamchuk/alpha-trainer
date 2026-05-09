@@ -5,6 +5,7 @@ import {
   Platform, Alert, Modal, ScrollView,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
@@ -12,10 +13,11 @@ import {
   getUserProfile, getGoals, getRecentWorkouts,
   getChatHistory, saveChatHistory, clearChatHistory, saveTrainingPlan,
   getWeightLog, getPersonalRecords,
+  getCachedTrainerContext, saveTrainerContextCache,
 } from '../../services/storage';
-import { getNutritionHistory, getDailyTotals } from '../../services/nutrition';
-import { chatStream as geminiChatStream, initGemini, generateTrainingPlan as geminiGeneratePlan, extractMemoryNote as geminiExtractNote } from '../../services/gemini';
-import { chatStream as groqChatStream, initGroq, generateTrainingPlan as groqGeneratePlan, extractMemoryNote as groqExtractNote } from '../../services/groq';
+import { getNutritionHistory, getDailyTotals, getNutritionGoals } from '../../services/nutrition';
+import { chatStream as geminiChatStream, initGemini, generateTrainingPlan as geminiGeneratePlan, extractMemoryNote as geminiExtractNote, generateTrainerContext as geminiGenerateContext } from '../../services/gemini';
+import { chatStream as groqChatStream, initGroq, generateTrainingPlan as groqGeneratePlan, extractMemoryNote as groqExtractNote, generateTrainerContext as groqGenerateContext } from '../../services/groq';
 import { getMemoryEntries, addMemoryEntry, buildMemoryContext } from '../../services/aiMemory';
 import { createPlanFromAIText } from '../../services/planParser';
 import { ChatMessage, UserProfile } from '../../types';
@@ -39,6 +41,7 @@ function looksLikePlan(text: string): boolean {
 export default function TrainerScreen() {
   const router = useRouter();
   const { t } = useLocale();
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,17 +54,26 @@ export default function TrainerScreen() {
   const [planSaved, setPlanSaved] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
+  // Trainer context card
+  const [ctxText, setCtxText]         = useState<string | null>(null);
+  const [ctxTs, setCtxTs]             = useState<number | null>(null);
+  const [ctxLoading, setCtxLoading]   = useState(false);
+  const ctxExpandedRef                = useRef(true);
+  const [ctxExpanded, setCtxExpanded] = useState(true);
+
   useFocusEffect(
     useCallback(() => {
+      setCtxExpanded(ctxExpandedRef.current);
       async function load() {
-        const [p, history, memEntries, allWorkouts, wl, recs, nutHist] = await Promise.all([
+        const [p, history, memEntries, allWorkouts, wl, recs, nutHist, nutGoals] = await Promise.all([
           getUserProfile(), getChatHistory(), getMemoryEntries(),
           getRecentWorkouts(100), getWeightLog(), getPersonalRecords(),
-          getNutritionHistory(3),
+          getNutritionHistory(5), getNutritionGoals(),
         ]);
         setProfile(p);
         setMessages(history);
-        setMemoryBlock(buildMemoryContext(memEntries, allWorkouts, wl, recs));
+        const mem = buildMemoryContext(memEntries, allWorkouts, wl, recs);
+        setMemoryBlock(mem);
 
         if (nutHist.length > 0) {
           const summary = nutHist.map((d) => {
@@ -72,6 +84,29 @@ export default function TrainerScreen() {
         }
         if (p?.geminiApiKey) initGemini(p.geminiApiKey);
         if (p?.groqApiKey) initGroq(p.groqApiKey);
+
+        // Load or generate trainer context
+        if (p?.geminiApiKey || p?.groqApiKey) {
+          const cached = await getCachedTrainerContext();
+          if (cached) {
+            setCtxText(cached.text);
+            setCtxTs(cached.ts);
+          } else {
+            setCtxLoading(true);
+            try {
+              const recent7 = allWorkouts.slice(0, 7);
+              const nutDays = nutHist.map((d) => { const t = getDailyTotals(d); return { date: d.date, ...t }; });
+              const goalCal = nutGoals?.calories ?? null;
+              const text = p?.groqApiKey
+                ? await groqGenerateContext(p, await getGoals(), recent7, nutDays, wl, goalCal, mem)
+                : await geminiGenerateContext(p!, await getGoals(), recent7, nutDays, wl, goalCal, mem);
+              setCtxText(text);
+              setCtxTs(Date.now());
+              await saveTrainerContextCache(text);
+            } catch { /* silently skip if API unavailable */ }
+            finally { setCtxLoading(false); }
+          }
+        }
       }
       load();
     }, [])
@@ -207,6 +242,28 @@ export default function TrainerScreen() {
     }
   }
 
+  async function refreshContext() {
+    if (!profile || ctxLoading) return;
+    setCtxLoading(true);
+    try {
+      const [goals, recent7, wl, nutHist, nutGoals, memEntries, allWorkouts, recs] = await Promise.all([
+        getGoals(), getRecentWorkouts(7), getWeightLog(),
+        getNutritionHistory(5), getNutritionGoals(),
+        getMemoryEntries(), getRecentWorkouts(100), getPersonalRecords(),
+      ]);
+      const mem = buildMemoryContext(memEntries, allWorkouts, wl, recs);
+      const nutDays = nutHist.map((d) => { const t = getDailyTotals(d); return { date: d.date, ...t }; });
+      const goalCal = nutGoals?.calories ?? null;
+      const text = profile.groqApiKey
+        ? await groqGenerateContext(profile, goals, recent7, nutDays, wl, goalCal, mem)
+        : await geminiGenerateContext(profile, goals, recent7, nutDays, wl, goalCal, mem);
+      setCtxText(text);
+      setCtxTs(Date.now());
+      await saveTrainerContextCache(text);
+    } catch { /* ignore */ }
+    finally { setCtxLoading(false); }
+  }
+
   const handleClear = () => {
     Alert.alert(t('trainerClear'), t('trainerClearConfirm'), [
       { text: t('cancel'), style: 'cancel' },
@@ -228,7 +285,7 @@ export default function TrainerScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
     >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerLeft}>
           <View style={styles.aiAvatar}>
             <Ionicons name="sparkles" size={18} color={Colors.primary} />
@@ -246,6 +303,43 @@ export default function TrainerScreen() {
           )}
         </View>
       </View>
+
+      {/* Trainer context card */}
+      {(ctxText || ctxLoading) && (profile?.geminiApiKey || profile?.groqApiKey) && (
+        <View style={styles.ctxCard}>
+          <TouchableOpacity style={[styles.ctxHeader, ctxExpanded && styles.ctxHeaderExpanded]} onPress={() => { const next = !ctxExpanded; ctxExpandedRef.current = next; setCtxExpanded(next); }} activeOpacity={0.7}>
+            <View style={styles.ctxBadge}>
+              <Ionicons name="sparkles" size={11} color={Colors.primary} />
+              <Text style={styles.ctxBadgeText}>AI-аналіз</Text>
+            </View>
+            <View style={styles.ctxHeaderRight}>
+              {ctxTs && !ctxLoading && ctxExpanded && (
+                <Text style={styles.ctxTime}>
+                  {Math.round((Date.now() - ctxTs) / 60000) < 2
+                    ? 'щойно'
+                    : `${Math.round((Date.now() - ctxTs) / 60000)} хв тому`}
+                </Text>
+              )}
+              {ctxExpanded && (
+                <TouchableOpacity onPress={refreshContext} disabled={ctxLoading} style={styles.ctxRefreshBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  {ctxLoading
+                    ? <ActivityIndicator size={13} color={Colors.textMuted} />
+                    : <Ionicons name="refresh-outline" size={15} color={Colors.textMuted} />}
+                </TouchableOpacity>
+              )}
+              <Ionicons
+                name={ctxExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+                size={15} color={Colors.textMuted}
+              />
+            </View>
+          </TouchableOpacity>
+          {ctxExpanded && (
+            ctxLoading && !ctxText
+              ? <Text style={styles.ctxLoading}>Аналізую твою активність…</Text>
+              : <Text style={styles.ctxText}>{ctxText}</Text>
+          )}
+        </View>
+      )}
 
       {/* Messages */}
       {messages.length === 0 ? (
@@ -300,6 +394,10 @@ export default function TrainerScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messagesList}
           onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          removeClippedSubviews
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          initialNumToRender={15}
           renderItem={({ item }) => (
             <MessageBubble
               message={item}
@@ -421,7 +519,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingTop: 56, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.md, paddingTop: 8, paddingBottom: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
@@ -536,4 +634,25 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
   },
   sendBtnDisabled: { backgroundColor: Colors.border },
+
+  // Trainer context card
+  ctxCard: {
+    marginHorizontal: Spacing.md, marginTop: Spacing.sm, marginBottom: 2,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: Spacing.md,
+  },
+  ctxHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  ctxHeaderExpanded: { marginBottom: 8 },
+  ctxBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(230,57,70,0.1)', paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+  },
+  ctxBadgeText: { color: Colors.primary, fontSize: 11, fontWeight: '700' },
+  ctxHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ctxTime: { color: Colors.textMuted, fontSize: 11 },
+  ctxRefreshBtn: { padding: 2 },
+  ctxText: { color: Colors.textSecondary, fontSize: 13, lineHeight: 19 },
+  ctxLoading: { color: Colors.textMuted, fontSize: 13, fontStyle: 'italic' },
 });

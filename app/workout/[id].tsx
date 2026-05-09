@@ -4,6 +4,7 @@ import {
   TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, parseISO } from 'date-fns';
 import { uk } from 'date-fns/locale';
@@ -50,6 +51,7 @@ const WORKOUT_TYPES: { id: WorkoutType; label: string; icon: string }[] = [
 export default function WorkoutDetailScreen() {
   const router = useRouter();
   const { t } = useLocale();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [workout, setWorkout] = useState<WorkoutEntry | null>(null);
   const [editing, setEditing] = useState(false);
@@ -214,7 +216,7 @@ export default function WorkoutDetailScreen() {
   if (!workout) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
@@ -239,7 +241,7 @@ export default function WorkoutDetailScreen() {
     return (
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.container}>
-          <View style={styles.header}>
+          <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity onPress={cancelEdit}>
               <Ionicons name="close" size={24} color={Colors.textSecondary} />
             </TouchableOpacity>
@@ -669,7 +671,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingTop: 56, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.md, paddingTop: 8, paddingBottom: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   headerTitle: { ...Typography.h3 },

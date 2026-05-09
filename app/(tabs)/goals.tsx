@@ -4,6 +4,7 @@ import {
   Modal, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
@@ -23,6 +24,7 @@ const GOAL_TYPES = [
 
 export default function GoalsScreen() {
   const { t } = useLocale();
+  const insets = useSafeAreaInsets();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
@@ -102,7 +104,7 @@ export default function GoalsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Text style={styles.title}>{t('goalsTitle')}</Text>
         <TouchableOpacity style={styles.addBtn} onPress={openNew}>
           <Ionicons name="add" size={22} color="#FFF" />
@@ -147,7 +149,7 @@ export default function GoalsScreen() {
       {/* Add/Edit Modal */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView style={styles.modal} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalHeader}>
+          <View style={[styles.modalHeader, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity onPress={() => setModalVisible(false)}>
               <Text style={styles.cancelBtn}>{t('cancel')}</Text>
             </TouchableOpacity>
@@ -256,7 +258,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingTop: 56, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.md, paddingTop: 8, paddingBottom: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   title: { ...Typography.h2 },
@@ -293,7 +295,7 @@ const styles = StyleSheet.create({
   modal: { flex: 1, backgroundColor: Colors.background },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingTop: 56, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.md, paddingTop: 8, paddingBottom: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   modalTitle: { ...Typography.h3 },

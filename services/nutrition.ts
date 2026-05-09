@@ -47,11 +47,27 @@ export interface NutritionGoals {
 
 // ─── Goal Calculation ─────────────────────────────────────────────────────────
 
+/** Returns current age in full years. Uses birthDate if available, falls back to profile.age. */
+export function getAgeFromProfile(profile: UserProfile): number {
+  if (profile.birthDate) {
+    const birth = new Date(profile.birthDate + 'T12:00:00');
+    const today = new Date();
+    let years = today.getFullYear() - birth.getFullYear();
+    const notYetBirthday =
+      today.getMonth() < birth.getMonth() ||
+      (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate());
+    if (notYetBirthday) years--;
+    return Math.max(10, years);
+  }
+  return profile.age;
+}
+
 export function calculateNutritionGoals(
   profile: UserProfile,
   mode: NutritionMode = 'maintain',
 ): NutritionGoals {
-  const { weight, height, age } = profile;
+  const { weight, height } = profile;
+  const age = getAgeFromProfile(profile);
 
   // Mifflin-St Jeor BMR: male +5, female −161
   const genderOffset = profile.gender === 'female' ? -161 : 5;
@@ -200,4 +216,191 @@ export function getDailyTotals(daily: DailyNutrition) {
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
   );
+}
+
+// ─── Adaptive TDEE ────────────────────────────────────────────────────────────
+// MacroFactor-style: compare expected vs actual weight change to estimate real TDEE
+// Uses at least 2 weeks of weight + calorie data for meaningful results.
+
+export interface AdaptiveTDEEResult {
+  estimatedTDEE: number;       // kcal/day
+  weeksAnalyzed: number;
+  avgDailyCalories: number;
+  weeklyWeightDelta: number;   // kg/week (negative = losing)
+  confidence: 'low' | 'medium' | 'high';
+  suggestion?: string;         // human-readable advice
+}
+
+export async function computeAdaptiveTDEE(
+  weightLog: { date: string; weight: number }[],
+  nutritionGoals: NutritionGoals | null,
+): Promise<AdaptiveTDEEResult | null> {
+  if (weightLog.length < 4) return null;
+
+  const all = await getAllNutrition();
+  if (all.length < 7) return null;
+
+  // Sort data
+  const sortedWeight = [...weightLog].sort((a, b) => a.date.localeCompare(b.date));
+  const sortedNutrition = [...all].sort((a, b) => a.date.localeCompare(b.date));
+
+  // Determine analysis window: last 28 days (4 weeks)
+  const endDate = sortedWeight[sortedWeight.length - 1].date;
+  const startDate = (() => {
+    const d = new Date(endDate + 'T12:00:00');
+    d.setDate(d.getDate() - 28);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  })();
+
+  const weightInWindow = sortedWeight.filter((w) => w.date >= startDate && w.date <= endDate);
+  const nutritionInWindow = sortedNutrition.filter((n) => n.date >= startDate && n.date <= endDate);
+
+  if (weightInWindow.length < 2 || nutritionInWindow.length < 5) return null;
+
+  // Calculate average daily calories
+  const totalCal = nutritionInWindow.reduce((sum, d) => sum + getDailyTotals(d).calories, 0);
+  const avgDailyCalories = Math.round(totalCal / nutritionInWindow.length);
+
+  if (avgDailyCalories < 500) return null; // clearly incomplete data
+
+  // Calculate weight change over the window
+  const firstWeight = weightInWindow[0].weight;
+  const lastWeight = weightInWindow[weightInWindow.length - 1].weight;
+  const totalDays = Math.max(1, Math.round(
+    (new Date(endDate + 'T12:00:00').getTime() - new Date(weightInWindow[0].date + 'T12:00:00').getTime())
+    / (1000 * 60 * 60 * 24)
+  ));
+
+  const weightDeltaKg = lastWeight - firstWeight;
+  const weeklyWeightDelta = Math.round((weightDeltaKg / totalDays) * 7 * 100) / 100;
+
+  // TDEE estimation: 7700 kcal = 1 kg body mass change (approximate)
+  // TDEE = avgCal - (weightDeltaKg / totalDays) * 7700
+  const estimatedTDEE = Math.round(avgDailyCalories - (weightDeltaKg / totalDays) * 7700);
+
+  const weeksAnalyzed = Math.round(totalDays / 7);
+
+  // Confidence based on data richness
+  const confidence: AdaptiveTDEEResult['confidence'] =
+    weeksAnalyzed >= 3 && nutritionInWindow.length >= 14 ? 'high' :
+    weeksAnalyzed >= 2 && nutritionInWindow.length >= 7 ? 'medium' : 'low';
+
+  // Suggestion
+  let suggestion: string | undefined;
+  if (nutritionGoals && confidence !== 'low') {
+    const currentGoalTDEE = nutritionGoals.calories + (
+      nutritionGoals.mode === 'cut' ? 350 :
+      nutritionGoals.mode === 'bulk' ? -275 : 0
+    );
+    const diff = estimatedTDEE - currentGoalTDEE;
+    if (Math.abs(diff) > 150) {
+      const dir = diff > 0 ? 'вище' : 'нижче';
+      suggestion = `Твій реальний TDEE ~${estimatedTDEE} ккал — ${Math.abs(diff)} ккал ${dir} від поточних налаштувань. Оновити ціль?`;
+    }
+  }
+
+  return { estimatedTDEE, weeksAnalyzed, avgDailyCalories, weeklyWeightDelta, confidence, suggestion };
+}
+
+// ─── Food → Performance correlation ──────────────────────────────────────────
+
+export interface FoodCorrelationInsight {
+  metric: string;          // e.g. "Силове тренування"
+  highCalDays: number;     // workouts after high-cal days
+  lowCalDays: number;      // workouts after low-cal days
+  avgRatingHighCal: number;
+  avgRatingLowCal: number;
+  avgDurationHighCal: number;
+  avgDurationLowCal: number;
+  insight: string;
+}
+
+export function computeFoodCorrelation(
+  nutritionHistory: DailyNutrition[],
+  workouts: { date: string; workoutType: string; duration: number; rating?: number }[],
+  calorieGoal: number,
+): FoodCorrelationInsight[] {
+  if (nutritionHistory.length < 7 || workouts.length < 5) return [];
+
+  // Build a map of date → calories
+  const calByDate = new Map<string, number>();
+  for (const d of nutritionHistory) {
+    calByDate.set(d.date, getDailyTotals(d).calories);
+  }
+
+  // For each workout, find the calorie intake the day BEFORE
+  type WorkoutSample = { highCal: boolean; rating: number; duration: number };
+  const strengthSamples: WorkoutSample[] = [];
+  const cardioSamples: WorkoutSample[] = [];
+
+  for (const w of workouts) {
+    const prevDate = (() => {
+      const d = new Date(w.date + 'T12:00:00');
+      d.setDate(d.getDate() - 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    })();
+
+    const prevCal = calByDate.get(prevDate);
+    if (!prevCal || prevCal < 100) continue;
+
+    const highCal = prevCal >= calorieGoal * 0.85;
+    const sample: WorkoutSample = {
+      highCal,
+      rating: w.rating ?? 3,
+      duration: w.duration ?? 0,
+    };
+
+    if (['strength', 'crossfit', 'hiit'].includes(w.workoutType)) {
+      strengthSamples.push(sample);
+    } else if (['cardio', 'run', 'cycling'].includes(w.workoutType)) {
+      cardioSamples.push(sample);
+    }
+  }
+
+  const insights: FoodCorrelationInsight[] = [];
+
+  function buildInsight(samples: WorkoutSample[], label: string): FoodCorrelationInsight | null {
+    const high = samples.filter((s) => s.highCal);
+    const low = samples.filter((s) => !s.highCal);
+    if (high.length < 2 || low.length < 2) return null;
+
+    const avgRating = (arr: WorkoutSample[]) => arr.reduce((s, x) => s + x.rating, 0) / arr.length;
+    const avgDur = (arr: WorkoutSample[]) => Math.round(arr.reduce((s, x) => s + x.duration, 0) / arr.length);
+
+    const rh = Math.round(avgRating(high) * 10) / 10;
+    const rl = Math.round(avgRating(low) * 10) / 10;
+    const dh = avgDur(high);
+    const dl = avgDur(low);
+
+    let insight: string;
+    if (rh > rl + 0.3) {
+      insight = `Після дня з ≥85% нормою ккал оцінки вищі (${rh} vs ${rl}). Не скорочуй вуглеводи перед тренуванням.`;
+    } else if (rl > rh + 0.3) {
+      insight = `Ти тренуєшся краще в легший день харчування (оцінка ${rl} vs ${rh}).`;
+    } else if (dh > dl + 5) {
+      insight = `Після хорошого харчування тренування на ${dh - dl} хв довші в середньому.`;
+    } else {
+      return null; // no meaningful correlation
+    }
+
+    return {
+      metric: label, highCalDays: high.length, lowCalDays: low.length,
+      avgRatingHighCal: rh, avgRatingLowCal: rl,
+      avgDurationHighCal: dh, avgDurationLowCal: dl,
+      insight,
+    };
+  }
+
+  const si = buildInsight(strengthSamples, 'Силові тренування');
+  const ci = buildInsight(cardioSamples, 'Кардіо / Біг');
+  if (si) insights.push(si);
+  if (ci) insights.push(ci);
+
+  return insights;
 }

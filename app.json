@@ -32,6 +32,19 @@
     "plugins": [
       "expo-router",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "AlphaTrainer використовує камеру для сканування штрих-кодів та фото-логування їжі."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AlphaTrainer використовує галерею для фото-логування їжі.",
+          "cameraPermission": "AlphaTrainer використовує камеру для фото-логування їжі."
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/icon.png",

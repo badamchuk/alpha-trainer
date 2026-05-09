@@ -11,6 +11,7 @@ const KEYS = {
   DAILY_ADVICE: '@alpha_trainer:daily_advice',
   WEIGHT_LOG: '@alpha_trainer:weight_log',
   MEASUREMENTS: '@alpha_trainer:measurements',
+  TRAINER_CONTEXT: '@alpha_trainer:trainer_context',
 };
 
 // --- User Profile ---
@@ -146,6 +147,25 @@ export async function getCachedDailyAdvice(): Promise<string | null> {
 export async function saveDailyAdviceCache(text: string): Promise<void> {
   const cache: DailyAdviceCache = { date: getLocalDateString(new Date()), text };
   await AsyncStorage.setItem(KEYS.DAILY_ADVICE, JSON.stringify(cache));
+}
+
+// --- Trainer Context Cache (2-hour TTL) ---
+const TRAINER_CONTEXT_TTL = 2 * 60 * 60 * 1000; // 2 hours
+
+export async function getCachedTrainerContext(): Promise<{ text: string; ts: number } | null> {
+  const json = await AsyncStorage.getItem(KEYS.TRAINER_CONTEXT);
+  if (!json) return null;
+  const cache: { text: string; ts: number } = JSON.parse(json);
+  if (Date.now() - cache.ts > TRAINER_CONTEXT_TTL) return null;
+  return cache;
+}
+
+export async function saveTrainerContextCache(text: string): Promise<void> {
+  await AsyncStorage.setItem(KEYS.TRAINER_CONTEXT, JSON.stringify({ text, ts: Date.now() }));
+}
+
+export async function clearTrainerContextCache(): Promise<void> {
+  await AsyncStorage.removeItem(KEYS.TRAINER_CONTEXT);
 }
 
 // --- Weight Log ---

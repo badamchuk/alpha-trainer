@@ -1,10 +1,13 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   TextInput, Alert, Modal, ActivityIndicator, RefreshControl, FlatList,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { readAsStringAsync } from 'expo-file-system';
 import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getUserProfile } from '../../services/storage';
@@ -32,6 +35,8 @@ import {
 } from '../../services/storage';
 import { getMemoryEntries, buildMemoryContext } from '../../services/aiMemory';
 import { ChatMessage } from '../../types';
+import { analyzePhotoNutrition, PhotoAnalysisError } from '../../services/foodAI';
+import BarcodeScannerModal from '../../components/BarcodeScannerModal';
 
 const MODE_LABELS: Record<NutritionMode, string> = {
   cut: 'Схуднення', maintain: 'Підтримка', bulk: 'Набір',
@@ -59,6 +64,7 @@ function addDays(dateStr: string, n: number): string {
 }
 
 export default function NutritionScreen() {
+  const insets = useSafeAreaInsets();
   const today = getLocalDateString(new Date());
   const [selectedDate, setSelectedDate] = useState(today);
   const [daily, setDaily] = useState<DailyNutrition>({ date: today, meals: [] });
@@ -74,6 +80,11 @@ export default function NutritionScreen() {
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState<NutritionParseResult | null>(null);
   const [mealName, setMealName] = useState('');
+
+  // Barcode scanner
+  const [barcodeVisible, setBarcodeVisible] = useState(false);
+  // Photo loading state
+  const [photoLoading, setPhotoLoading] = useState(false);
 
   // Goals modal
   const [goalsVisible, setGoalsVisible] = useState(false);
@@ -91,6 +102,16 @@ export default function NutritionScreen() {
   const [nutInput, setNutInput] = useState('');
   const [nutLoading, setNutLoading] = useState(false);
   const nutListRef = useRef<FlatList>(null);
+
+  // Lazy mount — модалі монтуються в DOM лише при першому відкритті
+  const [addMounted, setAddMounted] = useState(false);
+  const [goalsMounted, setGoalsMounted] = useState(false);
+  const [nutritionistMounted, setNutritionistMounted] = useState(false);
+  const [libraryMounted, setLibraryMounted] = useState(false);
+  useEffect(() => { if (addVisible) setAddMounted(true); }, [addVisible]);
+  useEffect(() => { if (goalsVisible) setGoalsMounted(true); }, [goalsVisible]);
+  useEffect(() => { if (nutritionistVisible) setNutritionistMounted(true); }, [nutritionistVisible]);
+  useEffect(() => { if (libraryVisible) setLibraryMounted(true); }, [libraryVisible]);
 
   async function loadData(date?: string) {
     const targetDate = date ?? selectedDate;
@@ -278,6 +299,110 @@ export default function NutritionScreen() {
     setGoalsVisible(false);
   }
 
+  function handleBarcodeResult(params: {
+    name: string; calories: number; protein: number; carbs: number; fat: number; fiber?: number;
+  }) {
+    const { name, calories, protein, carbs, fat, fiber } = params;
+    setParsed({
+      meals: [{ name, qty: '1 порція', calories, protein, carbs, fat, fiber: fiber ?? 0 }],
+      total: { calories, protein, carbs, fat, fiber: fiber ?? 0 },
+    });
+    setFoodText(name);
+    if (!mealName) setMealName(name);
+    setBarcodeVisible(false);
+    setAddVisible(true);
+  }
+
+  function applyPhotoAnalysis(analysis: Awaited<ReturnType<typeof analyzePhotoNutrition>>) {
+    if (!analysis) {
+      Alert.alert('Не їжа', 'AI не розпізнав їжу на фото. Сфотографуй страву ближче.');
+      return;
+    }
+    setParsed({
+      meals: analysis.items.map((it) => ({
+        name: it.name, qty: it.qty,
+        calories: it.calories, protein: it.protein, carbs: it.carbs, fat: it.fat, fiber: it.fiber ?? 0,
+      })),
+      total: {
+        calories: analysis.totalCalories, protein: analysis.totalProtein,
+        carbs: analysis.totalCarbs, fat: analysis.totalFat, fiber: 0,
+      },
+    });
+    setFoodText(analysis.mealName);
+    setMealName(analysis.mealName);
+    setAddVisible(true);
+  }
+
+  async function getPhotoBase64(uri: string): Promise<string | null> {
+    try {
+      return await readAsStringAsync(uri, { encoding: 'base64' });
+    } catch {
+      return null;
+    }
+  }
+
+  async function handlePhotoAdd() {
+    if (!profile?.geminiApiKey && !profile?.groqApiKey) {
+      Alert.alert('Потрібен API ключ', 'Фото-розпізнавання потребує Gemini або Groq API ключ. Додай його у профілі → AI-моделі.');
+      return;
+    }
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert('Потрібен доступ до камери', 'Дозволь доступ до камери в Налаштуваннях телефону → Додатки → AlphaTrainer → Дозволи.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        quality: 0.4,
+        base64: true,
+        exif: false,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      setPhotoLoading(true);
+      const b64 = result.assets[0].base64 || await getPhotoBase64(result.assets[0].uri);
+      if (!b64) { Alert.alert('Помилка', 'Не вдалось отримати дані фото.'); return; }
+      const analysis = await analyzePhotoNutrition(b64, 'image/jpeg', profile.geminiApiKey, profile.groqApiKey);
+      applyPhotoAnalysis(analysis);
+    } catch (e) {
+      const msg = e instanceof PhotoAnalysisError ? e.message : `Помилка: ${e instanceof Error ? e.message : String(e)}`;
+      Alert.alert('Помилка розпізнавання', msg);
+    } finally {
+      setPhotoLoading(false);
+    }
+  }
+
+  async function handlePhotoFromGallery() {
+    if (!profile?.geminiApiKey && !profile?.groqApiKey) {
+      Alert.alert('Потрібен API ключ', 'Фото-розпізнавання потребує Gemini або Groq API ключ. Додай його у профілі → AI-моделі.');
+      return;
+    }
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert('Потрібен доступ до галереї', 'Дозволь доступ до фото в Налаштуваннях телефону → Додатки → AlphaTrainer → Дозволи.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.4,
+        base64: true,
+        exif: false,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      setPhotoLoading(true);
+      const b64 = result.assets[0].base64 || await getPhotoBase64(result.assets[0].uri);
+      if (!b64) { Alert.alert('Помилка', 'Не вдалось отримати дані фото.'); return; }
+      const analysis = await analyzePhotoNutrition(b64, 'image/jpeg', profile.geminiApiKey, profile.groqApiKey);
+      applyPhotoAnalysis(analysis);
+    } catch (e) {
+      const msg = e instanceof PhotoAnalysisError ? e.message : `Помилка: ${e instanceof Error ? e.message : String(e)}`;
+      Alert.alert('Помилка розпізнавання', msg);
+    } finally {
+      setPhotoLoading(false);
+    }
+  }
+
   async function openNutritionist() {
     const history = await getNutritionistChatHistory();
     setNutMessages(history);
@@ -369,7 +494,7 @@ export default function NutritionScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
@@ -451,11 +576,28 @@ export default function NutritionScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Add meal button */}
-        <TouchableOpacity style={styles.addBtn} onPress={() => setAddVisible(true)}>
-          <Ionicons name="add" size={20} color="#FFF" />
-          <Text style={styles.addBtnText}>Додати прийом їжі</Text>
-        </TouchableOpacity>
+        {/* Add meal buttons */}
+        <View style={styles.addBtnRow}>
+          <TouchableOpacity style={styles.addBtnMain} onPress={() => setAddVisible(true)}>
+            <Ionicons name="add" size={20} color="#FFF" />
+            <Text style={styles.addBtnText}>Додати прийом їжі</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addBtnIcon} onPress={() => setBarcodeVisible(true)}>
+            <Ionicons name="barcode-outline" size={22} color={Colors.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addBtnIcon} onPress={() => {
+            Alert.alert('Фото їжі', 'Вибери джерело', [
+              { text: 'Камера', onPress: handlePhotoAdd },
+              { text: 'Галерея', onPress: handlePhotoFromGallery },
+              { text: 'Скасувати', style: 'cancel' },
+            ]);
+          }}>
+            {photoLoading
+              ? <ActivityIndicator size="small" color={Colors.primary} />
+              : <Ionicons name="camera-outline" size={22} color={Colors.textSecondary} />
+            }
+          </TouchableOpacity>
+        </View>
 
         {/* Meals list */}
         {daily.meals.length > 0 ? (
@@ -470,13 +612,13 @@ export default function NutritionScreen() {
                   </View>
                   <View style={styles.mealHeaderRight}>
                     <Text style={styles.mealCal}>{meal.calories} ккал</Text>
-                    <TouchableOpacity onPress={() => openRepeatMeal(meal)} style={{ padding: 4 }}>
+                    <TouchableOpacity onPress={() => openRepeatMeal(meal)} style={{ padding: 4 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Ionicons name="copy-outline" size={17} color={Colors.textMuted} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => openEditMeal(meal)} style={{ padding: 4 }}>
+                    <TouchableOpacity onPress={() => openEditMeal(meal)} style={{ padding: 4 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Ionicons name="create-outline" size={18} color={Colors.textMuted} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDeleteMeal(meal.id)} style={{ padding: 4 }}>
+                    <TouchableOpacity onPress={() => handleDeleteMeal(meal.id)} style={{ padding: 4 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Ionicons name="close-circle-outline" size={18} color={Colors.textMuted} />
                     </TouchableOpacity>
                   </View>
@@ -516,7 +658,7 @@ export default function NutritionScreen() {
       </ScrollView>
 
       {/* ── ADD / EDIT MEAL MODAL ── */}
-      <Modal visible={addVisible} transparent animationType="slide" onRequestClose={closeAddModal}>
+      {addMounted && <Modal visible={addVisible} transparent animationType="slide" onRequestClose={closeAddModal}>
         <KeyboardAvoidingView
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -598,10 +740,10 @@ export default function NutritionScreen() {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Modal>}
 
       {/* ── GOALS MODAL ── */}
-      <Modal visible={goalsVisible} transparent animationType="fade">
+      {goalsMounted && <Modal visible={goalsVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { paddingBottom: Spacing.xl }]}>
             <View style={styles.modalHeader}>
@@ -662,10 +804,10 @@ export default function NutritionScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* ── NUTRITIONIST CHAT MODAL ── */}
-      <Modal visible={nutritionistVisible} transparent animationType="slide" onRequestClose={() => setNutritionistVisible(false)}>
+      {nutritionistMounted && <Modal visible={nutritionistVisible} transparent animationType="slide" onRequestClose={() => setNutritionistVisible(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.nutModal}>
             <View style={styles.nutHeader}>
@@ -701,6 +843,10 @@ export default function NutritionScreen() {
               style={styles.nutList}
               contentContainerStyle={{ padding: Spacing.md, gap: Spacing.sm }}
               onContentSizeChange={() => nutListRef.current?.scrollToEnd({ animated: false })}
+              removeClippedSubviews
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              initialNumToRender={10}
               ListEmptyComponent={
                 <View style={styles.nutEmpty}>
                   <Ionicons name="nutrition-outline" size={40} color={Colors.textMuted} />
@@ -742,10 +888,10 @@ export default function NutritionScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Modal>}
 
       {/* ── LIBRARY MODAL ── */}
-      <Modal visible={libraryVisible} transparent animationType="slide">
+      {libraryMounted && <Modal visible={libraryVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -766,6 +912,9 @@ export default function NutritionScreen() {
                 data={library}
                 keyExtractor={(item) => item.id}
                 style={{ maxHeight: 400 }}
+                removeClippedSubviews
+                maxToRenderPerBatch={15}
+                initialNumToRender={15}
                 renderItem={({ item }) => (
                   <TouchableOpacity style={styles.libraryItem} onPress={() => handleQuickAdd(item)}>
                     <View style={{ flex: 1 }}>
@@ -797,7 +946,14 @@ export default function NutritionScreen() {
             )}
           </View>
         </View>
-      </Modal>
+      </Modal>}
+
+      {/* ── BARCODE SCANNER ── */}
+      <BarcodeScannerModal
+        visible={barcodeVisible}
+        onClose={() => setBarcodeVisible(false)}
+        onConfirm={handleBarcodeResult}
+      />
     </View>
   );
 }
@@ -888,7 +1044,7 @@ function PillStat({ label, value, color }: { label: string; value: any; color: s
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  content: { padding: Spacing.md, paddingTop: 56, paddingBottom: 32 },
+  content: { padding: Spacing.md, paddingTop: 8, paddingBottom: 32 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg },
   title: { ...Typography.h1, fontSize: 26 },
   headerActions: { flexDirection: 'row', gap: Spacing.xs },
@@ -935,11 +1091,18 @@ const styles = StyleSheet.create({
   setupTitle: { color: Colors.textPrimary, fontWeight: '600', fontSize: 14 },
   setupSub: { color: Colors.primary, fontSize: 12, marginTop: 2 },
 
-  addBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+  addBtnRow: {
+    flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md,
+  },
+  addBtnMain: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: Spacing.sm, backgroundColor: Colors.primary,
     borderRadius: BorderRadius.lg, paddingVertical: 13,
-    marginBottom: Spacing.md,
+  },
+  addBtnIcon: {
+    width: 46, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border,
   },
   addBtnText: { color: '#FFF', fontWeight: '700', fontSize: 15 },
 

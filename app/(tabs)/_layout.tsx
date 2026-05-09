@@ -17,6 +17,10 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textMuted,
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        // Android: no keyboard push-up
+        tabBarHideOnKeyboard: true,
+        // Lazy: рендерить вкладку лише коли вперше активована
+        lazy: true,
       }}
     >
       <Tabs.Screen

@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { uk } from 'date-fns/locale';
@@ -25,6 +26,7 @@ const DAY_SHORT: Record<number, string> = {
 export default function PlanScreen() {
   const router = useRouter();
   const { t } = useLocale();
+  const insets = useSafeAreaInsets();
   const [plan, setPlan] = useState<TrainingPlan | null>(null);
   const [expanded, setExpanded] = useState<number | null>(new Date().getDay());
   const [aiProvider, setAiProvider] = useState<'Groq' | 'Gemini AI'>('Gemini AI');
@@ -43,7 +45,7 @@ export default function PlanScreen() {
   if (!plan) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
@@ -222,7 +224,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingTop: 56, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.md, paddingTop: 8, paddingBottom: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   headerTitle: { ...Typography.h3 },

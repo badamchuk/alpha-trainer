@@ -27,7 +27,9 @@ export default function RootLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: '#0D0D0D' },
-          animation: 'slide_from_right',
+          // 'fade_from_bottom' є плавнішою на Android ніж slide_from_right
+          animation: 'fade_from_bottom',
+          animationDuration: 200,
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

@@ -303,6 +303,46 @@ export async function parseNutritionText(text: string): Promise<NutritionParseRe
   return JSON.parse(json) as NutritionParseResult;
 }
 
+type WeightEntry = { date: string; weight: number };
+type NutDay = { date: string; calories: number; protein: number; carbs: number; fat: number };
+
+export async function generateTrainerContext(
+  profile: UserProfile,
+  goals: Goal[],
+  recentWorkouts: WorkoutEntry[],
+  nutritionDays: NutDay[],
+  weightLog: WeightEntry[],
+  nutritionGoalCalories: number | null,
+  memoryBlock = '',
+): Promise<string> {
+  const days = ['неділя', 'понеділок', 'вівторок', 'середу', 'четвер', 'пятницю', 'суботу'];
+  const todayName = days[new Date().getDay()];
+
+  const nutLines = nutritionDays.map((d) => {
+    const vs = nutritionGoalCalories ? ` (ціль ${nutritionGoalCalories} ккал)` : '';
+    return `${d.date}: ${d.calories} ккал${vs} | Б:${d.protein}г В:${d.carbs}г Ж:${d.fat}г`;
+  }).join('\n');
+
+  const weightLines = weightLog.slice(-5).map((w) => `${w.date}: ${w.weight} кг`).join(', ');
+
+  const base = buildSystemContext(profile, goals, recentWorkouts, memoryBlock);
+
+  const prompt = `${base}
+${nutLines ? `\nХАРЧУВАННЯ (останні дні):\n${nutLines}` : ''}
+${weightLines ? `\nВАГА: ${weightLines}` : ''}
+
+Сьогодні ${todayName}. Напиши персональне AI-привітання для ${profile.name} (3–5 речень).
+Правила:
+- Конкретно згадай що було на тренуваннях останніх днів (скільки днів тому, яка група м'язів / тип тренування)
+- Оціни харчування за останні дні (добре / недостатньо калорій / перебір)
+- Дай чітку рекомендацію на СЬОГОДНІ: тренуватись (що саме) або відпочивати — і чому
+- Якщо є динаміка ваги — відзнач
+- Тон: дружній, мотивуючий, як живий тренер
+Тільки текст. Без заголовків і зірочок.`;
+
+  return callWithFallback([{ role: 'user', content: prompt }]);
+}
+
 export async function getDailyAdvice(
   profile: UserProfile,
   goals: Goal[],

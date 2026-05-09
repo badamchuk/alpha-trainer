@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   RefreshControl, ActivityIndicator, Alert, Switch, Modal, TextInput,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, isToday, startOfWeek, addDays } from 'date-fns';
 import { uk } from 'date-fns/locale';
@@ -24,6 +25,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function TodayScreen() {
   const router = useRouter();
   const { t } = useLocale();
+  const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [todayWorkouts, setTodayWorkouts] = useState<WorkoutEntry[]>([]);
   const [stats, setStats] = useState({ totalWorkouts: 0, weeklyWorkouts: 0, monthlyWorkouts: 0, totalDuration: 0, streak: 0 });
@@ -48,6 +50,8 @@ export default function TodayScreen() {
 
   const today = getLocalDateString(new Date());
   const todayFormatted = format(new Date(), 'EEEE, d MMMM', { locale: uk });
+  const lastLoadRef = useRef<number>(0);
+  const lastDateRef = useRef<string>('');
 
   async function loadData() {
     const [p, s, tw, plan, allWorkouts, water] = await Promise.all([
@@ -139,10 +143,17 @@ export default function TodayScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadData().then(() => {
-        getUserProfile().then((p) => p && loadAdvice(p));
-      });
-    }, [])
+      const now = Date.now();
+      const dateChanged = lastDateRef.current !== today;
+      // Reload if: first load, date changed, or 30s passed since last load
+      if (dateChanged || now - lastLoadRef.current > 30_000) {
+        lastLoadRef.current = now;
+        lastDateRef.current = today;
+        loadData().then(() => {
+          getUserProfile().then((p) => p && loadAdvice(p));
+        });
+      }
+    }, [today])
   );
 
   const onRefresh = async () => {
@@ -231,7 +242,7 @@ export default function TodayScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
     >
       {/* Header */}
@@ -716,7 +727,7 @@ function StatCard({ label, value, unit, icon, color }: {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  content: { padding: Spacing.md, paddingTop: 56, paddingBottom: 24 },
+  content: { padding: Spacing.md, paddingTop: 8, paddingBottom: 24 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.lg },
   greeting: { ...Typography.h2, marginBottom: 2 },
   date: { ...Typography.bodySmall, textTransform: 'capitalize' },

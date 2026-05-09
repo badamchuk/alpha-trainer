@@ -1,6 +1,7 @@
 export interface UserProfile {
   name: string;
-  age: number;
+  age: number;          // kept for backward compat; prefer computing from birthDate
+  birthDate?: string;   // YYYY-MM-DD
   weight: number;
   height: number;
   gender?: 'male' | 'female';

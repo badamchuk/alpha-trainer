@@ -4,11 +4,13 @@ import {
   TouchableOpacity, TextInput, Modal, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getWorkouts, getStats, getPersonalRecords, PersonalRecord, getWeightLog, addWeightEntry, WeightEntry, getLocalDateString, getMeasurements, addMeasurement, getUserProfile } from '../../services/storage';
+import { getNutritionGoals, getNutritionHistory, computeAdaptiveTDEE, computeFoodCorrelation, AdaptiveTDEEResult, FoodCorrelationInsight } from '../../services/nutrition';
 import { useLocale } from '../../services/i18n';
 import { WorkoutEntry, BodyMeasurement } from '../../types';
 import {
@@ -29,6 +31,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function ProgressScreen() {
   const { t } = useLocale();
+  const insets = useSafeAreaInsets();
   const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
   const [stats, setStats] = useState({ totalWorkouts: 0, weeklyWorkouts: 0, monthlyWorkouts: 0, totalDuration: 0, streak: 0 });
   const [records, setRecords] = useState<PersonalRecord[]>([]);
@@ -51,6 +54,8 @@ export default function ProgressScreen() {
   const [profile, setProfile] = useState<any>(null);
   const [strengthScore, setStrengthScore] = useState<StrengthScoreResult | null>(null);
   const [volumeLandmarks, setVolumeLandmarks] = useState<VolumeLandmark[]>([]);
+  const [adaptiveTDEE, setAdaptiveTDEE] = useState<AdaptiveTDEEResult | null>(null);
+  const [foodCorrelation, setFoodCorrelation] = useState<FoodCorrelationInsight[]>([]);
 
   async function loadData() {
     const [w, s, r, wl, ms, p] = await Promise.all([
@@ -79,6 +84,22 @@ export default function ProgressScreen() {
     const weekStart = toDateStr(startOfWeek(new Date(), { weekStartsOn: 1 }));
     const weekEnd = toDateStr(endOfWeek(new Date(), { weekStartsOn: 1 }));
     setVolumeLandmarks(getVolumeLandmarks(w, weekStart, weekEnd));
+
+    // Adaptive TDEE + food correlation
+    const [nutGoals, nutHistory] = await Promise.all([
+      getNutritionGoals(),
+      getNutritionHistory(28),
+    ]);
+    const tdee = await computeAdaptiveTDEE(wl, nutGoals);
+    setAdaptiveTDEE(tdee);
+    if (nutHistory.length >= 7 && w.length >= 5 && nutGoals) {
+      const corr = computeFoodCorrelation(
+        nutHistory,
+        w.map((wo) => ({ date: wo.date, workoutType: wo.workoutType, duration: wo.duration, rating: wo.rating })),
+        nutGoals.calories,
+      );
+      setFoodCorrelation(corr);
+    }
   }
 
   function selectExercise(name: string) {
@@ -173,7 +194,7 @@ export default function ProgressScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
     >
       <Text style={[styles.title, { marginBottom: Spacing.lg }]}>{t('progressTitle')}</Text>
@@ -707,7 +728,7 @@ export default function ProgressScreen() {
                 <Text style={styles.prRankText}>{i + 1}</Text>
               </View>
               <View style={styles.prBody}>
-                <Text style={styles.prName} numberOfLines={1}>{r.exerciseName}</Text>
+                <Text style={styles.prName} numberOfLines={2}>{r.exerciseName}</Text>
                 <Text style={styles.prDate}>{r.date}</Text>
               </View>
               <View style={styles.prStats}>
@@ -734,6 +755,81 @@ export default function ProgressScreen() {
           <Ionicons name="stats-chart-outline" size={56} color={Colors.textMuted} />
           <Text style={styles.emptyTitle}>{t('noData')}</Text>
           <Text style={styles.emptyText}>{t('noWorkouts')}</Text>
+        </View>
+      )}
+
+      {/* Adaptive TDEE */}
+      {adaptiveTDEE && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Адаптивний TDEE</Text>
+            <View style={[styles.confidenceBadge, {
+              backgroundColor: adaptiveTDEE.confidence === 'high' ? '#2ECC7122' : adaptiveTDEE.confidence === 'medium' ? '#F4A26122' : '#95A5A622',
+            }]}>
+              <Text style={[styles.confidenceText, {
+                color: adaptiveTDEE.confidence === 'high' ? '#2ECC71' : adaptiveTDEE.confidence === 'medium' ? '#F4A261' : Colors.textMuted,
+              }]}>
+                {adaptiveTDEE.confidence === 'high' ? 'Висока точність' : adaptiveTDEE.confidence === 'medium' ? 'Середня точність' : 'Мало даних'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.tdeeCard}>
+            <View style={styles.tdeeMain}>
+              <Text style={styles.tdeeValue}>{adaptiveTDEE.estimatedTDEE}</Text>
+              <Text style={styles.tdeeUnit}>ккал/день</Text>
+            </View>
+            <View style={styles.tdeeStats}>
+              <View style={styles.tdeeStat}>
+                <Text style={styles.tdeeStatLabel}>Середнє споживання</Text>
+                <Text style={styles.tdeeStatValue}>{adaptiveTDEE.avgDailyCalories} ккал</Text>
+              </View>
+              <View style={styles.tdeeStat}>
+                <Text style={styles.tdeeStatLabel}>Зміна ваги/тиждень</Text>
+                <Text style={[styles.tdeeStatValue, { color: adaptiveTDEE.weeklyWeightDelta < 0 ? '#2ECC71' : adaptiveTDEE.weeklyWeightDelta > 0 ? '#E63946' : Colors.textPrimary }]}>
+                  {adaptiveTDEE.weeklyWeightDelta > 0 ? '+' : ''}{adaptiveTDEE.weeklyWeightDelta} кг
+                </Text>
+              </View>
+              <View style={styles.tdeeStat}>
+                <Text style={styles.tdeeStatLabel}>Тижнів аналізу</Text>
+                <Text style={styles.tdeeStatValue}>{adaptiveTDEE.weeksAnalyzed}</Text>
+              </View>
+            </View>
+            {adaptiveTDEE.suggestion && (
+              <View style={styles.tdeeSuggestion}>
+                <Ionicons name="bulb-outline" size={16} color={Colors.accent} />
+                <Text style={styles.tdeeSuggestionText}>{adaptiveTDEE.suggestion}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Food → Performance correlation */}
+      {foodCorrelation.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Харчування → Результати</Text>
+          {foodCorrelation.map((c, i) => (
+            <View key={i} style={styles.correlationCard}>
+              <View style={styles.correlationHeader}>
+                <Ionicons name="nutrition-outline" size={16} color={Colors.primary} />
+                <Text style={styles.correlationTitle}>{c.metric}</Text>
+              </View>
+              <Text style={styles.correlationInsight}>{c.insight}</Text>
+              <View style={styles.correlationStats}>
+                <View style={styles.correlationStat}>
+                  <Text style={styles.correlationStatLabel}>Добре харчування</Text>
+                  <Text style={styles.correlationStatVal}>⭐ {c.avgRatingHighCal} · {c.avgDurationHighCal} хв</Text>
+                  <Text style={styles.correlationN}>{c.highCalDays} тренувань</Text>
+                </View>
+                <View style={styles.correlationDivider} />
+                <View style={styles.correlationStat}>
+                  <Text style={styles.correlationStatLabel}>Мало ккал</Text>
+                  <Text style={styles.correlationStatVal}>⭐ {c.avgRatingLowCal} · {c.avgDurationLowCal} хв</Text>
+                  <Text style={styles.correlationN}>{c.lowCalDays} тренувань</Text>
+                </View>
+              </View>
+            </View>
+          ))}
         </View>
       )}
 
@@ -835,7 +931,7 @@ function BigStat({ icon, color, value, unit, label }: {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  content: { padding: Spacing.md, paddingTop: 56, paddingBottom: 32 },
+  content: { padding: Spacing.md, paddingTop: 8, paddingBottom: 32 },
   title: { ...Typography.h2 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.lg },
   bigStatCard: {
@@ -906,13 +1002,13 @@ const styles = StyleSheet.create({
   emptyTitle: { ...Typography.h3, color: Colors.textSecondary },
   emptyText: { ...Typography.bodySmall, textAlign: 'center', maxWidth: 260 },
   prRow: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm,
     backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
     padding: Spacing.sm, paddingHorizontal: Spacing.md,
     marginBottom: Spacing.xs, borderWidth: 1, borderColor: Colors.border,
   },
   prRank: {
-    width: 28, height: 28, borderRadius: 14,
+    width: 28, height: 28, borderRadius: 14, marginTop: 1,
     backgroundColor: 'rgba(230,57,70,0.12)', alignItems: 'center', justifyContent: 'center',
   },
   prRankText: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
@@ -1083,4 +1179,42 @@ const styles = StyleSheet.create({
   runDist: { color: Colors.textPrimary, fontWeight: '700', fontSize: 14, flex: 1 },
   runPace: { color: Colors.primary, fontSize: 13, fontWeight: '600', width: 72, textAlign: 'center' },
   runDur: { color: Colors.textMuted, fontSize: 12, width: 40, textAlign: 'right' },
+
+  // Adaptive TDEE
+  confidenceBadge: { borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 3 },
+  confidenceText: { fontSize: 11, fontWeight: '600' },
+  tdeeCard: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border, padding: Spacing.md, gap: Spacing.sm,
+  },
+  tdeeMain: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  tdeeValue: { fontSize: 36, fontWeight: '800', color: Colors.primary },
+  tdeeUnit: { color: Colors.textMuted, fontSize: 14 },
+  tdeeStats: { flexDirection: 'row', gap: Spacing.sm },
+  tdeeStat: { flex: 1, backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.md, padding: Spacing.sm, gap: 2 },
+  tdeeStatLabel: { color: Colors.textMuted, fontSize: 10 },
+  tdeeStatValue: { color: Colors.textPrimary, fontWeight: '700', fontSize: 14 },
+  tdeeSuggestion: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm,
+    backgroundColor: Colors.accent + '15', borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.accent + '30',
+    padding: Spacing.sm,
+  },
+  tdeeSuggestionText: { flex: 1, color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
+
+  // Food → Performance correlation
+  correlationCard: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border, padding: Spacing.md,
+    marginBottom: Spacing.sm, gap: Spacing.sm,
+  },
+  correlationHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  correlationTitle: { color: Colors.textPrimary, fontWeight: '700', fontSize: 14 },
+  correlationInsight: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
+  correlationStats: { flexDirection: 'row', gap: Spacing.sm },
+  correlationStat: { flex: 1, gap: 3 },
+  correlationStatLabel: { color: Colors.textMuted, fontSize: 11 },
+  correlationStatVal: { color: Colors.textPrimary, fontWeight: '700', fontSize: 13 },
+  correlationN: { color: Colors.textMuted, fontSize: 10 },
+  correlationDivider: { width: 1, backgroundColor: Colors.border },
 });

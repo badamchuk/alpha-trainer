@@ -4,6 +4,7 @@ import {
   ScrollView, KeyboardAvoidingView, Platform, Alert, Modal, FlatList,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { addWorkout, getWorkouts, getLocalDateString } from '../../services/storage';
@@ -35,6 +36,7 @@ const RATINGS = [1, 2, 3, 4, 5] as const;
 export default function LogWorkoutScreen() {
   const router = useRouter();
   const { t } = useLocale();
+  const insets = useSafeAreaInsets();
   const { repeatId } = useLocalSearchParams<{ repeatId?: string }>();
   const [workoutType, setWorkoutType] = useState<WorkoutType>('strength');
   const [date, setDate] = useState(() => getLocalDateString(new Date()));
@@ -268,7 +270,7 @@ export default function LogWorkoutScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.container}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="close" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
@@ -748,7 +750,7 @@ const styles = StyleSheet.create({
   repeatBannerText: { color: Colors.primary, fontSize: 13, flex: 1 },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingTop: 56, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.md, paddingTop: 8, paddingBottom: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   headerTitle: { ...Typography.h3 },

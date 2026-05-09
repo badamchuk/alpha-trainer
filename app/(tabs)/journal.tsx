@@ -4,6 +4,7 @@ import {
   Alert, RefreshControl, TextInput, Share,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, parseISO } from 'date-fns';
 import { uk } from 'date-fns/locale';
@@ -41,6 +42,7 @@ const WORKOUT_TYPE_LABELS: Record<string, string> = {
 export default function JournalScreen() {
   const router = useRouter();
   const { t } = useLocale();
+  const insets = useSafeAreaInsets();
   const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<string | null>(null);
@@ -120,7 +122,7 @@ export default function JournalScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Text style={styles.title}>{t('journalTitle')}</Text>
         <View style={styles.headerActions}>
           {workouts.length > 0 && (
@@ -266,7 +268,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingTop: 56, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.md, paddingTop: 8, paddingBottom: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   title: { ...Typography.h2 },
