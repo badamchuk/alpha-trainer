@@ -3,7 +3,7 @@
 _Оновлюється в кінці кожної сесії через `/finish`_
 
 ## Останнє оновлення
-2026-04-16
+2026-04-19
 
 ## Що зроблено
 - Всі основні екрани: головна, харчування, прогрес, цілі, журнал, AI-тренер
@@ -17,6 +17,21 @@ _Оновлюється в кінці кожної сесії через `/finis
 - Профіль: стать у формулі Mifflin-St Jeor; fitnessLevel впливає на TDEE (+2.5%/+5%)
 - Резервне копіювання: всі ключі включно з daily_advice та nutritionist_chat_history
 - KeyboardAvoidingView у всіх модалах з TextInput
+- **НОВE (2026-04-19):**
+  - Штрихкод-сканер: `services/foodAI.ts` + `components/BarcodeScannerModal.tsx`
+    - Кнопка "barcode-outline" поряд з "Додати прийом їжі" в nutrition.tsx
+    - expo-camera CameraView, Open Food Facts API (безкоштовно, без ключа)
+    - Вибір кількості грамів після сканування, автопідрахунок
+  - Фото-логування їжі: кнопка "camera-outline" в nutrition.tsx
+    - expo-image-picker (камера або галерея) → base64 → Gemini Vision
+    - Використовує gemini-1.5-flash, потрібен Gemini API ключ
+  - Адаптивний TDEE: `computeAdaptiveTDEE()` в nutrition.ts
+    - Аналіз 28 днів ваги + калорій, MacroFactor-алгоритм
+    - Відображається в progress.tsx з рівнем впевненості + порадою
+  - Кореляція їжа→результати: `computeFoodCorrelation()` в nutrition.ts
+    - Порівнює оцінки/тривалість тренувань після "добрих" vs "поганих" днів харчування
+    - Показується в progress.tsx якщо є достатньо даних (≥7 днів харчування, ≥5 тренувань)
+  - app.json: додано expo-camera + expo-image-picker plugins з дозволами
 
 ## В процесі / наступне
 - Нічого активного
@@ -30,3 +45,6 @@ _Оновлюється в кінці кожної сесії через `/finis
 - Groq пріоритетніший за Gemini (швидший, безкоштовний)
 - Всі нові AsyncStorage ключі → backup.ts ALL_KEYS
 - Повторення тренування: копіює exercises/type/notes, але не duration/rating/date
+- Фото-логування: потребує gemini-1.5-flash (multimodal), Groq не підтримує Vision
+- Адаптивний TDEE: потрібно ≥4 записів ваги і ≥7 днів харчування для розрахунку
+- Open Food Facts: User-Agent обов'язковий (інакше 403)
