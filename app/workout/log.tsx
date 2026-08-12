@@ -8,13 +8,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { addWorkout, getWorkouts, getLocalDateString } from '../../services/storage';
-import { WorkoutEntry, ExerciseLog, WorkoutType, SetType } from '../../types';
+import { WorkoutEntry, ExerciseLog, WorkoutType, SetType, SetDetail } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
-import { computePace, formatPace, getOverloadSuggestion } from '../../services/analytics';
+import { computePace, formatPace, getOverloadSuggestion, estimate1RM } from '../../services/analytics';
 import RestTimer from '../../components/RestTimer';
 import { getTemplates, saveTemplate, WorkoutTemplate } from '../../services/templates';
 import { useLocale } from '../../services/i18n';
 import ExercisePicker from '../../components/ExercisePicker';
+import { checkAndUnlock } from '../../services/achievements';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -61,6 +62,15 @@ export default function LogWorkoutScreen() {
   // Exercise picker
   const [pickerVisible, setPickerVisible] = useState(false);
 
+  // PR banner
+  const [prBannerEx, setPrBannerEx] = useState<string | null>(null);
+  const prBannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Plate calculator
+  const [plateCalcVisible, setPlateCalcVisible] = useState(false);
+  const [plateCalcBarbell, setPlateCalcBarbell] = useState(20);
+  const [plateCalcTarget, setPlateCalcTarget] = useState('');
+
   // Superset mode
   const [supersetMode, setSupersetMode] = useState(false);
   const [currentSupersetId, setCurrentSupersetId] = useState<string | null>(null);
@@ -76,10 +86,12 @@ export default function LogWorkoutScreen() {
     }
   }
 
-  // Timer state
+  // Timer state — timestamp-based so час рахується вірно навіть коли
+  // додаток у фоні (Android призупиняє setInterval)
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerStartRef = useRef<number | null>(null);
 
   // Load repeat workout if repeatId provided
   useEffect(() => {
@@ -96,7 +108,10 @@ export default function LogWorkoutScreen() {
   }, [repeatId]);
 
   useEffect(() => {
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (prBannerTimer.current) clearTimeout(prBannerTimer.current);
+    };
   }, []);
 
   function toggleTimer() {
@@ -104,12 +119,20 @@ export default function LogWorkoutScreen() {
       clearInterval(timerRef.current!);
       timerRef.current = null;
       setTimerRunning(false);
-      const mins = Math.max(1, Math.round(timerSeconds / 60));
+      const secs = timerStartRef.current
+        ? Math.floor((Date.now() - timerStartRef.current) / 1000)
+        : timerSeconds;
+      setTimerSeconds(secs);
+      const mins = Math.max(1, Math.round(secs / 60));
       setDuration(String(mins));
     } else {
+      // продовження: зсуваємо старт назад на вже накопичений час
+      timerStartRef.current = Date.now() - timerSeconds * 1000;
       setTimerRunning(true);
       timerRef.current = setInterval(() => {
-        setTimerSeconds((s) => s + 1);
+        if (timerStartRef.current) {
+          setTimerSeconds(Math.floor((Date.now() - timerStartRef.current) / 1000));
+        }
       }, 1000);
     }
   }
@@ -140,6 +163,20 @@ export default function LogWorkoutScreen() {
   const [exWatts, setExWatts] = useState('');
   const [exRpe, setExRpe] = useState<number | undefined>(undefined);
   const [exSetType, setExSetType] = useState<SetType>('normal');
+  // Set-by-set logging (піраміди: 80×5, 85×5, 90×3)
+  const [draftSets, setDraftSets] = useState<SetDetail[]>([]);
+
+  function addDraftSet() {
+    const reps = parseNum(exReps);
+    const weight = parseNum(exWeight);
+    if (!reps) { Alert.alert('Вкажи повтори для підходу'); return; }
+    setDraftSets([...draftSets, { reps, weight }]);
+    // вага/повтори лишаються у полях — зручно коригувати для наступного підходу
+  }
+
+  function removeDraftSet(i: number) {
+    setDraftSets(draftSets.filter((_, idx) => idx !== i));
+  }
 
   async function lookupOverloadHint(name: string) {
     if (!name.trim()) { setOverloadHint(''); return; }
@@ -192,30 +229,88 @@ export default function LogWorkoutScreen() {
     return isNaN(n) || n < 0 ? undefined : n;
   }
 
-  function addExercise() {
+  // Best estimated 1RM among an exercise's sets (set-by-set aware)
+  function best1RMOf(e: ExerciseLog): number {
+    const sets = e.setsDetail && e.setsDetail.length > 0
+      ? e.setsDetail
+      : [{ weight: e.weight, reps: e.reps }];
+    return sets.reduce((b, s) => Math.max(b, estimate1RM(s.weight || 0, s.reps || 1)), 0);
+  }
+
+  async function addExercise() {
     if (!exName.trim()) { Alert.alert(t('enterExerciseName')); return; }
-    const ex: ExerciseLog = {
-      name: exName.trim(),
-      sets: parseNum(exSets),
-      reps: parseNum(exReps),
-      weight: parseNum(exWeight),
-      duration: parseNum(exDuration),
-      distance: parseNum(exDistance),
-      calories: parseNum(exCalories),
-      watts: parseNum(exWatts),
-      supersetId: supersetMode && currentSupersetId ? currentSupersetId : undefined,
-      rpe: exRpe,
-      setType: exSetType !== 'normal' ? exSetType : undefined,
-    };
-    setExercises([...exercises, ex]);
+    let ex: ExerciseLog;
+    if (draftSets.length > 0) {
+      // Set-by-set: summary поля = кількість підходів + найважчий підхід
+      const bestSet = draftSets.reduce((b, s) =>
+        ((s.weight || 0) * 1000 + (s.reps || 0)) > ((b.weight || 0) * 1000 + (b.reps || 0)) ? s : b
+      );
+      ex = {
+        name: exName.trim(),
+        sets: draftSets.length,
+        reps: bestSet.reps,
+        weight: bestSet.weight,
+        setsDetail: draftSets,
+        duration: parseNum(exDuration),
+        distance: parseNum(exDistance),
+        calories: parseNum(exCalories),
+        watts: parseNum(exWatts),
+        supersetId: supersetMode && currentSupersetId ? currentSupersetId : undefined,
+        rpe: exRpe,
+        setType: exSetType !== 'normal' ? exSetType : undefined,
+      };
+    } else {
+      ex = {
+        name: exName.trim(),
+        sets: parseNum(exSets),
+        reps: parseNum(exReps),
+        weight: parseNum(exWeight),
+        duration: parseNum(exDuration),
+        distance: parseNum(exDistance),
+        calories: parseNum(exCalories),
+        watts: parseNum(exWatts),
+        supersetId: supersetMode && currentSupersetId ? currentSupersetId : undefined,
+        rpe: exRpe,
+        setType: exSetType !== 'normal' ? exSetType : undefined,
+      };
+    }
+    const updatedExercises = [...exercises, ex];
+    setExercises(updatedExercises);
     setExName(''); setExSets(''); setExReps(''); setExWeight('');
     setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
-    setExRpe(undefined); setExSetType('normal');
+    setExRpe(undefined); setExSetType('normal'); setDraftSets([]);
     setOverloadHint('');
     // Auto-open rest timer only for strength-type workouts (has sets/reps/weight)
     if (ex.sets || ex.reps || ex.weight) {
       setRestTimerVisible(true);
     }
+    // PR detection: порівнюємо розрах. 1RM (вага+повтори) з історією
+    // ТА з уже доданими вправами поточної сесії — без подвійних банерів
+    const candidate1RM = best1RMOf(ex);
+    if (candidate1RM > 0) {
+      const allPrev = await getWorkouts();
+      const nameKey = ex.name.toLowerCase();
+      const bestHist = allPrev.reduce((best, w) => {
+        const wBest = w.exercises
+          .filter((e) => e.name.toLowerCase() === nameKey)
+          .reduce((b, e) => Math.max(b, best1RMOf(e)), 0);
+        return Math.max(best, wBest);
+      }, 0);
+      const bestSession = exercises
+        .filter((e) => e.name.toLowerCase() === nameKey)
+        .reduce((b, e) => Math.max(b, best1RMOf(e)), 0);
+      if (bestHist > 0 && candidate1RM > Math.max(bestHist, bestSession)) {
+        setPrBannerEx(ex.name);
+        if (prBannerTimer.current) clearTimeout(prBannerTimer.current);
+        prBannerTimer.current = setTimeout(() => setPrBannerEx(null), 3000);
+      }
+    }
+  }
+
+  function openPlateCalc() {
+    setPlateCalcTarget(exWeight || '0');
+    setPlateCalcBarbell(20);
+    setPlateCalcVisible(true);
   }
 
   function removeExercise(i: number) {
@@ -256,6 +351,9 @@ export default function LogWorkoutScreen() {
         totalCalories: totalCalories ? Number(totalCalories) : undefined,
       };
       await addWorkout(entry);
+      const allAfter = await getWorkouts();
+      const stats = await import('../../services/storage').then((m) => m.getStats());
+      checkAndUnlock(allAfter, stats.streak).catch(() => {});
       router.back();
     } catch (e) {
       Alert.alert('Помилка збереження');
@@ -284,6 +382,13 @@ export default function LogWorkoutScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {prBannerEx && (
+          <View style={styles.prBanner} pointerEvents="none">
+            <Ionicons name="trophy" size={20} color="#FFD700" />
+            <Text style={styles.prBannerText}>Новий рекорд! {prBannerEx}</Text>
+          </View>
+        )}
 
         {repeatingFrom && (
           <View style={styles.repeatBanner}>
@@ -484,11 +589,41 @@ export default function LogWorkoutScreen() {
                   value={exReps} onChangeText={setExReps} keyboardType="numeric" />
               </View>
               <View style={styles.rowItem}>
-                <Text style={styles.miniLabel}>{t('weightKgLabel')}</Text>
+                <View style={styles.miniLabelRow}>
+                  <Text style={styles.miniLabel}>{t('weightKgLabel')}</Text>
+                  <TouchableOpacity onPress={openPlateCalc} style={styles.calcIconBtn}>
+                    <Ionicons name="calculator-outline" size={13} color={Colors.primary} />
+                  </TouchableOpacity>
+                </View>
                 <TextInput style={styles.input} placeholder="50" placeholderTextColor={Colors.textMuted}
                   value={exWeight} onChangeText={setExWeight} keyboardType="decimal-pad" />
               </View>
             </View>
+
+            {/* Set-by-set: список доданих підходів + кнопка */}
+            {draftSets.length > 0 && (
+              <View style={styles.draftSetsList}>
+                {draftSets.map((s, i) => (
+                  <View key={i} style={styles.draftSetChip}>
+                    <Text style={styles.draftSetChipText}>
+                      {i + 1}) {s.weight ? `${s.weight}кг × ` : ''}{s.reps}
+                    </Text>
+                    <TouchableOpacity onPress={() => removeDraftSet(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+            <TouchableOpacity style={styles.addSetBtn} onPress={addDraftSet}>
+              <Ionicons name="add-circle-outline" size={16} color={Colors.textSecondary} />
+              <Text style={styles.addSetBtnText}>
+                {draftSets.length > 0
+                  ? `Додати підхід ${draftSets.length + 1} (з полів вище)`
+                  : 'Записати підходи окремо (піраміда)'}
+              </Text>
+            </TouchableOpacity>
+
             <View style={styles.row}>
               <View style={styles.rowItem}>
                 <Text style={styles.miniLabel}>{t('timeMinLabel')}</Text>
@@ -579,7 +714,7 @@ export default function LogWorkoutScreen() {
       />
 
       {/* Templates Modal */}
-      <Modal visible={templatesVisible} transparent animationType="slide">
+      <Modal visible={templatesVisible} transparent animationType="slide" onRequestClose={() => setTemplatesVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -616,8 +751,91 @@ export default function LogWorkoutScreen() {
         </View>
       </Modal>
 
+      {/* Plate Calculator Modal */}
+      <Modal visible={plateCalcVisible} transparent animationType="fade" onRequestClose={() => setPlateCalcVisible(false)}>
+        <View style={styles.plateCalcOverlay}>
+          <View style={styles.plateCalcCard}>
+            <View style={styles.plateCalcHeader}>
+              <Text style={styles.plateCalcTitle}>Калькулятор блінів</Text>
+              <TouchableOpacity onPress={() => setPlateCalcVisible(false)}>
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.plateCalcRow}>
+              <Text style={styles.plateCalcLabel}>Штанга:</Text>
+              {[20, 15, 10].map((kg) => (
+                <TouchableOpacity
+                  key={kg}
+                  style={[styles.plateCalcChip, plateCalcBarbell === kg && styles.plateCalcChipActive]}
+                  onPress={() => setPlateCalcBarbell(kg)}
+                >
+                  <Text style={[styles.plateCalcChipText, plateCalcBarbell === kg && styles.plateCalcChipTextActive]}>
+                    {kg} кг
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.plateCalcRow}>
+              <Text style={styles.plateCalcLabel}>Загальна вага (кг):</Text>
+              <TextInput
+                style={styles.plateCalcInput}
+                value={plateCalcTarget}
+                onChangeText={setPlateCalcTarget}
+                keyboardType="decimal-pad"
+                placeholder="100"
+                placeholderTextColor={Colors.textMuted}
+              />
+            </View>
+            {(() => {
+              const total = parseFloat(plateCalcTarget.replace(',', '.'));
+              if (isNaN(total) || total <= plateCalcBarbell) {
+                return <Text style={styles.plateCalcHint}>Введи вагу більше ніж штанга ({plateCalcBarbell} кг)</Text>;
+              }
+              const { plates, leftover } = calcPlates(total, plateCalcBarbell);
+              const perSide = (total - plateCalcBarbell) / 2;
+              const exactWeight = total - leftover * 2;
+              return (
+                <View style={styles.plateResult}>
+                  <Text style={styles.plateResultTitle}>По {perSide % 1 === 0 ? perSide : perSide.toFixed(2)} кг на кожну сторону:</Text>
+                  {plates.length === 0 ? (
+                    <Text style={styles.plateCalcHint}>Неможливо скласти зі стандартних блінів</Text>
+                  ) : (
+                    <View style={styles.plateList}>
+                      {plates.map(({ plate, count }) => (
+                        <View key={plate} style={styles.plateRow}>
+                          <View style={[styles.plateVisual, { width: 12 + Math.min(plate, 25) * 2 }]} />
+                          <Text style={styles.plateName}>{plate} кг</Text>
+                          <Text style={styles.plateCount}>× {count}</Text>
+                          <Text style={styles.plateTotalVal}>= {plate * count} кг</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {leftover > 0.01 && (
+                    <View style={styles.plateLeftover}>
+                      <Ionicons name="warning-outline" size={14} color={Colors.accent} />
+                      <Text style={styles.plateLeftoverText}>
+                        Залишок {leftover.toFixed(2)} кг/сторону не складається — фактично {exactWeight} кг
+                      </Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    style={styles.plateApplyBtn}
+                    onPress={() => { setExWeight(String(leftover > 0.01 ? exactWeight : total)); setPlateCalcVisible(false); }}
+                  >
+                    <Text style={styles.plateApplyBtnText}>
+                      Встановити {leftover > 0.01 ? exactWeight : total} кг
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
+
       {/* Save Template Modal */}
-      <Modal visible={saveTemplateVisible} transparent animationType="fade">
+      <Modal visible={saveTemplateVisible} transparent animationType="fade" onRequestClose={() => { setSaveTemplateVisible(false); setTemplateName(''); }}>
         <KeyboardAvoidingView
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -652,6 +870,23 @@ export default function LogWorkoutScreen() {
   );
 }
 
+// ─── PLATE CALCULATOR ────────────────────────────────────────────────────────
+
+const PLATES_KG = [25, 20, 15, 10, 5, 2.5, 1.25];
+
+function calcPlates(totalKg: number, barbell: number): { plates: { plate: number; count: number }[]; leftover: number } {
+  let perSide = (totalKg - barbell) / 2;
+  if (perSide <= 0) return { plates: [], leftover: 0 };
+  const plates: { plate: number; count: number }[] = [];
+  for (const p of PLATES_KG) {
+    if (perSide >= p - 0.001) {
+      const n = Math.floor(perSide / p + 0.001);
+      if (n > 0) { plates.push({ plate: p, count: n }); perSide -= n * p; }
+    }
+  }
+  return { plates, leftover: Math.round(perSide * 100) / 100 };
+}
+
 // ─── SUPERSET COLORS ─────────────────────────────────────────────────────────
 
 const SUPERSET_COLORS = ['#E63946', '#2EC4B6', '#F4A261', '#9B59B6', '#2ECC71', '#E91E63'];
@@ -666,6 +901,16 @@ function renderExerciseMeta(ex: ExerciseLog): string {
   const SET_TYPE_LABELS: Record<string, string> = {
     warmup: '🔵 Розм.', dropset: '🟠 Дроп', failure: '🔴 Відмова',
   };
+  if (ex.setsDetail && ex.setsDetail.length > 0) {
+    const setsStr = ex.setsDetail
+      .map((s) => (s.weight ? `${s.weight}×${s.reps ?? '?'}` : `${s.reps ?? '?'}`))
+      .join(' / ');
+    return [
+      ex.setType && ex.setType !== 'normal' && SET_TYPE_LABELS[ex.setType],
+      setsStr,
+      ex.rpe && `RPE ${ex.rpe}`,
+    ].filter(Boolean).join(' · ');
+  }
   return [
     ex.setType && ex.setType !== 'normal' && SET_TYPE_LABELS[ex.setType],
     ex.sets && `${ex.sets} підх.`,
@@ -832,6 +1077,22 @@ const styles = StyleSheet.create({
     gap: 4, backgroundColor: Colors.primary, borderRadius: BorderRadius.md,
     paddingVertical: 10,
   },
+  draftSetsList: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6,
+  },
+  draftSetChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.full,
+    borderWidth: 1, borderColor: Colors.primary + '50',
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  draftSetChipText: { color: Colors.textPrimary, fontSize: 12, fontWeight: '600' },
+  addSetBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.border,
+    borderStyle: 'dashed', paddingVertical: 8, marginTop: 6,
+  },
+  addSetBtnText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
   addExBtnText: { color: '#FFF', fontWeight: '600', fontSize: 13 },
   timerCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -925,4 +1186,63 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   libraryBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '600', flex: 1 },
+  miniLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  calcIconBtn: { padding: 2 },
+  prBanner: {
+    position: 'absolute', bottom: 90, left: Spacing.md, right: Spacing.md, zIndex: 999,
+    backgroundColor: '#1A1A1A', borderRadius: BorderRadius.lg,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    padding: Spacing.md, borderWidth: 1.5, borderColor: '#FFD700',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35, shadowRadius: 8, elevation: 8,
+  },
+  prBannerText: { color: '#FFD700', fontSize: 15, fontWeight: '700', flex: 1 },
+  plateCalcOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
+  plateCalcCard: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.xl,
+    padding: Spacing.lg, width: '90%',
+    borderWidth: 1, borderColor: Colors.border, gap: Spacing.md,
+  },
+  plateCalcHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  plateCalcTitle: { ...Typography.h3, fontSize: 16 },
+  plateCalcRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flexWrap: 'wrap' },
+  plateCalcLabel: { color: Colors.textSecondary, fontSize: 14, flex: 1 },
+  plateCalcChip: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: BorderRadius.full,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surfaceElevated,
+  },
+  plateCalcChipActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '20' },
+  plateCalcChipText: { color: Colors.textMuted, fontSize: 13, fontWeight: '600' },
+  plateCalcChipTextActive: { color: Colors.primary },
+  plateCalcInput: {
+    backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Spacing.sm, paddingVertical: 8,
+    color: Colors.textPrimary, fontSize: 20, fontWeight: '700',
+    textAlign: 'center', width: 110,
+  },
+  plateCalcHint: { color: Colors.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 4 },
+  plateResult: { gap: Spacing.sm },
+  plateResultTitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
+  plateList: { gap: Spacing.xs },
+  plateRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.md, padding: Spacing.sm,
+  },
+  plateVisual: { height: 30, backgroundColor: Colors.primary, borderRadius: 4, minWidth: 12 },
+  plateName: { flex: 1, color: Colors.textPrimary, fontWeight: '600', fontSize: 14 },
+  plateCount: { color: Colors.textSecondary, fontSize: 14, width: 36 },
+  plateTotalVal: { color: Colors.textMuted, fontSize: 13, width: 52, textAlign: 'right' },
+  plateApplyBtn: {
+    backgroundColor: Colors.primary, borderRadius: BorderRadius.md,
+    paddingVertical: 10, alignItems: 'center', marginTop: 4,
+  },
+  plateApplyBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+  plateLeftover: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: Colors.accent + '15', borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.accent + '40',
+    padding: Spacing.sm,
+  },
+  plateLeftoverText: { color: Colors.accent, fontSize: 12, flex: 1, lineHeight: 16 },
 });

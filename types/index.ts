@@ -26,11 +26,17 @@ export interface Goal {
 
 export type SetType = 'normal' | 'warmup' | 'dropset' | 'failure';
 
+export interface SetDetail {
+  reps?: number;
+  weight?: number; // kg
+}
+
 export interface ExerciseLog {
   name: string;
   sets?: number;
   reps?: number;
   weight?: number;
+  setsDetail?: SetDetail[]; // per-set log (pyramids etc.); sets/reps/weight hold the summary (count / best set)
   duration?: number; // minutes
   distance?: number; // km
   calories?: number; // kcal

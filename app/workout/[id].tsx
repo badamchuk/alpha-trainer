@@ -148,6 +148,18 @@ export default function WorkoutDetailScreen() {
       watts: parseNum(exWatts),
     };
     if (editingExIdx !== null) {
+      const prev = exercises[editingExIdx];
+      // Зберігаємо детальні підходи лише якщо зведені поля не змінювались —
+      // інакше нові sets/reps/weight стають істиною
+      if (
+        prev.setsDetail &&
+        prev.sets === ex.sets && prev.reps === ex.reps && prev.weight === ex.weight
+      ) {
+        ex.setsDetail = prev.setsDetail;
+      }
+      if (prev.supersetId) ex.supersetId = prev.supersetId;
+      if (prev.rpe !== undefined) ex.rpe = prev.rpe;
+      if (prev.setType) ex.setType = prev.setType;
       const updated = [...exercises];
       updated[editingExIdx] = ex;
       setExercises(updated);
@@ -344,17 +356,7 @@ export default function WorkoutDetailScreen() {
               <View key={i} style={[styles.exerciseItem, editingExIdx === i && styles.exerciseItemEditing]}>
                 <TouchableOpacity style={styles.exerciseLeft} onPress={() => startEditExercise(i)}>
                   <Text style={styles.exerciseName}>{ex.name}</Text>
-                  <Text style={styles.exerciseMeta}>
-                    {[
-                      ex.sets && `${ex.sets} підх.`,
-                      ex.reps && `${ex.reps} повт.`,
-                      ex.weight && `${ex.weight} кг`,
-                      ex.duration && `${ex.duration} хв`,
-                      ex.distance && `${ex.distance} км`,
-                      ex.calories && `${ex.calories} ккал`,
-                      ex.watts && `${ex.watts} вт`,
-                    ].filter(Boolean).join(' · ')}
-                  </Text>
+                  <Text style={styles.exerciseMeta}>{detailMeta(ex, ' · ')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => { setExercises(exercises.filter((_, idx) => idx !== i)); if (editingExIdx === i) clearExForm(); }}>
                   <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
@@ -594,6 +596,24 @@ function getSupersetColorDetail(id: string): string {
   return SUPERSET_COLORS_DETAIL[hash % SUPERSET_COLORS_DETAIL.length];
 }
 
+// Формує підпис вправи; для set-by-set показує кожен підхід ("80×5 / 85×5 / 90×3")
+function detailMeta(ex: ExerciseLog, sep: string): string {
+  const base = ex.setsDetail && ex.setsDetail.length > 0
+    ? [ex.setsDetail.map((s) => (s.weight ? `${s.weight}×${s.reps ?? '?'}` : `${s.reps ?? '?'}`)).join(' / ')]
+    : [
+        ex.sets && `${ex.sets} підх.`,
+        ex.reps && `× ${ex.reps} повт.`,
+        ex.weight && `${ex.weight} кг`,
+      ];
+  return [
+    ...base,
+    ex.duration && `${ex.duration} хв`,
+    ex.distance && `${ex.distance} км`,
+    ex.calories && `${ex.calories} ккал`,
+    ex.watts && `${ex.watts} вт`,
+  ].filter(Boolean).join(sep);
+}
+
 function renderDetailExercises(exercises: ExerciseLog[]): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   const seen = new Set<string>();
@@ -620,17 +640,7 @@ function renderDetailExercises(exercises: ExerciseLog[]): React.ReactNode[] {
                 </View>
                 <View style={styles.exerciseBody}>
                   <Text style={styles.exerciseNameView}>{gEx.name}</Text>
-                  <Text style={styles.exerciseMetaView}>
-                    {[
-                      gEx.sets && `${gEx.sets} підх.`,
-                      gEx.reps && `× ${gEx.reps} повт.`,
-                      gEx.weight && `${gEx.weight} кг`,
-                      gEx.duration && `${gEx.duration} хв`,
-                      gEx.distance && `${gEx.distance} км`,
-                      gEx.calories && `${gEx.calories} ккал`,
-                      gEx.watts && `${gEx.watts} вт`,
-                    ].filter(Boolean).join('  ')}
-                  </Text>
+                  <Text style={styles.exerciseMetaView}>{detailMeta(gEx, '  ')}</Text>
                   {gEx.notes && <Text style={styles.exerciseNotes}>{gEx.notes}</Text>}
                 </View>
               </View>
@@ -647,17 +657,7 @@ function renderDetailExercises(exercises: ExerciseLog[]): React.ReactNode[] {
           </View>
           <View style={styles.exerciseBody}>
             <Text style={styles.exerciseNameView}>{ex.name}</Text>
-            <Text style={styles.exerciseMetaView}>
-              {[
-                ex.sets && `${ex.sets} підх.`,
-                ex.reps && `× ${ex.reps} повт.`,
-                ex.weight && `${ex.weight} кг`,
-                ex.duration && `${ex.duration} хв`,
-                ex.distance && `${ex.distance} км`,
-                ex.calories && `${ex.calories} ккал`,
-                ex.watts && `${ex.watts} вт`,
-              ].filter(Boolean).join('  ')}
-            </Text>
+            <Text style={styles.exerciseMetaView}>{detailMeta(ex, '  ')}</Text>
             {ex.notes && <Text style={styles.exerciseNotes}>{ex.notes}</Text>}
           </View>
         </View>

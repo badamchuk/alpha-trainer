@@ -1,5 +1,50 @@
-import { WorkoutEntry } from '../types';
+import { WorkoutEntry, ExerciseLog } from '../types';
 import { getLocalDateString } from './storage';
+import { EXERCISES, MuscleGroup } from './exercises';
+
+// ─── Exercise classification via library ────────────────────────────────────
+// Exact-name lookup into the curated exercise library; keyword matching is
+// only a fallback for free-typed names that aren't in the library.
+
+const LIBRARY_BY_NAME = new Map<string, MuscleGroup>();
+for (const ex of EXERCISES) {
+  LIBRARY_BY_NAME.set(ex.nameUk.toLowerCase().trim(), ex.muscleGroup);
+  LIBRARY_BY_NAME.set(ex.nameEn.toLowerCase().trim(), ex.muscleGroup);
+}
+
+export function classifyExercise(name: string): MuscleGroup | null {
+  const n = name.toLowerCase().trim();
+  const exact = LIBRARY_BY_NAME.get(n);
+  if (exact) return exact;
+  // Keyword fallback — ordered so specific patterns win over generic ones
+  if (/leg curl|згинання ніг|згинання ноги|nordic|підколін|hamstring|romanian|румунськ|rdl|на прямих ногах|good morning|доброго ранку|ghr|pull-through|протяжка/.test(n)) return 'hamstrings';
+  if (/розгинання ніг|leg extension|squat|присідан|leg press|жим ногами|квадр|випад|lunge|step-up|підйом на крок|пістолет/.test(n)) return 'legs';
+  if (/calf|литк|на носки/.test(n)) return 'calves';
+  if (/glute|сідниц|hip thrust|тяга стегном|міст|bridge|kickback|відведення ноги|donkey kick|abduction/.test(n)) return 'glutes';
+  if (/bench|жим леж|жим штанги леж|жим гантел|грудн|chest|зведення|розведення гантелей леж|пек-дек|pec deck|crossover|push-up|відтискання|fly/.test(n)) return 'chest';
+  if (/deadlift|станов|тяга з рамки|rack pull|row|тяга штанги|тяга гантел|тяга блок|тяга верхн|тяга горизонт|підтягуван|pull-up|chin-up|lat|широчайш|шраги|shrug|гіперекстен|back extension|face pull|тяга до обличчя/.test(n)) return 'back';
+  if (/shoulder|плеч|ohp|overhead|military|жим сто|жим сид|arnold|арнольд|lateral|в сторони|front raise|вперед|rear delt|зворотн.*розвод|до підборіддя|upright|landmine|ландмін|pike|стійці на руках/.test(n)) return 'shoulders';
+  if (/tricep|трицепс|французьк|skull|pushdown|розгинання на блоці|з-за голови|вузьким хватом|брусах|від лави|kickback з гантел/.test(n)) return 'triceps';
+  if (/bicep|біцепс|curl|молотков|скотта|концентрован|підйом штанги|підйом гантел|підйом ez|зворотним хватом/.test(n)) return 'biceps';
+  if (/abs|прес|crunch|скручуван|plank|планка|core|підйом ніг|підйом колін|велосипед.*прес|russian twist|твіст|ролик|l-sit|hollow|dragon/.test(n)) return 'core';
+  if (/біг|run|ходьба|walk|скакалк|jump rope|еліпс|elliptical|гребн|rowing machine|велотренаж|stationary bike|плаван|swim|сходов|stair|спринт|sprint/.test(n)) return 'cardio';
+  if (/burpee|берпі|kettlebell|гир|фермер|farmer|турецьк|clean|jerk|snatch|ривок|поштовх|thruster|траст|box jump|стрибок|sled|сан|battle rope|канат|комплекс/.test(n)) return 'fullbody';
+  return null;
+}
+
+// ─── Per-exercise tonnage (set-by-set aware) ─────────────────────────────────
+
+export function exerciseTonnage(e: ExerciseLog): number {
+  if (e.setsDetail && e.setsDetail.length > 0) {
+    return e.setsDetail.reduce((s, set) => s + (set.reps || 0) * (set.weight || 0), 0);
+  }
+  return (e.sets || 0) * (e.reps || 0) * (e.weight || 0);
+}
+
+export function exerciseSetCount(e: ExerciseLog): number {
+  if (e.setsDetail && e.setsDetail.length > 0) return e.setsDetail.length;
+  return e.sets || 1;
+}
 
 export function formatPace(secondsPerKm: number): string {
   if (!secondsPerKm || secondsPerKm <= 0) return '–';
@@ -108,8 +153,13 @@ export function getStrengthStats(workouts: WorkoutEntry[]): StrengthStats {
 
   for (const s of sessions) {
     s.exercises.forEach((e) => {
-      totalSets += e.sets || 0;
-      totalReps += (e.sets || 0) * (e.reps || 0);
+      if (e.setsDetail && e.setsDetail.length > 0) {
+        totalSets += e.setsDetail.length;
+        totalReps += e.setsDetail.reduce((sum, set) => sum + (set.reps || 0), 0);
+      } else {
+        totalSets += e.sets || 0;
+        totalReps += (e.sets || 0) * (e.reps || 0);
+      }
     });
     totalDur += s.duration || 0;
     if (s.rating) { ratingSum += s.rating; ratingCount++; }
@@ -184,7 +234,7 @@ export function getWeeklyTonnage(workouts: WorkoutEntry[], weeks = 12): WeeklyTo
     const tonnage = workouts
       .filter((w) => w.date >= wStart && w.date <= wEnd)
       .reduce((sum, w) =>
-        sum + w.exercises.reduce((s, e) => s + (e.sets || 0) * (e.reps || 0) * (e.weight || 0), 0), 0);
+        sum + w.exercises.reduce((s, e) => s + exerciseTonnage(e), 0), 0);
     const dd = String(weekEnd.getDate()).padStart(2, '0');
     const mm = String(weekEnd.getMonth() + 1).padStart(2, '0');
     return { weekLabel: `${dd}.${mm}`, tonnage: Math.round(tonnage) };
@@ -196,7 +246,9 @@ export function getWeeklyTonnage(workouts: WorkoutEntry[], weeks = 12): WeeklyTo
 export function estimate1RM(weight: number, reps: number): number {
   if (reps === 1) return weight;
   if (reps <= 0 || weight <= 0) return 0;
-  return Math.round(weight * (1 + reps / 30));
+  // Epley is unreliable past ~12 reps — cap to avoid inflated estimates
+  const cappedReps = Math.min(reps, 12);
+  return Math.round(weight * (1 + cappedReps / 30));
 }
 
 // ─── Per-exercise progress ────────────────────────────────────────────────────
@@ -221,39 +273,62 @@ export function getExerciseProgress(
   for (const w of sorted) {
     const matches = w.exercises.filter((e) => e.name.toLowerCase().trim() === key);
     if (matches.length === 0) continue;
-    // Best set in this workout (by weight, then by reps)
-    const best = matches.reduce((b, e) => {
-      const score = (e.weight || 0) * 1000 + (e.reps || 0);
-      const bScore = (b.weight || 0) * 1000 + (b.reps || 0);
-      return score > bScore ? e : b;
-    });
-    const weight = best.weight || 0;
-    const reps = best.reps || 0;
-    const sets = best.sets || 1;
+    // Best set in this workout (by weight, then by reps) — set-by-set aware
+    let weight = 0;
+    let reps = 0;
+    let sets = 0;
+    let tonnage = 0;
+    for (const e of matches) {
+      sets += exerciseSetCount(e);
+      tonnage += exerciseTonnage(e);
+      const candidates = e.setsDetail && e.setsDetail.length > 0
+        ? e.setsDetail
+        : [{ weight: e.weight, reps: e.reps }];
+      for (const set of candidates) {
+        const score = (set.weight || 0) * 1000 + (set.reps || 0);
+        if (score > weight * 1000 + reps) {
+          weight = set.weight || 0;
+          reps = set.reps || 0;
+        }
+      }
+    }
     points.push({
       date: w.date,
       weight,
       reps,
       sets,
       estimated1RM: estimate1RM(weight, reps),
-      tonnage: sets * reps * weight,
+      tonnage,
     });
   }
   return points;
 }
 
 export function getAllExerciseNames(workouts: WorkoutEntry[]): string[] {
-  const counts = new Map<string, number>();
+  // Group case-insensitively (progress lookup ignores case too);
+  // display the most frequent spelling of each name
+  const groups = new Map<string, Map<string, number>>();
   for (const w of workouts) {
     for (const e of w.exercises) {
       if (!e.name) continue;
-      const key = e.name.trim();
-      counts.set(key, (counts.get(key) || 0) + 1);
+      const display = e.name.trim();
+      const key = display.toLowerCase();
+      const variants = groups.get(key) || new Map<string, number>();
+      variants.set(display, (variants.get(display) || 0) + 1);
+      groups.set(key, variants);
     }
   }
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([name]) => name);
+  return Array.from(groups.values())
+    .map((variants) => {
+      let total = 0, bestName = '', bestCount = 0;
+      for (const [name, n] of variants) {
+        total += n;
+        if (n > bestCount) { bestName = name; bestCount = n; }
+      }
+      return { name: bestName, total };
+    })
+    .sort((a, b) => b.total - a.total)
+    .map((g) => g.name);
 }
 
 // ─── Calorie estimation (MET-based) ──────────────────────────────────────────
@@ -300,11 +375,12 @@ const HR_ZONE_COLORS: Record<HRZone, string> = {
 };
 
 export function getHRZone(avgHR: number, maxHREstimate: number): HRZone {
+  // Classic 5-zone model: 50–60 / 60–70 / 70–80 / 80–90 / 90+ % HRmax
   const pct = avgHR / maxHREstimate;
-  if (pct < 0.57) return 1;
-  if (pct < 0.64) return 2;
-  if (pct < 0.77) return 3;
-  if (pct < 0.96) return 4;
+  if (pct < 0.6) return 1;
+  if (pct < 0.7) return 2;
+  if (pct < 0.8) return 3;
+  if (pct < 0.9) return 4;
   return 5;
 }
 
@@ -346,32 +422,36 @@ export interface MuscleGroupData {
   color: string;
 }
 
-const MUSCLE_KEYWORDS: { group: string; label: string; color: string; keywords: string[] }[] = [
-  { group: 'chest',     label: 'Груди',    color: '#E63946', keywords: ['жим', 'грудн', 'bench', 'chest', 'зведення', 'розведення'] },
-  { group: 'back',      label: 'Спина',    color: '#3498DB', keywords: ['тяга', 'підтягуван', 'row', 'спин', 'deadlift', 'станов', 'lat', 'широчайш'] },
-  { group: 'legs',      label: 'Ноги',     color: '#2ECC71', keywords: ['присідан', 'випад', 'squat', 'lunge', 'ноги', 'квадр', 'стегн', 'литк', 'leg press', 'жим ногами'] },
-  { group: 'shoulders', label: 'Плечі',    color: '#9B59B6', keywords: ['плечі', 'плечов', 'shoulder', 'жим стоячи', 'жим сид', 'arnold', 'lateral', 'розведен'] },
-  { group: 'arms',      label: 'Руки',     color: '#F4A261', keywords: ['біцепс', 'трицепс', 'bicep', 'tricep', 'curl', 'згинан', 'розгинан', 'hammer'] },
-  { group: 'core',      label: 'Прес/Кор', color: '#1ABC9C', keywords: ['прес', 'планка', 'core', 'abs', 'скручуван', 'підйом ніг', 'bicycle', 'crunch'] },
+const BALANCE_GROUPS: { group: string; label: string; color: string }[] = [
+  { group: 'chest',     label: 'Груди',    color: '#E63946' },
+  { group: 'back',      label: 'Спина',    color: '#3498DB' },
+  { group: 'legs',      label: 'Ноги',     color: '#2ECC71' },
+  { group: 'shoulders', label: 'Плечі',    color: '#9B59B6' },
+  { group: 'arms',      label: 'Руки',     color: '#F4A261' },
+  { group: 'core',      label: 'Прес/Кор', color: '#1ABC9C' },
 ];
+
+// Collapse fine-grained library groups into the 6 display groups
+const MG_TO_BALANCE: Partial<Record<MuscleGroup, string>> = {
+  chest: 'chest', back: 'back', shoulders: 'shoulders',
+  biceps: 'arms', triceps: 'arms',
+  legs: 'legs', hamstrings: 'legs', glutes: 'legs', calves: 'legs',
+  core: 'core',
+};
 
 export function getMuscleGroupBalance(workouts: WorkoutEntry[]): MuscleGroupData[] {
   const counts: Record<string, number> = {};
-  for (const group of MUSCLE_KEYWORDS) counts[group.group] = 0;
+  for (const g of BALANCE_GROUPS) counts[g.group] = 0;
 
   for (const w of workouts) {
     for (const e of w.exercises) {
-      const name = e.name.toLowerCase();
-      for (const mg of MUSCLE_KEYWORDS) {
-        if (mg.keywords.some((k) => name.includes(k))) {
-          counts[mg.group] += e.sets || 1;
-          break;
-        }
-      }
+      const mg = classifyExercise(e.name);
+      const balanceGroup = mg ? MG_TO_BALANCE[mg] : undefined;
+      if (balanceGroup) counts[balanceGroup] += exerciseSetCount(e);
     }
   }
 
-  return MUSCLE_KEYWORDS
+  return BALANCE_GROUPS
     .map((mg) => ({ group: mg.group, label: mg.label, color: mg.color, count: counts[mg.group] }))
     .filter((mg) => mg.count > 0)
     .sort((a, b) => b.count - a.count);
@@ -379,13 +459,16 @@ export function getMuscleGroupBalance(workouts: WorkoutEntry[]): MuscleGroupData
 
 // ─── Strength Score ───────────────────────────────────────────────────────────
 
-// Key compound lifts used for score — matches by keywords
+// Key compound lifts used for score — matches by keywords.
+// `standard` = 1RM/bodyweight ratio of a strong (advanced) lifter for that movement;
+// each lift is normalized to its own standard before averaging, so a heavy
+// deadlift doesn't inflate the score and a fair OHP doesn't drag it down.
 const KEY_LIFTS = [
-  { name: 'Squat',      keywords: ['squat', 'присідан', 'back squat', 'front squat', 'паузове присідання'],  weight: 1.2 },
-  { name: 'Deadlift',   keywords: ['deadlift', 'станова', 'rdl', 'rack pull', 'румунська'],                  weight: 1.3 },
-  { name: 'Bench',      keywords: ['bench', 'жим лежачи', 'жим леж'],                                       weight: 1.0 },
-  { name: 'OHP',        keywords: ['overhead', 'жим стоячи', 'military press', 'ohp', 'жим сидячи'],        weight: 0.8 },
-  { name: 'Row',        keywords: ['barbell row', 'тяга штанги', 'bent over', 'pendlay'],                   weight: 0.7 },
+  { name: 'Squat',      keywords: ['squat', 'присідан', 'back squat', 'front squat', 'паузове присідання'],  weight: 1.2, standard: 1.6 },
+  { name: 'Deadlift',   keywords: ['deadlift', 'станова', 'rdl', 'rack pull', 'румунська'],                  weight: 1.3, standard: 2.0 },
+  { name: 'Bench',      keywords: ['bench', 'жим лежачи', 'жим леж'],                                       weight: 1.0, standard: 1.25 },
+  { name: 'OHP',        keywords: ['overhead', 'жим стоячи', 'military press', 'ohp', 'жим сидячи'],        weight: 0.8, standard: 0.75 },
+  { name: 'Row',        keywords: ['barbell row', 'тяга штанги', 'bent over', 'pendlay'],                   weight: 0.7, standard: 0.9 },
 ];
 
 export interface StrengthScoreResult {
@@ -409,23 +492,29 @@ export function getStrengthScore(
       for (const e of w.exercises) {
         const n = e.name.toLowerCase();
         if (lift.keywords.some((k) => n.includes(k))) {
-          const rm = estimate1RM(e.weight || 0, e.reps || 1);
-          if (rm > best1RM) { best1RM = rm; lastDate = w.date; }
+          const sets = e.setsDetail && e.setsDetail.length > 0
+            ? e.setsDetail
+            : [{ weight: e.weight, reps: e.reps }];
+          for (const set of sets) {
+            const rm = estimate1RM(set.weight || 0, set.reps || 1);
+            if (rm > best1RM) { best1RM = rm; lastDate = w.date; }
+          }
         }
       }
     }
     if (best1RM > 0) {
       lifts.push({ name: lift.name, estimated1RM: best1RM, lastDate });
-      weightedSum += (best1RM / (bodyWeightKg || 75)) * lift.weight;
+      const normalized = (best1RM / (bodyWeightKg || 75)) / lift.standard;
+      weightedSum += normalized * lift.weight;
       weightTotal += lift.weight;
     }
   }
 
   if (lifts.length === 0) return { score: 0, level: 'beginner', lifts: [] };
 
-  const avgRatio = weightedSum / weightTotal;
-  // avgRatio: ~0.5 = beginner, ~1.0 = novice, ~1.5 = intermediate, ~2.0 = advanced, ~2.5+ = elite
-  const score = Math.min(1000, Math.round(avgRatio * 400));
+  // avgNorm 1.0 = lifting at the per-movement "advanced" standard → score 600
+  const avgNorm = weightedSum / weightTotal;
+  const score = Math.min(1000, Math.round(avgNorm * 600));
 
   const level: StrengthScoreResult['level'] =
     score < 200 ? 'beginner' :
@@ -483,23 +572,10 @@ export function getVolumeLandmarks(
 
   for (const w of weekWorkouts) {
     for (const e of w.exercises) {
-      // Try to match via exercise library (muscleGroup in name keywords)
-      const name = e.name.toLowerCase();
-      // Keyword-based fallback matching
-      let matched = '';
-      if (/bench|жим леж|грудн|chest|зведення/.test(name)) matched = 'chest';
-      else if (/squat|присідан|leg press|жим ногами|квадр/.test(name)) matched = 'legs';
-      else if (/deadlift|станов|row|тяга|rdl|rack pull|підтягуван|lat/.test(name)) matched = 'back';
-      else if (/shoulder|плеч|ohp|military|lateral|arnold|жим сто/.test(name)) matched = 'shoulders';
-      else if (/bicep|біцепс|curl|hammer|згинан/.test(name)) matched = 'biceps';
-      else if (/tricep|трицепс|розгинан|pushdown|skull/.test(name)) matched = 'triceps';
-      else if (/rdl|romanian|nordic|curl|leg curl|hamstring|задня|підколін/.test(name)) matched = 'hamstrings';
-      else if (/glute|сідниц|hip thrust|гіперекстен/.test(name)) matched = 'glutes';
-      else if (/abs|прес|crunch|plank|планка|core|підйом ніг/.test(name)) matched = 'core';
-      else if (/calf|литк|gastro/.test(name)) matched = 'calves';
-
+      const mg = classifyExercise(e.name);
+      const matched = mg ? MG_TO_VT[mg] : undefined;
       if (matched) {
-        setCounts[matched] = (setCounts[matched] || 0) + (e.sets || 1);
+        setCounts[matched] = (setCounts[matched] || 0) + exerciseSetCount(e);
       }
     }
   }
@@ -567,8 +643,7 @@ export function getRecoveryScore(
     }
   }
 
-  // Factor 2: workouts this week (Mon–Sun)
-  const weekStart = today.slice(0, 8) + '01'; // rough cutoff — last 7 days
+  // Factor 2: workouts in the last 7 days
   const cutoff = new Date(today);
   cutoff.setDate(cutoff.getDate() - 7);
   const cutoffStr = cutoff.toISOString().slice(0, 10);
@@ -666,16 +741,25 @@ export function getOverloadSuggestion(
   const key = exerciseName.toLowerCase().trim();
   const sorted = [...workouts].sort((a, b) => b.date.localeCompare(a.date));
 
-  // Find last two appearances
-  const appearances: Array<{ date: string; weight: number; reps: number; sets: number }> = [];
+  // Find last two appearances (set-by-set aware: take the heaviest set)
+  const appearances: Array<{ date: string; weight: number; reps: number; sets: number; rpe?: number }> = [];
   for (const w of sorted) {
     const match = w.exercises.find((e) => e.name.toLowerCase().trim() === key);
-    if (match && match.weight && match.reps) {
+    if (!match) continue;
+    let weight = match.weight || 0;
+    let reps = match.reps || 0;
+    if (match.setsDetail && match.setsDetail.length > 0) {
+      for (const set of match.setsDetail) {
+        if ((set.weight || 0) > weight) { weight = set.weight || 0; reps = set.reps || 0; }
+      }
+    }
+    if (weight && reps) {
       appearances.push({
         date: w.date,
-        weight: match.weight,
-        reps: match.reps,
-        sets: match.sets || 1,
+        weight,
+        reps,
+        sets: exerciseSetCount(match),
+        rpe: match.rpe,
       });
       if (appearances.length >= 2) break;
     }
@@ -693,6 +777,24 @@ export function getOverloadSuggestion(
   let suggestedWeight = last.weight;
   let suggestedReps: number | string = last.reps;
   let message = '';
+
+  // RPE has priority: it tells how hard the last top set actually was
+  if (last.rpe && last.rpe >= 9) {
+    return {
+      lastWeight: last.weight, lastReps: last.reps, lastSets: last.sets, lastDate: last.date,
+      suggestedWeight: last.weight,
+      suggestedReps: last.reps,
+      message: `Минулого разу RPE ${last.rpe} — закріпи ${last.weight}кг × ${last.reps}, без додавання ваги`,
+    };
+  }
+  if (last.rpe && last.rpe <= 7) {
+    return {
+      lastWeight: last.weight, lastReps: last.reps, lastSets: last.sets, lastDate: last.date,
+      suggestedWeight: last.weight + increment,
+      suggestedReps: last.reps,
+      message: `RPE ${last.rpe} — був запас, додай +${increment}кг (${last.weight + increment}кг)`,
+    };
+  }
 
   if (!prev) {
     // Only one session — suggest slight increase
@@ -754,18 +856,23 @@ export function getPersonalRecords(workouts: WorkoutEntry[]): PersonalRecord[] {
   const records = new Map<string, PersonalRecord>();
   for (const w of workouts) {
     for (const e of w.exercises) {
-      if (!e.weight || !e.reps) continue;
       const key = e.name.trim().toLowerCase();
-      const rm = estimate1RM(e.weight, e.reps);
-      const existing = records.get(key);
-      if (!existing || rm > existing.estimated1RM) {
-        records.set(key, {
-          exerciseName: e.name.trim(),
-          weight: e.weight,
-          reps: e.reps,
-          estimated1RM: rm,
-          date: w.date,
-        });
+      const sets = e.setsDetail && e.setsDetail.length > 0
+        ? e.setsDetail
+        : [{ weight: e.weight, reps: e.reps }];
+      for (const set of sets) {
+        if (!set.weight || !set.reps) continue;
+        const rm = estimate1RM(set.weight, set.reps);
+        const existing = records.get(key);
+        if (!existing || rm > existing.estimated1RM) {
+          records.set(key, {
+            exerciseName: e.name.trim(),
+            weight: set.weight,
+            reps: set.reps,
+            estimated1RM: rm,
+            date: w.date,
+          });
+        }
       }
     }
   }
