@@ -32,6 +32,8 @@ const ALL_KEYS = [
   '@alpha_trainer:nutritionist_chat_history',
   '@alpha_trainer:ai_memory',
   '@alpha_trainer:daily_advice',
+  '@alpha_trainer:achievements',
+  '@alpha_trainer:timer_prefs',
 ];
 
 export interface BackupFile {
