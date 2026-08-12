@@ -16,6 +16,9 @@ import { getTemplates, saveTemplate, WorkoutTemplate } from '../../services/temp
 import { useLocale } from '../../services/i18n';
 import ExercisePicker from '../../components/ExercisePicker';
 import { checkAndUnlock } from '../../services/achievements';
+import {
+  getSupersetColor, groupIntoSuperset, ungroupSuperset, normalizeSupersets,
+} from '../../services/supersets';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -71,7 +74,7 @@ export default function LogWorkoutScreen() {
   const [plateCalcBarbell, setPlateCalcBarbell] = useState(20);
   const [plateCalcTarget, setPlateCalcTarget] = useState('');
 
-  // Superset mode
+  // Superset mode — вправи, додані підряд, потрапляють в одну групу
   const [supersetMode, setSupersetMode] = useState(false);
   const [currentSupersetId, setCurrentSupersetId] = useState<string | null>(null);
 
@@ -84,6 +87,31 @@ export default function LogWorkoutScreen() {
       setSupersetMode(true);
       setCurrentSupersetId(newId);
     }
+  }
+
+  // Режим групування — об'єднати вже додані вправи в суперсет заднім числом
+  const [groupMode, setGroupMode] = useState(false);
+  const [groupSel, setGroupSel] = useState<number[]>([]);
+
+  function toggleGroupMode() {
+    setGroupMode((on) => !on);
+    setGroupSel([]);
+  }
+
+  function toggleGroupSel(i: number) {
+    setGroupSel((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
+  }
+
+  function applyGrouping() {
+    if (groupSel.length < 2) return;
+    setExercises((prev) => groupIntoSuperset(prev, groupSel));
+    setGroupMode(false);
+    setGroupSel([]);
+    cancelEditExercise();
+  }
+
+  function handleUngroup(ssId: string) {
+    setExercises((prev) => ungroupSuperset(prev, ssId));
   }
 
   // Timer state — timestamp-based so час рахується вірно навіть коли
@@ -178,6 +206,43 @@ export default function LogWorkoutScreen() {
     setDraftSets(draftSets.filter((_, idx) => idx !== i));
   }
 
+  // ── Редагування вже доданої вправи ────────────────────────────────────────
+  // Індекс вправи, яку зараз правимо; null — форма працює на додавання.
+  const [editingExIdx, setEditingExIdx] = useState<number | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const formY = useRef(0);
+
+  function clearExForm() {
+    setExName(''); setExSets(''); setExReps(''); setExWeight('');
+    setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
+    setExRpe(undefined); setExSetType('normal'); setDraftSets([]);
+    setOverloadHint('');
+  }
+
+  function startEditExercise(idx: number) {
+    const ex = exercises[idx];
+    if (!ex) return;
+    const s = (v: number | undefined) => (v !== undefined ? String(v) : '');
+    setExName(ex.name);
+    setExSets(s(ex.sets)); setExReps(s(ex.reps)); setExWeight(s(ex.weight));
+    setExDuration(s(ex.duration)); setExDistance(s(ex.distance));
+    setExCalories(s(ex.calories)); setExWatts(s(ex.watts));
+    setExRpe(ex.rpe);
+    setExSetType(ex.setType ?? 'normal');
+    setDraftSets(ex.setsDetail ? [...ex.setsDetail] : []);
+    setOverloadHint('');
+    setEditingExIdx(idx);
+    // форма нижче списку — підкручуємо, щоб її було видно одразу
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(formY.current - 60, 0), animated: true });
+    });
+  }
+
+  function cancelEditExercise() {
+    setEditingExIdx(null);
+    clearExForm();
+  }
+
   async function lookupOverloadHint(name: string) {
     if (!name.trim()) { setOverloadHint(''); return; }
     const all = await getWorkouts();
@@ -239,6 +304,12 @@ export default function LogWorkoutScreen() {
 
   async function addExercise() {
     if (!exName.trim()) { Alert.alert(t('enterExerciseName')); return; }
+    const isEdit = editingExIdx !== null;
+    // При редагуванні вправа лишається у своїй групі; supersetMode стосується
+    // лише щойно доданих вправ.
+    const supersetIdForEx = isEdit
+      ? exercises[editingExIdx!]?.supersetId
+      : (supersetMode && currentSupersetId ? currentSupersetId : undefined);
     let ex: ExerciseLog;
     if (draftSets.length > 0) {
       // Set-by-set: summary поля = кількість підходів + найважчий підхід
@@ -255,7 +326,7 @@ export default function LogWorkoutScreen() {
         distance: parseNum(exDistance),
         calories: parseNum(exCalories),
         watts: parseNum(exWatts),
-        supersetId: supersetMode && currentSupersetId ? currentSupersetId : undefined,
+        supersetId: supersetIdForEx,
         rpe: exRpe,
         setType: exSetType !== 'normal' ? exSetType : undefined,
       };
@@ -269,17 +340,20 @@ export default function LogWorkoutScreen() {
         distance: parseNum(exDistance),
         calories: parseNum(exCalories),
         watts: parseNum(exWatts),
-        supersetId: supersetMode && currentSupersetId ? currentSupersetId : undefined,
+        supersetId: supersetIdForEx,
         rpe: exRpe,
         setType: exSetType !== 'normal' ? exSetType : undefined,
       };
     }
-    const updatedExercises = [...exercises, ex];
+    const updatedExercises = isEdit
+      ? exercises.map((prev, i) => (i === editingExIdx ? ex : prev))
+      : [...exercises, ex];
     setExercises(updatedExercises);
-    setExName(''); setExSets(''); setExReps(''); setExWeight('');
-    setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
-    setExRpe(undefined); setExSetType('normal'); setDraftSets([]);
-    setOverloadHint('');
+    clearExForm();
+    setEditingExIdx(null);
+    // Таймер відпочинку і банер рекорду — тільки для нової вправи.
+    // Під час виправлення помилки вони б лише заважали.
+    if (isEdit) return;
     // Auto-open rest timer only for strength-type workouts (has sets/reps/weight)
     if (ex.sets || ex.reps || ex.weight) {
       setRestTimerVisible(true);
@@ -314,7 +388,12 @@ export default function LogWorkoutScreen() {
   }
 
   function removeExercise(i: number) {
-    setExercises(exercises.filter((_, idx) => idx !== i));
+    // після видалення суперсет може лишитись з однією вправою — розпускаємо
+    setExercises(normalizeSupersets(exercises.filter((_, idx) => idx !== i)));
+    // індекси зсуваються — інакше правили б не ту вправу
+    if (editingExIdx === i) cancelEditExercise();
+    else if (editingExIdx !== null && editingExIdx > i) setEditingExIdx(editingExIdx - 1);
+    setGroupSel([]);
   }
 
   async function handleSave() {
@@ -397,7 +476,7 @@ export default function LogWorkoutScreen() {
           </View>
         )}
 
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Workout Type */}
           <Text style={styles.label}>{t('workoutTypeLabel')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeList}>
@@ -539,21 +618,70 @@ export default function LogWorkoutScreen() {
             </View>
           </View>
 
-          {renderExerciseGroups(exercises, removeExercise)}
+          {/* Групування вже доданих вправ у суперсет */}
+          {exercises.length > 1 && (
+            <View style={styles.groupBar}>
+              {!groupMode ? (
+                <TouchableOpacity style={styles.groupBarBtn} onPress={toggleGroupMode}>
+                  <Ionicons name="link-outline" size={15} color={Colors.textSecondary} />
+                  <Text style={styles.groupBarText}>Об'єднати в суперсет</Text>
+                </TouchableOpacity>
+              ) : (
+                <>
+                  <Text style={styles.groupBarHint}>
+                    {groupSel.length < 2 ? 'Познач 2+ вправи' : `Вибрано: ${groupSel.length}`}
+                  </Text>
+                  <TouchableOpacity onPress={toggleGroupMode} style={styles.groupBarBtn}>
+                    <Text style={styles.groupBarCancel}>Скасувати</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={applyGrouping}
+                    disabled={groupSel.length < 2}
+                    style={[styles.groupApplyBtn, groupSel.length < 2 && { opacity: 0.4 }]}
+                  >
+                    <Text style={styles.groupApplyText}>Об'єднати</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          )}
 
-          {/* Add Exercise Form */}
-          <View style={styles.exerciseForm}>
+          {renderExerciseGroups({
+            exercises,
+            onRemove: removeExercise,
+            onEdit: startEditExercise,
+            editingIdx: editingExIdx,
+            groupMode,
+            selected: groupSel,
+            onToggleSel: toggleGroupSel,
+            onUngroup: handleUngroup,
+          })}
+
+          {/* Add / Edit Exercise Form */}
+          <View
+            style={[styles.exerciseForm, editingExIdx !== null && styles.exerciseFormEditing]}
+            onLayout={(e) => { formY.current = e.nativeEvent.layout.y; }}
+          >
             <View style={styles.formHeader}>
-              <Text style={styles.formSubtitle}>{t('addExercise')}</Text>
-              <TouchableOpacity
-                style={[styles.supersetToggle, supersetMode && styles.supersetToggleActive]}
-                onPress={toggleSupersetMode}
-              >
-                <Ionicons name="link-outline" size={14} color={supersetMode ? '#FFF' : Colors.textSecondary} />
-                <Text style={[styles.supersetToggleText, supersetMode && styles.supersetToggleTextActive]}>
-                  Суперсет
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.formSubtitle}>
+                {editingExIdx !== null ? 'Редагувати вправу' : t('addExercise')}
+              </Text>
+              {editingExIdx !== null ? (
+                <TouchableOpacity style={styles.cancelEditBtn} onPress={cancelEditExercise}>
+                  <Ionicons name="close" size={14} color={Colors.textSecondary} />
+                  <Text style={styles.cancelEditText}>Скасувати</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.supersetToggle, supersetMode && styles.supersetToggleActive]}
+                  onPress={toggleSupersetMode}
+                >
+                  <Ionicons name="link-outline" size={14} color={supersetMode ? '#FFF' : Colors.textSecondary} />
+                  <Text style={[styles.supersetToggleText, supersetMode && styles.supersetToggleTextActive]}>
+                    Суперсет
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Library button — prominent, full width */}
@@ -684,8 +812,10 @@ export default function LogWorkoutScreen() {
             </View>
 
             <TouchableOpacity style={styles.addExBtn} onPress={addExercise}>
-              <Ionicons name="add" size={20} color="#FFF" />
-              <Text style={styles.addExBtnText}>{t('add')}</Text>
+              <Ionicons name={editingExIdx !== null ? 'checkmark' : 'add'} size={20} color="#FFF" />
+              <Text style={styles.addExBtnText}>
+                {editingExIdx !== null ? 'Зберегти зміни' : t('add')}
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -887,15 +1017,7 @@ function calcPlates(totalKg: number, barbell: number): { plates: { plate: number
   return { plates, leftover: Math.round(perSide * 100) / 100 };
 }
 
-// ─── SUPERSET COLORS ─────────────────────────────────────────────────────────
-
-const SUPERSET_COLORS = ['#E63946', '#2EC4B6', '#F4A261', '#9B59B6', '#2ECC71', '#E91E63'];
-
-function getSupersetColor(id: string): string {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff;
-  return SUPERSET_COLORS[hash % SUPERSET_COLORS.length];
-}
+// кольори суперсетів — у services/supersets.ts (спільні з екраном деталей)
 
 function renderExerciseMeta(ex: ExerciseLog): string {
   const SET_TYPE_LABELS: Record<string, string> = {
@@ -924,14 +1046,63 @@ function renderExerciseMeta(ex: ExerciseLog): string {
   ].filter(Boolean).join(' · ');
 }
 
-function renderExerciseGroups(
-  exercises: ExerciseLog[],
-  onRemove: (i: number) => void,
-): React.ReactNode[] {
+interface ExerciseGroupOpts {
+  exercises: ExerciseLog[];
+  onRemove: (i: number) => void;
+  onEdit: (i: number) => void;
+  editingIdx: number | null;
+  groupMode: boolean;
+  selected: number[];
+  onToggleSel: (i: number) => void;
+  onUngroup: (ssId: string) => void;
+}
+
+function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
+  const { exercises, onRemove, onEdit, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
   const nodes: React.ReactNode[] = [];
   let i = 0;
   // group consecutive exercises with the same supersetId
   const seenSupersets = new Map<string, number>(); // id → group index
+
+  // Рядок вправи: у режимі групування — чекбокс, інакше — тап відкриває на редагування
+  const row = (ex: ExerciseLog, idx: number) => {
+    const isSel = selected.includes(idx);
+    const isEditing = editingIdx === idx;
+    return (
+      <View key={idx} style={[styles.exerciseItem, isEditing && styles.exerciseItemEditing]}>
+        {groupMode && (
+          <TouchableOpacity onPress={() => onToggleSel(idx)} style={styles.selBox} hitSlop={8}>
+            <Ionicons
+              name={isSel ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={isSel ? Colors.primary : Colors.textMuted}
+            />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.exerciseLeft}
+          onPress={() => (groupMode ? onToggleSel(idx) : onEdit(idx))}
+        >
+          <Text style={styles.exerciseName}>{ex.name}</Text>
+          <Text style={styles.exerciseMeta}>{renderExerciseMeta(ex)}</Text>
+        </TouchableOpacity>
+        {!groupMode && (
+          <>
+            <TouchableOpacity onPress={() => onEdit(idx)} style={styles.rowIconBtn} hitSlop={6}>
+              <Ionicons
+                name="create-outline"
+                size={19}
+                color={isEditing ? Colors.primary : Colors.textSecondary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onRemove(idx)} hitSlop={6}>
+              <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    );
+  };
 
   while (i < exercises.length) {
     const ex = exercises[i];
@@ -951,34 +1122,24 @@ function renderExerciseGroups(
             <View style={styles.supersetHeader}>
               <Ionicons name="link-outline" size={12} color={color} />
               <Text style={[styles.supersetLabel, { color }]}>СУПЕРСЕТ</Text>
-            </View>
-            {group.map(({ ex: gEx, idx }) => (
-              <View key={idx} style={styles.exerciseItem}>
-                <View style={styles.exerciseLeft}>
-                  <Text style={styles.exerciseName}>{gEx.name}</Text>
-                  <Text style={styles.exerciseMeta}>{renderExerciseMeta(gEx)}</Text>
-                </View>
-                <TouchableOpacity onPress={() => onRemove(idx)}>
-                  <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
+              {!groupMode && (
+                <TouchableOpacity
+                  onPress={() => onUngroup(ssId)}
+                  style={styles.ungroupBtn}
+                  hitSlop={6}
+                >
+                  <Ionicons name="unlink-outline" size={13} color={Colors.textMuted} />
+                  <Text style={styles.ungroupBtnText}>Розгрупувати</Text>
                 </TouchableOpacity>
-              </View>
-            ))}
+              )}
+            </View>
+            {group.map(({ ex: gEx, idx }) => row(gEx, idx))}
           </View>
         );
       }
       i++;
     } else {
-      nodes.push(
-        <View key={i} style={styles.exerciseItem}>
-          <View style={styles.exerciseLeft}>
-            <Text style={styles.exerciseName}>{ex.name}</Text>
-            <Text style={styles.exerciseMeta}>{renderExerciseMeta(ex)}</Text>
-          </View>
-          <TouchableOpacity onPress={() => onRemove(i)}>
-            <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-      );
+      nodes.push(row(ex, i));
       i++;
     }
   }
@@ -1030,11 +1191,36 @@ const styles = StyleSheet.create({
   exerciseLeft: { flex: 1 },
   exerciseName: { ...Typography.body, fontWeight: '600' },
   exerciseMeta: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
+  exerciseItemEditing: { borderColor: Colors.primary, backgroundColor: Colors.primary + '10' },
+  rowIconBtn: { paddingHorizontal: Spacing.sm },
+  selBox: { paddingRight: Spacing.sm },
+  groupBar: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    marginBottom: Spacing.xs, minHeight: 34,
+  },
+  groupBarBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6 },
+  groupBarText: { color: Colors.textSecondary, fontSize: 13 },
+  groupBarHint: { color: Colors.textMuted, fontSize: 12, flex: 1 },
+  groupBarCancel: { color: Colors.textSecondary, fontSize: 13 },
+  groupApplyBtn: {
+    backgroundColor: Colors.primary, borderRadius: BorderRadius.full,
+    paddingHorizontal: 14, paddingVertical: 7,
+  },
+  groupApplyText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  ungroupBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' },
+  ungroupBtnText: { color: Colors.textMuted, fontSize: 11 },
+  cancelEditBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.border,
+  },
+  cancelEditText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
   exerciseForm: {
     backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
     padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
     marginTop: Spacing.xs, gap: Spacing.xs,
   },
+  exerciseFormEditing: { borderColor: Colors.primary },
   formHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginBottom: Spacing.xs,

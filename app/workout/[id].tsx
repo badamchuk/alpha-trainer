@@ -10,10 +10,13 @@ import { format, parseISO } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getWorkouts, deleteWorkout, updateWorkout, addWorkout } from '../../services/storage';
-import { WorkoutEntry, ExerciseLog, WorkoutType } from '../../types';
+import { WorkoutEntry, ExerciseLog, WorkoutType, SetType, SetDetail } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
 import { computePace, formatPace } from '../../services/analytics';
 import { useLocale } from '../../services/i18n';
+import {
+  getSupersetColor, groupIntoSuperset, ungroupSuperset, normalizeSupersets,
+} from '../../services/supersets';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -72,7 +75,13 @@ export default function WorkoutDetailScreen() {
   const [exDistance, setExDistance] = useState('');
   const [exCalories, setExCalories] = useState('');
   const [exWatts, setExWatts] = useState('');
+  const [exRpe, setExRpe] = useState<number | undefined>(undefined);
+  const [exSetType, setExSetType] = useState<SetType>('normal');
+  const [draftSets, setDraftSets] = useState<SetDetail[]>([]);
   const [editingExIdx, setEditingExIdx] = useState<number | null>(null);
+  // Групування вправ у суперсет заднім числом
+  const [groupMode, setGroupMode] = useState(false);
+  const [groupSel, setGroupSel] = useState<number[]>([]);
   // Cardio edit fields
   const [totalDistance, setTotalDistance] = useState('');
   const [avgHeartRate, setAvgHeartRate] = useState('');
@@ -113,20 +122,63 @@ export default function WorkoutDetailScreen() {
   function clearExForm() {
     setExName(''); setExSets(''); setExReps(''); setExWeight('');
     setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
+    setExRpe(undefined); setExSetType('normal'); setDraftSets([]);
     setEditingExIdx(null);
   }
 
   function startEditExercise(idx: number) {
     const ex = exercises[idx];
+    if (!ex) return;
+    const s = (v: number | undefined) => (v !== undefined ? String(v) : '');
     setExName(ex.name);
-    setExSets(ex.sets !== undefined ? String(ex.sets) : '');
-    setExReps(ex.reps !== undefined ? String(ex.reps) : '');
-    setExWeight(ex.weight !== undefined ? String(ex.weight) : '');
-    setExDuration(ex.duration !== undefined ? String(ex.duration) : '');
-    setExDistance(ex.distance !== undefined ? String(ex.distance) : '');
-    setExCalories(ex.calories !== undefined ? String(ex.calories) : '');
-    setExWatts(ex.watts !== undefined ? String(ex.watts) : '');
+    setExSets(s(ex.sets)); setExReps(s(ex.reps)); setExWeight(s(ex.weight));
+    setExDuration(s(ex.duration)); setExDistance(s(ex.distance));
+    setExCalories(s(ex.calories)); setExWatts(s(ex.watts));
+    setExRpe(ex.rpe);
+    setExSetType(ex.setType ?? 'normal');
+    setDraftSets(ex.setsDetail ? [...ex.setsDetail] : []);
     setEditingExIdx(idx);
+  }
+
+  function addDraftSet() {
+    const reps = parseNum(exReps);
+    const weight = parseNum(exWeight);
+    if (!reps) { Alert.alert('Вкажи повтори для підходу'); return; }
+    setDraftSets([...draftSets, { reps, weight }]);
+  }
+
+  function removeDraftSet(i: number) {
+    setDraftSets(draftSets.filter((_, idx) => idx !== i));
+  }
+
+  // ── Суперсети ─────────────────────────────────────────────────────────────
+  function toggleGroupMode() {
+    setGroupMode((on) => !on);
+    setGroupSel([]);
+  }
+
+  function toggleGroupSel(i: number) {
+    setGroupSel((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
+  }
+
+  function applyGrouping() {
+    if (groupSel.length < 2) return;
+    setExercises((prev) => groupIntoSuperset(prev, groupSel));
+    setGroupMode(false);
+    setGroupSel([]);
+    clearExForm();
+  }
+
+  function handleUngroup(ssId: string) {
+    setExercises((prev) => ungroupSuperset(prev, ssId));
+  }
+
+  function removeExerciseAt(i: number) {
+    setExercises(normalizeSupersets(exercises.filter((_, idx) => idx !== i)));
+    // індекси зсуваються — інакше правили б не ту вправу
+    if (editingExIdx === i) clearExForm();
+    else if (editingExIdx !== null && editingExIdx > i) setEditingExIdx(editingExIdx - 1);
+    setGroupSel([]);
   }
 
   function parseNum(v: string): number | undefined {
@@ -137,35 +189,44 @@ export default function WorkoutDetailScreen() {
 
   function addExercise() {
     if (!exName.trim()) { Alert.alert(t('enterExerciseName')); return; }
-    const ex: ExerciseLog = {
+    const isEdit = editingExIdx !== null;
+    // Вправа лишається у своєму суперсеті — групи міняються окремою кнопкою
+    const prevEx = isEdit ? exercises[editingExIdx!] : undefined;
+    const common = {
       name: exName.trim(),
-      sets: parseNum(exSets),
-      reps: parseNum(exReps),
-      weight: parseNum(exWeight),
       duration: parseNum(exDuration),
       distance: parseNum(exDistance),
       calories: parseNum(exCalories),
       watts: parseNum(exWatts),
+      supersetId: prevEx?.supersetId,
+      rpe: exRpe,
+      setType: exSetType !== 'normal' ? exSetType : undefined,
     };
-    if (editingExIdx !== null) {
-      const prev = exercises[editingExIdx];
-      // Зберігаємо детальні підходи лише якщо зведені поля не змінювались —
-      // інакше нові sets/reps/weight стають істиною
-      if (
-        prev.setsDetail &&
-        prev.sets === ex.sets && prev.reps === ex.reps && prev.weight === ex.weight
-      ) {
-        ex.setsDetail = prev.setsDetail;
-      }
-      if (prev.supersetId) ex.supersetId = prev.supersetId;
-      if (prev.rpe !== undefined) ex.rpe = prev.rpe;
-      if (prev.setType) ex.setType = prev.setType;
-      const updated = [...exercises];
-      updated[editingExIdx] = ex;
-      setExercises(updated);
-    } else {
-      setExercises([...exercises, ex]);
-    }
+    // Політні підходи редагуються явно (чіпи нижче), тому вони — джерело істини:
+    // зведені поля рахуються з них, а не вгадуються за збігом старих значень.
+    const ex: ExerciseLog = draftSets.length > 0
+      ? (() => {
+          const bestSet = draftSets.reduce((b, s) =>
+            ((s.weight || 0) * 1000 + (s.reps || 0)) > ((b.weight || 0) * 1000 + (b.reps || 0)) ? s : b
+          );
+          return {
+            ...common,
+            sets: draftSets.length,
+            reps: bestSet.reps,
+            weight: bestSet.weight,
+            setsDetail: draftSets,
+          };
+        })()
+      : {
+          ...common,
+          sets: parseNum(exSets),
+          reps: parseNum(exReps),
+          weight: parseNum(exWeight),
+        };
+
+    setExercises(isEdit
+      ? exercises.map((p, i) => (i === editingExIdx ? ex : p))
+      : [...exercises, ex]);
     clearExForm();
   }
 
@@ -352,17 +413,45 @@ export default function WorkoutDetailScreen() {
 
             {/* Exercises list */}
             <Text style={styles.label}>Вправи</Text>
-            {exercises.map((ex, i) => (
-              <View key={i} style={[styles.exerciseItem, editingExIdx === i && styles.exerciseItemEditing]}>
-                <TouchableOpacity style={styles.exerciseLeft} onPress={() => startEditExercise(i)}>
-                  <Text style={styles.exerciseName}>{ex.name}</Text>
-                  <Text style={styles.exerciseMeta}>{detailMeta(ex, ' · ')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => { setExercises(exercises.filter((_, idx) => idx !== i)); if (editingExIdx === i) clearExForm(); }}>
-                  <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
-                </TouchableOpacity>
+            <Text style={styles.editHint}>Торкнись вправи, щоб змінити її</Text>
+
+            {exercises.length > 1 && (
+              <View style={styles.groupBar}>
+                {!groupMode ? (
+                  <TouchableOpacity style={styles.groupBarBtn} onPress={toggleGroupMode}>
+                    <Ionicons name="link-outline" size={15} color={Colors.textSecondary} />
+                    <Text style={styles.groupBarText}>Об'єднати в суперсет</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <Text style={styles.groupBarHint}>
+                      {groupSel.length < 2 ? 'Познач 2+ вправи' : `Вибрано: ${groupSel.length}`}
+                    </Text>
+                    <TouchableOpacity onPress={toggleGroupMode} style={styles.groupBarBtn}>
+                      <Text style={styles.groupBarCancel}>Скасувати</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={applyGrouping}
+                      disabled={groupSel.length < 2}
+                      style={[styles.groupApplyBtn, groupSel.length < 2 && { opacity: 0.4 }]}
+                    >
+                      <Text style={styles.groupApplyText}>Об'єднати</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
-            ))}
+            )}
+
+            {renderEditableExercises({
+              exercises,
+              onRemove: removeExerciseAt,
+              onEdit: startEditExercise,
+              editingIdx: editingExIdx,
+              groupMode,
+              selected: groupSel,
+              onToggleSel: toggleGroupSel,
+              onUngroup: handleUngroup,
+            })}
 
             {/* Add/edit exercise form */}
             <View style={styles.exerciseForm}>
@@ -398,6 +487,30 @@ export default function WorkoutDetailScreen() {
                     value={exWeight} onChangeText={setExWeight} keyboardType="decimal-pad" />
                 </View>
               </View>
+              {/* Політні підходи — піраміди на кшталт 80×5 / 85×5 / 90×3 */}
+              {draftSets.length > 0 && (
+                <View style={styles.draftSetsList}>
+                  {draftSets.map((s, i) => (
+                    <View key={i} style={styles.draftSetChip}>
+                      <Text style={styles.draftSetChipText}>
+                        {i + 1}) {s.weight ? `${s.weight}кг × ` : ''}{s.reps}
+                      </Text>
+                      <TouchableOpacity onPress={() => removeDraftSet(i)} hitSlop={8}>
+                        <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <TouchableOpacity style={styles.addSetBtn} onPress={addDraftSet}>
+                <Ionicons name="add-circle-outline" size={16} color={Colors.textSecondary} />
+                <Text style={styles.addSetBtnText}>
+                  {draftSets.length > 0
+                    ? `Додати підхід ${draftSets.length + 1} (з полів вище)`
+                    : 'Записати підходи окремо (піраміда)'}
+                </Text>
+              </TouchableOpacity>
+
               <View style={styles.row}>
                 <View style={styles.rowItem}>
                   <Text style={styles.miniLabel}>Час (хв)</Text>
@@ -421,14 +534,46 @@ export default function WorkoutDetailScreen() {
                   <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={exWatts} onChangeText={setExWatts} keyboardType="numeric" />
                 </View>
-                <View style={[styles.rowItem, { flex: 2 }]}>
-                  <Text style={styles.miniLabel}> </Text>
-                  <TouchableOpacity style={[styles.addExBtn, editingExIdx !== null && { backgroundColor: Colors.accent }]} onPress={addExercise}>
-                    <Ionicons name={editingExIdx !== null ? 'checkmark' : 'add'} size={20} color="#FFF" />
-                    <Text style={styles.addExBtnText}>{editingExIdx !== null ? 'Зберегти' : 'Додати'}</Text>
-                  </TouchableOpacity>
+                <View style={styles.rowItem}>
+                  <Text style={styles.miniLabel}>RPE (1–10)</Text>
+                  <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
+                    value={exRpe !== undefined ? String(exRpe) : ''}
+                    onChangeText={(v) => {
+                      const n = Number(v);
+                      setExRpe(v === '' ? undefined : (n >= 1 && n <= 10 ? n : exRpe));
+                    }}
+                    keyboardType="numeric" />
                 </View>
               </View>
+
+              {/* Тип підходу */}
+              <View style={styles.setTypeRow}>
+                {(['normal', 'warmup', 'dropset', 'failure'] as SetType[]).map((type) => {
+                  const labels: Record<SetType, string> = {
+                    normal: 'Звичайний', warmup: 'Розминка', dropset: 'Дроп-сет', failure: 'Відмова',
+                  };
+                  const colors: Record<SetType, string> = {
+                    normal: Colors.primary, warmup: '#3498DB', dropset: '#F4A261', failure: '#E63946',
+                  };
+                  const active = exSetType === type;
+                  return (
+                    <TouchableOpacity
+                      key={type}
+                      style={[styles.setTypeChip, active && { backgroundColor: colors[type] + '25', borderColor: colors[type] }]}
+                      onPress={() => setExSetType(type)}
+                    >
+                      <Text style={[styles.setTypeChipText, active && { color: colors[type] }]}>
+                        {labels[type]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <TouchableOpacity style={[styles.addExBtn, editingExIdx !== null && { backgroundColor: Colors.accent }]} onPress={addExercise}>
+                <Ionicons name={editingExIdx !== null ? 'checkmark' : 'add'} size={20} color="#FFF" />
+                <Text style={styles.addExBtnText}>{editingExIdx !== null ? 'Зберегти зміни' : 'Додати'}</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Notes */}
@@ -460,11 +605,13 @@ export default function WorkoutDetailScreen() {
           <TouchableOpacity onPress={handleDuplicate} style={styles.iconBtn}>
             <Ionicons name="copy-outline" size={22} color={Colors.textSecondary} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={enterEdit} style={styles.iconBtn}>
-            <Ionicons name="create-outline" size={22} color={Colors.textSecondary} />
-          </TouchableOpacity>
           <TouchableOpacity onPress={handleDelete} style={styles.iconBtn}>
             <Ionicons name="trash-outline" size={22} color={Colors.error} />
+          </TouchableOpacity>
+          {/* Підписана кнопка — сірий олівець серед трьох іконок ніхто не знаходив */}
+          <TouchableOpacity onPress={enterEdit} style={styles.editPill}>
+            <Ionicons name="create-outline" size={16} color="#FFF" />
+            <Text style={styles.editPillText}>Змінити</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -588,13 +735,97 @@ function StatItem({ icon, label, value }: { icon: any; label: string; value: str
 
 // ─── SUPERSET HELPERS ────────────────────────────────────────────────────────
 
-const SUPERSET_COLORS_DETAIL = ['#E63946', '#2EC4B6', '#F4A261', '#9B59B6', '#2ECC71', '#E91E63'];
-
-function getSupersetColorDetail(id: string): string {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff;
-  return SUPERSET_COLORS_DETAIL[hash % SUPERSET_COLORS_DETAIL.length];
+// Редагований список вправ: тап відкриває вправу у формі нижче,
+// у режимі групування — чекбокси для об'єднання в суперсет.
+interface EditableListOpts {
+  exercises: ExerciseLog[];
+  onRemove: (i: number) => void;
+  onEdit: (i: number) => void;
+  editingIdx: number | null;
+  groupMode: boolean;
+  selected: number[];
+  onToggleSel: (i: number) => void;
+  onUngroup: (ssId: string) => void;
 }
+
+function renderEditableExercises(o: EditableListOpts): React.ReactNode[] {
+  const { exercises, onRemove, onEdit, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
+  const nodes: React.ReactNode[] = [];
+  const seen = new Set<string>();
+
+  const row = (ex: ExerciseLog, idx: number) => {
+    const isSel = selected.includes(idx);
+    const isEditing = editingIdx === idx;
+    return (
+      <View key={idx} style={[styles.exerciseItem, isEditing && styles.exerciseItemEditing]}>
+        {groupMode && (
+          <TouchableOpacity onPress={() => onToggleSel(idx)} style={styles.selBox} hitSlop={8}>
+            <Ionicons
+              name={isSel ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={isSel ? Colors.primary : Colors.textMuted}
+            />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.exerciseLeft}
+          onPress={() => (groupMode ? onToggleSel(idx) : onEdit(idx))}
+        >
+          <Text style={styles.exerciseName}>{ex.name}</Text>
+          <Text style={styles.exerciseMeta}>{detailMeta(ex, ' · ')}</Text>
+        </TouchableOpacity>
+        {!groupMode && (
+          <>
+            <TouchableOpacity onPress={() => onEdit(idx)} style={styles.rowIconBtn} hitSlop={6}>
+              <Ionicons
+                name="create-outline"
+                size={19}
+                color={isEditing ? Colors.primary : Colors.textSecondary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onRemove(idx)} hitSlop={6}>
+              <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    );
+  };
+
+  for (let i = 0; i < exercises.length; i++) {
+    const ex = exercises[i];
+    const ssId = ex.supersetId;
+    if (ssId) {
+      if (seen.has(ssId)) continue;
+      seen.add(ssId);
+      const color = getSupersetColorDetail(ssId);
+      const group = exercises
+        .map((e, idx) => ({ e, idx }))
+        .filter(({ e }) => e.supersetId === ssId);
+      nodes.push(
+        <View key={`ss_${ssId}`} style={[styles.supersetGroupView, { borderLeftColor: color }]}>
+          <View style={styles.supersetHeaderView}>
+            <Ionicons name="link-outline" size={12} color={color} />
+            <Text style={[styles.supersetLabelView, { color }]}>СУПЕРСЕТ</Text>
+            {!groupMode && (
+              <TouchableOpacity onPress={() => onUngroup(ssId)} style={styles.ungroupBtn} hitSlop={6}>
+                <Ionicons name="unlink-outline" size={13} color={Colors.textMuted} />
+                <Text style={styles.ungroupBtnText}>Розгрупувати</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {group.map(({ e, idx }) => row(e, idx))}
+        </View>
+      );
+    } else {
+      nodes.push(row(ex, i));
+    }
+  }
+  return nodes;
+}
+
+// кольори суперсетів — спільні з екраном логування (services/supersets.ts)
+const getSupersetColorDetail = getSupersetColor;
 
 // Формує підпис вправи; для set-by-set показує кожен підхід ("80×5 / 85×5 / 90×3")
 function detailMeta(ex: ExerciseLog, sep: string): string {
@@ -780,6 +1011,51 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs, borderWidth: 1, borderColor: Colors.border,
   },
   exerciseItemEditing: { borderColor: Colors.accent, backgroundColor: Colors.accent + '10' },
+  editHint: { color: Colors.textMuted, fontSize: 12, marginBottom: Spacing.xs },
+  editPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: Colors.primary, borderRadius: BorderRadius.full,
+    paddingHorizontal: 12, paddingVertical: 7, marginLeft: 2,
+  },
+  editPillText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  rowIconBtn: { paddingHorizontal: Spacing.sm },
+  selBox: { paddingRight: Spacing.sm },
+  groupBar: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    marginBottom: Spacing.xs, minHeight: 34,
+  },
+  groupBarBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6 },
+  groupBarText: { color: Colors.textSecondary, fontSize: 13 },
+  groupBarHint: { color: Colors.textMuted, fontSize: 12, flex: 1 },
+  groupBarCancel: { color: Colors.textSecondary, fontSize: 13 },
+  groupApplyBtn: {
+    backgroundColor: Colors.primary, borderRadius: BorderRadius.full,
+    paddingHorizontal: 14, paddingVertical: 7,
+  },
+  groupApplyText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  ungroupBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' },
+  ungroupBtnText: { color: Colors.textMuted, fontSize: 11 },
+  draftSetsList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  draftSetChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: Colors.background, borderRadius: BorderRadius.full,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  draftSetChipText: { color: Colors.textPrimary, fontSize: 12, fontWeight: '600' },
+  addSetBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 8, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.border, borderStyle: 'dashed',
+    marginTop: 4,
+  },
+  addSetBtnText: { color: Colors.textSecondary, fontSize: 12 },
+  setTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  setTypeChip: {
+    borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  setTypeChipText: { color: Colors.textMuted, fontSize: 11, fontWeight: '600' },
   exerciseLeft: { flex: 1 },
   exerciseName: { ...Typography.body, fontWeight: '600' },
   exerciseMeta: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
