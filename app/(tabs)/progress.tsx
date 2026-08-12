@@ -10,7 +10,8 @@ import { format, subDays, eachDayOfInterval } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getWorkouts, getStats, getPersonalRecords, PersonalRecord, getWeightLog, addWeightEntry, WeightEntry, getLocalDateString, getMeasurements, addMeasurement, getUserProfile } from '../../services/storage';
-import { getNutritionGoals, getNutritionHistory, computeAdaptiveTDEE, computeFoodCorrelation, AdaptiveTDEEResult, FoodCorrelationInsight } from '../../services/nutrition';
+import { getAchievements, checkAndUnlock, Achievement } from '../../services/achievements';
+import { getNutritionGoals, getNutritionHistory, computeAdaptiveTDEE, computeFoodCorrelation, getAgeFromProfile, AdaptiveTDEEResult, FoodCorrelationInsight } from '../../services/nutrition';
 import { useLocale } from '../../services/i18n';
 import { WorkoutEntry, BodyMeasurement } from '../../types';
 import {
@@ -29,6 +30,32 @@ import { getLocalDateString as toDateStr } from '../../services/storage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+const ACH_CATEGORY_COLORS: Record<string, string> = {
+  workout: '#E63946', strength: '#E67E22', cardio: '#2ECC71',
+  nutrition: '#9B59B6', consistency: '#F4A261',
+};
+
+function computeBodyFat(meas: import('../../types').BodyMeasurement, heightCm: number, gender: 'male' | 'female'): number | null {
+  if (!meas.waist || !meas.neck || !heightCm) return null;
+  // US Navy formula uses inches — convert from cm
+  const CM_TO_IN = 0.393701;
+  const heightIn = heightCm * CM_TO_IN;
+  const waistIn = meas.waist * CM_TO_IN;
+  const neckIn = meas.neck * CM_TO_IN;
+  if (gender === 'male') {
+    const diff = waistIn - neckIn;
+    if (diff <= 0) return null;
+    const bf = 495 / (1.0324 - 0.19077 * Math.log10(diff) + 0.15456 * Math.log10(heightIn)) - 450;
+    return Math.round(bf * 10) / 10;
+  }
+  if (!meas.hips) return null;
+  const hipsIn = meas.hips * CM_TO_IN;
+  const sum = waistIn + hipsIn - neckIn;
+  if (sum <= 0) return null;
+  const bf = 495 / (1.29579 - 0.35004 * Math.log10(sum) + 0.22100 * Math.log10(heightIn)) - 450;
+  return Math.round(bf * 10) / 10;
+}
+
 export default function ProgressScreen() {
   const { t } = useLocale();
   const insets = useSafeAreaInsets();
@@ -46,11 +73,13 @@ export default function ProgressScreen() {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [exerciseProgress, setExerciseProgress] = useState<ExerciseProgressPoint[]>([]);
   const [exerciseSearch, setExerciseSearch] = useState('');
+  const [allExercisesOpen, setAllExercisesOpen] = useState(false);
   const [hrZones, setHrZones] = useState<HRZoneSummary[]>([]);
   const [muscleGroups, setMuscleGroups] = useState<MuscleGroupData[]>([]);
   const [measurements, setMeasurements] = useState<BodyMeasurement[]>([]);
   const [measureModalVisible, setMeasureModalVisible] = useState(false);
-  const [measureForm, setMeasureForm] = useState({ waist: '', chest: '', hips: '', bicep: '', thigh: '' });
+  const [measureForm, setMeasureForm] = useState({ waist: '', chest: '', hips: '', bicep: '', thigh: '', neck: '' });
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [strengthScore, setStrengthScore] = useState<StrengthScoreResult | null>(null);
   const [volumeLandmarks, setVolumeLandmarks] = useState<VolumeLandmark[]>([]);
@@ -74,7 +103,7 @@ export default function ProgressScreen() {
     setStrengthStats(ss.totalSessions > 0 ? ss : null);
     setTonnage(getWeeklyTonnage(w));
     setExerciseNames(getAllExerciseNames(w));
-    if (p?.age) setHrZones(getHRZoneSummary(w, p.age));
+    if (p?.age || p?.birthDate) setHrZones(getHRZoneSummary(w, getAgeFromProfile(p)));
     setMuscleGroups(getMuscleGroupBalance(w));
     if (p?.weight) {
       const ss = getStrengthScore(w, p.weight);
@@ -84,6 +113,11 @@ export default function ProgressScreen() {
     const weekStart = toDateStr(startOfWeek(new Date(), { weekStartsOn: 1 }));
     const weekEnd = toDateStr(endOfWeek(new Date(), { weekStartsOn: 1 }));
     setVolumeLandmarks(getVolumeLandmarks(w, weekStart, weekEnd));
+
+    // Achievements
+    await checkAndUnlock(w, s.streak);
+    const achs = await getAchievements(w, s.streak);
+    setAchievements(achs);
 
     // Adaptive TDEE + food correlation
     const [nutGoals, nutHistory] = await Promise.all([
@@ -120,13 +154,14 @@ export default function ProgressScreen() {
       hips: parseMeasure(measureForm.hips),
       bicep: parseMeasure(measureForm.bicep),
       thigh: parseMeasure(measureForm.thigh),
+      neck: parseMeasure(measureForm.neck),
     };
     if (!Object.values(entry).slice(1).some((v) => v !== undefined)) {
       Alert.alert('Введи хоча б один вимір');
       return;
     }
     await addMeasurement(entry);
-    setMeasureForm({ waist: '', chest: '', hips: '', bicep: '', thigh: '' });
+    setMeasureForm({ waist: '', chest: '', hips: '', bicep: '', thigh: '', neck: '' });
     setMeasureModalVisible(false);
     await loadData();
   }
@@ -459,6 +494,23 @@ export default function ProgressScreen() {
               ))}
             </View>
           )}
+          {exerciseSearch.length === 0 && (
+            <View style={styles.exAllContainer}>
+              <TouchableOpacity style={styles.exAllToggle} onPress={() => setAllExercisesOpen(!allExercisesOpen)}>
+                <Text style={styles.exAllToggleText}>{t('allExercises')} ({exerciseNames.length})</Text>
+                <Ionicons name={allExercisesOpen ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.textSecondary} />
+              </TouchableOpacity>
+              {allExercisesOpen && (
+                <View style={styles.exChipsWrap}>
+                  {exerciseNames.map((name) => (
+                    <TouchableOpacity key={name} style={styles.exChip} onPress={() => selectExercise(name)}>
+                      <Text style={styles.exChipText}>{name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
           {selectedExercise && exerciseProgress.length > 0 && (() => {
             const withWeight = exerciseProgress.filter((p) => p.weight > 0);
             const best = exerciseProgress.reduce((b, p) => p.estimated1RM > b.estimated1RM ? p : b, exerciseProgress[0]);
@@ -551,7 +603,7 @@ export default function ProgressScreen() {
       {hrZones.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('hrZonesTitle')}</Text>
-          <Text style={styles.hrNote}>Макс. ЧСС: {220 - (profile?.age || 30)} уд/хв (220 − вік)</Text>
+          <Text style={styles.hrNote}>Макс. ЧСС: {220 - (profile ? getAgeFromProfile(profile) : 30)} уд/хв (220 − вік)</Text>
           {hrZones.map((z) => (
             <View key={z.zone} style={styles.hrZoneRow}>
               <View style={[styles.hrZoneDot, { backgroundColor: z.color }]} />
@@ -656,6 +708,32 @@ export default function ProgressScreen() {
             {measurements.length > 1 && (
               <Text style={styles.weightMore}>Всього {measurements.length} записів</Text>
             )}
+            {/* Body fat estimate */}
+            {profile?.height && profile?.gender && measurements.length > 0 && (() => {
+              const latest = measurements[measurements.length - 1];
+              const bf = computeBodyFat(latest, profile.height, profile.gender as 'male' | 'female');
+              if (!bf || bf < 3 || bf > 55) return null;
+              // Норми жиру різні для статей (ACE): у жінок здоровий діапазон зсунутий на ~8-10% вище
+              const isFemale = profile.gender === 'female';
+              const cuts = isFemale ? [15, 22, 26, 32] : [8, 15, 20, 25];
+              const bfCategory = bf < cuts[0] ? 'Дуже низький' : bf < cuts[1] ? 'Атлетичний' : bf < cuts[2] ? 'Норма' : bf < cuts[3] ? 'Вище норми' : 'Надмірний';
+              const bfColor = bf < cuts[0] ? '#3498DB' : bf < cuts[1] ? '#2ECC71' : bf < cuts[2] ? Colors.success : bf < cuts[3] ? Colors.accent : Colors.error;
+              return (
+                <View style={styles.bodyFatCard}>
+                  <View style={styles.bodyFatRow}>
+                    <Ionicons name="body-outline" size={20} color={bfColor} />
+                    <View style={styles.bodyFatInfo}>
+                      <Text style={styles.bodyFatLabel}>Відсоток жиру (US Navy)</Text>
+                      <Text style={styles.bodyFatNote}>потрібно: талія + шия{profile.gender === 'female' ? ' + стегна' : ''}</Text>
+                    </View>
+                    <View style={styles.bodyFatRight}>
+                      <Text style={[styles.bodyFatValue, { color: bfColor }]}>{bf}%</Text>
+                      <Text style={[styles.bodyFatCategory, { color: bfColor }]}>{bfCategory}</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })()}
           </>
         )}
       </View>
@@ -750,6 +828,45 @@ export default function ProgressScreen() {
         </View>
       )}
 
+      {/* Achievements */}
+      {achievements.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Досягнення</Text>
+          <Text style={styles.sectionHint}>
+            {achievements.filter((a) => a.unlockedAt).length} / {achievements.length} розблоковано
+          </Text>
+          <View style={styles.achievementsGrid}>
+            {achievements
+              .sort((a, b) => {
+                if (a.unlockedAt && !b.unlockedAt) return -1;
+                if (!a.unlockedAt && b.unlockedAt) return 1;
+                return 0;
+              })
+              .map((ach) => (
+                <View key={ach.id} style={[styles.achCard, ach.unlockedAt ? styles.achCardUnlocked : undefined]}>
+                  <Ionicons
+                    name={ach.icon as any}
+                    size={22}
+                    color={ach.unlockedAt ? ACH_CATEGORY_COLORS[ach.category] : Colors.textMuted}
+                  />
+                  <Text style={[styles.achTitle, ach.unlockedAt ? styles.achTitleUnlocked : undefined]} numberOfLines={2}>
+                    {ach.title}
+                  </Text>
+                  {ach.unlockedAt ? (
+                    <Text style={styles.achDate}>{ach.unlockedAt.split('T')[0]}</Text>
+                  ) : (
+                    <View style={styles.achProgressBar}>
+                      <View style={[styles.achProgressFill, {
+                        width: `${Math.min(Math.round((ach.current / ach.target) * 100), 100)}%` as any,
+                      }]} />
+                    </View>
+                  )}
+                </View>
+              ))}
+          </View>
+        </View>
+      )}
+
       {workouts.length === 0 && (
         <View style={styles.empty}>
           <Ionicons name="stats-chart-outline" size={56} color={Colors.textMuted} />
@@ -834,14 +951,14 @@ export default function ProgressScreen() {
       )}
 
       {/* Measurements modal */}
-      <Modal visible={measureModalVisible} transparent animationType="fade">
+      <Modal visible={measureModalVisible} transparent animationType="fade" onRequestClose={() => setMeasureModalVisible(false)}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={[styles.modalCard, { width: '90%' }]}>
             <Text style={styles.modalTitle}>Заміри тіла (см)</Text>
             {[
-              { key: 'waist', label: 'Талія' }, { key: 'chest', label: 'Груди' },
-              { key: 'hips', label: 'Стегна' }, { key: 'bicep', label: 'Біцепс' },
-              { key: 'thigh', label: 'Стегно (обхват)' },
+              { key: 'waist', label: 'Талія' }, { key: 'neck', label: 'Шия' },
+              { key: 'hips', label: 'Стегна' }, { key: 'chest', label: 'Груди' },
+              { key: 'bicep', label: 'Біцепс' }, { key: 'thigh', label: 'Стегно (обхват)' },
             ].map((f) => (
               <View key={f.key} style={styles.measureModalRow}>
                 <Text style={styles.measureModalLabel}>{f.label}</Text>
@@ -856,7 +973,7 @@ export default function ProgressScreen() {
               </View>
             ))}
             <View style={[styles.modalActions, { marginTop: Spacing.md }]}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => { setMeasureModalVisible(false); setMeasureForm({ waist: '', chest: '', hips: '', bicep: '', thigh: '' }); }}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => { setMeasureModalVisible(false); setMeasureForm({ waist: '', chest: '', hips: '', bicep: '', thigh: '', neck: '' }); }}>
                 <Text style={styles.modalCancelText}>Скасувати</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalSave} onPress={handleSaveMeasurement}>
@@ -868,7 +985,7 @@ export default function ProgressScreen() {
       </Modal>
 
       {/* Weight log modal */}
-      <Modal visible={weightModalVisible} transparent animationType="fade">
+      <Modal visible={weightModalVisible} transparent animationType="fade" onRequestClose={() => setWeightModalVisible(false)}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Записати вагу</Text>
@@ -1095,6 +1212,24 @@ const styles = StyleSheet.create({
   },
   exSuggestionItem: { paddingHorizontal: Spacing.md, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border },
   exSuggestionText: { color: Colors.textPrimary, fontSize: 14 },
+  exAllContainer: { marginBottom: Spacing.sm },
+  exAllToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Spacing.md, paddingVertical: 10,
+  },
+  exAllToggleText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  exChipsWrap: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  exChip: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Spacing.sm, paddingVertical: 7,
+  },
+  exChipText: { color: Colors.textPrimary, fontSize: 13 },
   exProgressContainer: { gap: Spacing.sm },
   exBestRow: { flexDirection: 'row', gap: Spacing.sm },
   exBestCard: {
@@ -1217,4 +1352,30 @@ const styles = StyleSheet.create({
   correlationStatVal: { color: Colors.textPrimary, fontWeight: '700', fontSize: 13 },
   correlationN: { color: Colors.textMuted, fontSize: 10 },
   correlationDivider: { width: 1, backgroundColor: Colors.border },
+  bodyFatCard: {
+    marginTop: Spacing.sm, backgroundColor: Colors.surfaceElevated,
+    borderRadius: BorderRadius.md, padding: Spacing.md,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  bodyFatRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  bodyFatInfo: { flex: 1 },
+  bodyFatLabel: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
+  bodyFatNote: { color: Colors.textMuted, fontSize: 10, marginTop: 2 },
+  bodyFatRight: { alignItems: 'flex-end' },
+  bodyFatValue: { fontSize: 26, fontWeight: '800' },
+  bodyFatCategory: { fontSize: 11, fontWeight: '600' },
+  achievementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  achCard: {
+    width: (SCREEN_WIDTH - Spacing.md * 2 - Spacing.sm * 2) / 3,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
+    padding: Spacing.sm, alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: Colors.border, opacity: 0.45,
+    minHeight: 90,
+  },
+  achCardUnlocked: { opacity: 1, borderColor: Colors.accent + '60' },
+  achTitle: { color: Colors.textMuted, fontSize: 10, fontWeight: '600', textAlign: 'center', lineHeight: 13, flex: 1 },
+  achTitleUnlocked: { color: Colors.textPrimary },
+  achDate: { color: Colors.textMuted, fontSize: 9, textAlign: 'center' },
+  achProgressBar: { width: '100%', height: 3, backgroundColor: Colors.surfaceElevated, borderRadius: 2, overflow: 'hidden' },
+  achProgressFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 2 },
 });
