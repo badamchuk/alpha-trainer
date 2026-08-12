@@ -497,7 +497,7 @@ export default function TodayScreen() {
       </TouchableOpacity>
 
       {/* Water Reminder Range Modal */}
-      <Modal visible={reminderSettingsVisible} transparent animationType="fade">
+      <Modal visible={reminderSettingsVisible} transparent animationType="fade" onRequestClose={() => setReminderSettingsVisible(false)}>
         <View style={styles.wbOverlay}>
           <View style={styles.wbCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
@@ -541,7 +541,7 @@ export default function TodayScreen() {
       </Modal>
 
       {/* Wellbeing Modal */}
-      <Modal visible={wellbeingModalVisible} transparent animationType="fade">
+      <Modal visible={wellbeingModalVisible} transparent animationType="fade" onRequestClose={() => setWellbeingModalVisible(false)}>
         <KeyboardAvoidingView style={styles.wbOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.wbCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>

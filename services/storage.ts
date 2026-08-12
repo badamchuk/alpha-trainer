@@ -268,27 +268,39 @@ export async function getStats(): Promise<{
   totalDuration: number;
   streak: number;
 }> {
-  const workouts = await getWorkouts();
+  const [workouts, profile] = await Promise.all([getWorkouts(), getUserProfile()]);
   const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  const weeklyWorkouts = workouts.filter((w) => w.date >= getLocalDateString(weekAgo)).length;
+  // Current calendar week (Mon–Sun) — consistent with the weekly tracker on Home
+  const weekStart = new Date(now);
+  const dow = weekStart.getDay(); // 0=Sun
+  weekStart.setDate(weekStart.getDate() - (dow === 0 ? 6 : dow - 1));
+  const weekStartStr = getLocalDateString(weekStart);
+
+  const weeklyWorkouts = workouts.filter((w) => w.date >= weekStartStr).length;
   const monthlyWorkouts = workouts.filter((w) => w.date >= getLocalDateString(monthAgo)).length;
   const totalDuration = workouts.reduce((sum, w) => sum + (w.duration || 0), 0);
 
-  // Calculate streak using local dates (not UTC)
+  // Streak using local dates. Planned rest days (not in profile.availableDays)
+  // don't break the streak — training 3×/week by plan keeps the series alive.
   let streak = 0;
   const today = getLocalDateString(new Date());
   const workoutDates = new Set(workouts.map((w) => w.date));
+  const plannedDays = profile?.availableDays?.length ? new Set(profile.availableDays) : null;
+  const earliest = workouts.reduce((min, w) => (w.date < min ? w.date : min), today);
   let checkDate = new Date();
   while (true) {
     const dateStr = getLocalDateString(checkDate);
+    if (dateStr < earliest) break; // nothing logged before this point
     if (workoutDates.has(dateStr)) {
       streak++;
       checkDate.setDate(checkDate.getDate() - 1);
     } else if (dateStr === today) {
       // Allow today to not have a workout yet without breaking streak
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else if (plannedDays && !plannedDays.has(checkDate.getDay())) {
+      // Planned rest day — skip without breaking
       checkDate.setDate(checkDate.getDate() - 1);
     } else {
       break;

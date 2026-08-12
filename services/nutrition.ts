@@ -193,9 +193,18 @@ export async function saveToFoodLibrary(meal: Omit<SavedMeal, 'id' | 'usageCount
     existing.fat = meal.fat;
     if (meal.fiber !== undefined) existing.fiber = meal.fiber;
   } else {
+    // When the library is full, evict the least-used OLD item so the new one
+    // always gets in (otherwise new meals would silently never be saved)
+    if (lib.length >= 50) {
+      let minIdx = 0;
+      for (let i = 1; i < lib.length; i++) {
+        if (lib[i].usageCount <= lib[minIdx].usageCount) minIdx = i;
+      }
+      lib.splice(minIdx, 1);
+    }
     lib.push({ ...meal, id: Date.now().toString(), usageCount: 1 });
   }
-  await AsyncStorage.setItem(LIBRARY_KEY, JSON.stringify(lib.slice(0, 50)));
+  await AsyncStorage.setItem(LIBRARY_KEY, JSON.stringify(lib));
 }
 
 export async function removeFromFoodLibrary(id: string): Promise<void> {
@@ -266,9 +275,25 @@ export async function computeAdaptiveTDEE(
 
   if (avgDailyCalories < 500) return null; // clearly incomplete data
 
-  // Calculate weight change over the window
-  const firstWeight = weightInWindow[0].weight;
-  const lastWeight = weightInWindow[weightInWindow.length - 1].weight;
+  // Calculate weight change over the window.
+  // Daily weight is noisy (water, glycogen) — average the first and last
+  // ~7-day windows instead of comparing two single points.
+  const avgWindow = (entries: { date: string; weight: number }[]): number =>
+    entries.reduce((s, e) => s + e.weight, 0) / entries.length;
+  const firstWindowEnd = (() => {
+    const d = new Date(weightInWindow[0].date + 'T12:00:00');
+    d.setDate(d.getDate() + 7);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+  const lastWindowStart = (() => {
+    const d = new Date(endDate + 'T12:00:00');
+    d.setDate(d.getDate() - 7);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+  const firstGroup = weightInWindow.filter((e) => e.date <= firstWindowEnd);
+  const lastGroup = weightInWindow.filter((e) => e.date >= lastWindowStart);
+  const firstWeight = avgWindow(firstGroup.length > 0 ? firstGroup : [weightInWindow[0]]);
+  const lastWeight = avgWindow(lastGroup.length > 0 ? lastGroup : [weightInWindow[weightInWindow.length - 1]]);
   const totalDays = Math.max(1, Math.round(
     (new Date(endDate + 'T12:00:00').getTime() - new Date(weightInWindow[0].date + 'T12:00:00').getTime())
     / (1000 * 60 * 60 * 24)

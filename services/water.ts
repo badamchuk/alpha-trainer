@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getLocalDateString } from './storage';
+import { getAgeFromProfile } from './nutrition';
 import { UserProfile } from '../types';
 
 const WATER_KEY = '@alpha_trainer:water';
@@ -28,8 +29,8 @@ export function computeWaterGoal(profile: UserProfile): number {
   const activityFactor = 30 + Math.min(10, workoutDays * 1.5);
   let ml = weightKg * activityFactor;
 
-  // Age-based reduction for 55+
-  const age = profile.age || 25;
+  // Age-based reduction for 55+ (actual age from birthDate, not the stale profile.age)
+  const age = getAgeFromProfile(profile) || 25;
   if (age > 55) ml *= 0.92;
 
   const glasses = Math.round(ml / 250);

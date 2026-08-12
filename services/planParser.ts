@@ -14,14 +14,18 @@ export function createPlanFromAIText(text: string, goals: string[]): TrainingPla
 
 // Try to extract day-by-day structure from AI text
 function parseWeekDays(text: string): DayPlan[] {
-  const DAY_PATTERNS: { pattern: RegExp; dayOfWeek: number; name: string }[] = [
-    { pattern: /понеділок|пн\b|monday/i, dayOfWeek: 1, name: 'Понеділок' },
-    { pattern: /вівторок|вт\b|tuesday/i, dayOfWeek: 2, name: 'Вівторок' },
-    { pattern: /середа|серед|ср\b|wednesday/i, dayOfWeek: 3, name: 'Середа' },
-    { pattern: /четвер|чт\b|thursday/i, dayOfWeek: 4, name: 'Четвер' },
-    { pattern: /п\'ятниця|пятниця|пт\b|friday/i, dayOfWeek: 5, name: 'П\'ятниця' },
-    { pattern: /субота|сб\b|saturday/i, dayOfWeek: 6, name: 'Субота' },
-    { pattern: /неділя|нд\b|sunday/i, dayOfWeek: 0, name: 'Неділя' },
+  // NOTE: JS-овий \b не працює після кирилиці, тому короткі назви днів
+  // матчимо з явними межами (початок рядка / не-літера з обох боків)
+  const CYR = 'а-щьюяіїєґ';
+  const short = (abbr: string) => new RegExp(`(^|[^${CYR}a-z])${abbr}([^${CYR}a-z]|$)`, 'i');
+  const DAY_PATTERNS: { patterns: RegExp[]; dayOfWeek: number; name: string }[] = [
+    { patterns: [/понеділок|monday/i, short('пн')], dayOfWeek: 1, name: 'Понеділок' },
+    { patterns: [/вівторок|tuesday/i, short('вт')], dayOfWeek: 2, name: 'Вівторок' },
+    { patterns: [/середа|серед|wednesday/i, short('ср')], dayOfWeek: 3, name: 'Середа' },
+    { patterns: [/четвер|thursday/i, short('чт')], dayOfWeek: 4, name: 'Четвер' },
+    { patterns: [/п\'ятниця|пятниця|friday/i, short('пт')], dayOfWeek: 5, name: 'П\'ятниця' },
+    { patterns: [/субота|saturday/i, short('сб')], dayOfWeek: 6, name: 'Субота' },
+    { patterns: [/неділя|sunday/i, short('нд')], dayOfWeek: 0, name: 'Неділя' },
   ];
 
   const lines = text.split('\n');
@@ -41,7 +45,7 @@ function parseWeekDays(text: string): DayPlan[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    const matchedDay = DAY_PATTERNS.find((d) => d.pattern.test(trimmed));
+    const matchedDay = DAY_PATTERNS.find((d) => d.patterns.some((p) => p.test(trimmed)));
     if (matchedDay) {
       flushDay();
       currentLines = [];

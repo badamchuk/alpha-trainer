@@ -93,10 +93,15 @@ export default function GoalsScreen() {
   }
 
   async function handleDelete(id: string) {
-    Alert.alert(t('delete') + ' ' + (t('goalsTitle') ? '' : ''), '', [
-      { text: t('cancel'), style: 'cancel' },
-      { text: t('delete'), style: 'destructive', onPress: async () => { await deleteGoal(id); await loadGoals(); } },
-    ]);
+    const goal = goals.find((g) => g.id === id);
+    Alert.alert(
+      'Видалити ціль?',
+      goal ? `«${goal.title}» буде видалено назавжди.` : 'Ціль буде видалено назавжди.',
+      [
+        { text: t('cancel'), style: 'cancel' },
+        { text: t('delete'), style: 'destructive', onPress: async () => { await deleteGoal(id); await loadGoals(); } },
+      ]
+    );
   }
 
   const active = goals.filter((g) => !g.completed);
@@ -147,7 +152,7 @@ export default function GoalsScreen() {
       />
 
       {/* Add/Edit Modal */}
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
+      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
         <KeyboardAvoidingView style={styles.modal} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={[styles.modalHeader, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity onPress={() => setModalVisible(false)}>

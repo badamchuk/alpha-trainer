@@ -32,8 +32,9 @@ const QUICK_PROMPTS = [
 ];
 
 // Detect if AI response contains a training plan
+// (JS \b не працює після кирилиці — короткі назви днів матчимо з явними межами)
 function looksLikePlan(text: string): boolean {
-  const dayKeywords = /понеділок|вівторок|середа|четвер|п.ятниця|субота|неділя|пн\b|вт\b|ср\b|чт\b|пт\b|сб\b|нд\b/gi;
+  const dayKeywords = /понеділок|вівторок|середа|четвер|п.ятниця|субота|неділя|(?:^|[^а-щьюяіїєґa-z])(?:пн|вт|ср|чт|пт|сб|нд)(?:[^а-щьюяіїєґa-z]|$)/gim;
   const matches = text.match(dayKeywords);
   return (matches?.length ?? 0) >= 3;
 }
@@ -174,8 +175,12 @@ export default function TrainerScreen() {
           prev.map((m) => m.id === streamingMsgId ? { ...m, content: reply } : m)
         );
       } else {
-        const groqHistory = messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
-        const geminiHistory = messages.map((m) => ({
+        // Не передаємо моделі повідомлення-помилки ("Помилка: ...") з минулих збоїв
+        const cleanHistory = messages.filter(
+          (m) => !(m.role === 'assistant' && m.content.startsWith('Помилка:'))
+        );
+        const groqHistory = cleanHistory.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+        const geminiHistory = cleanHistory.map((m) => ({
           role: m.role === 'user' ? 'user' as const : 'model' as const,
           parts: [{ text: m.content }],
         }));

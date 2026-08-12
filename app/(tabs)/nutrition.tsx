@@ -444,7 +444,10 @@ export default function NutritionScreen() {
       });
 
       const memBlock = buildMemoryContext(memEntries, recentWorkouts, [], []);
-      const chatHistory = nutMessages.map((m) =>
+      // Не передаємо моделі повідомлення-помилки з минулих збоїв
+      const chatHistory = nutMessages.filter(
+        (m) => !(m.role === 'assistant' && m.content.startsWith('Помилка:'))
+      ).map((m) =>
         profile?.groqApiKey
           ? { role: m.role as 'user' | 'assistant', content: m.content }
           : { role: m.role === 'user' ? 'user' as const : 'model' as const, parts: [{ text: m.content }] }
@@ -743,7 +746,7 @@ export default function NutritionScreen() {
       </Modal>}
 
       {/* ── GOALS MODAL ── */}
-      {goalsMounted && <Modal visible={goalsVisible} transparent animationType="fade">
+      {goalsMounted && <Modal visible={goalsVisible} transparent animationType="fade" onRequestClose={() => setGoalsVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { paddingBottom: Spacing.xl }]}>
             <View style={styles.modalHeader}>
@@ -891,7 +894,7 @@ export default function NutritionScreen() {
       </Modal>}
 
       {/* ── LIBRARY MODAL ── */}
-      {libraryMounted && <Modal visible={libraryVisible} transparent animationType="slide">
+      {libraryMounted && <Modal visible={libraryVisible} transparent animationType="slide" onRequestClose={() => setLibraryVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>

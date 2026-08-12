@@ -728,7 +728,7 @@ function BirthDatePickerModal({
 
   // iOS — show in a modal sheet
   return (
-    <Modal transparent animationType="slide" visible={visible}>
+    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
       <TouchableOpacity style={bpStyles.backdrop} activeOpacity={1} onPress={onClose} />
       <View style={bpStyles.sheet}>
         <View style={bpStyles.sheetHeader}>
