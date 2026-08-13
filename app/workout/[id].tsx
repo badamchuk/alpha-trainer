@@ -596,7 +596,8 @@ export default function WorkoutDetailScreen() {
   // ─── VIEW MODE ────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      {/* insets.top обов'язковий — інакше шапка з кнопками лізе під годинник */}
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
         </TouchableOpacity>

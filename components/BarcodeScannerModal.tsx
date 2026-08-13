@@ -4,6 +4,7 @@ import {
   ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, ScrollView, FlatList,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { lookupBarcode, searchFoodByName, offProductToFoodItem, OFFProduct } from '../services/foodAI';
@@ -19,6 +20,10 @@ interface Props {
 type ViewMode = 'scan' | 'search' | 'product';
 
 export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Props) {
+  const insets = useSafeAreaInsets();
+  // Усередині Modal insets можуть повернути 0 (окрема ієрархія в'ю), тому
+  // беремо більше з двох: колишнє жорстке 56 — нижня межа, яка вже працювала.
+  const headerPadTop = Math.max(insets.top + 8, 56);
   const [permission, requestPermission] = useCameraPermissions();
   const [mode, setMode] = useState<ViewMode>('scan');
   const [scanning, setScanning] = useState(true);
@@ -146,7 +151,7 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
     <Modal visible={visible} animationType="slide">
       <View style={styles.container}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: headerPadTop }]}>
           <TouchableOpacity onPress={handleClose} style={styles.headerBtn}>
             <Ionicons name="close" size={24} color={Colors.textPrimary} />
           </TouchableOpacity>
@@ -342,8 +347,9 @@ function MacroChip({ label, value, color }: { label: string; value: number; colo
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
+    // paddingTop — через headerPadTop у місці використання
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md, paddingTop: 56, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.md, paddingBottom: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },

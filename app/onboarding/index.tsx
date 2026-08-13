@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getUserProfile, saveUserProfile } from '../../services/storage';
@@ -49,6 +50,7 @@ const TOTAL_STEPS = 7;
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { lang, exerciseLang, t, setLanguage: changeLang, setExerciseLanguage: changeExerciseLang } = useLocale();
   const [backupLoading, setBackupLoading] = useState(false);
   const [step, setStep] = useState(0);
@@ -319,7 +321,7 @@ export default function OnboardingScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.container}>
           {/* Header */}
-          <View style={[styles.header, { paddingTop: 52 }]}>
+          <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
               <Ionicons name="arrow-back" size={22} color={Colors.textSecondary} />
             </TouchableOpacity>
@@ -579,7 +581,7 @@ export default function OnboardingScreen() {
       <View style={styles.container}>
 
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
             {(step > 0 || isEditing) && (
               <Ionicons name="arrow-back" size={22} color={Colors.textSecondary} />
@@ -1380,8 +1382,10 @@ const backupStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
+    // paddingTop задається через insets.top у місці використання —
+    // жорстке число ламається на пристроях з іншим вирізом
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingTop: 52, paddingBottom: Spacing.sm,
+    paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm,
   },
   backBtn: { width: 40, alignItems: 'flex-start' },
   stepIndicator: { color: Colors.textMuted, fontSize: 13, fontWeight: '600' },
