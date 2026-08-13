@@ -1,14 +1,15 @@
-// Розширює app.json даними, які відомі лише в момент збірки.
+// Єдиний конфіг Expo. Динамічний (а не app.json), бо частину значень —
+// хеш коміту й час збірки — можна дізнатись лише в момент збірки.
 //
-// Потрібно, щоб з екрана налаштувань було видно, ЯКИЙ саме код зараз
-// на телефоні. versionName у локальних debug-збірках не змінюється ніколи,
-// тож сам по собі він не каже, чи доїхала онова.
+// Раніше поруч лежав app.json, з якого цей файл підтягував базу. Expo так
+// робити не радить (expo-doctor лається на два джерела правди), тому все
+// зведено сюди.
 //
-// Expo читає цей файл замість app.json; базу беремо звідти, щоб не
-// дублювати конфіг у двох місцях.
+// Важливо: extra потрапляє в застосунок під час НАТИВНОЇ збірки, не через
+// Metro. Тому gitHash показує код, зашитий в APK; JS поверх нього може бути
+// свіжішим через Fast Refresh.
 
 const { execSync } = require('child_process');
-const base = require('./app.json');
 
 function sh(cmd) {
   try {
@@ -22,11 +23,85 @@ const gitHash = sh('git rev-parse --short HEAD') || 'unknown';
 const gitDirty = sh('git status --porcelain') !== '';
 
 module.exports = () => ({
-  ...base.expo,
+  name: 'AlphaTrainer',
+  slug: 'alpha-trainer-app',
+  version: '1.0.0',
+  orientation: 'portrait',
+  icon: './assets/icon.png',
+  userInterfaceStyle: 'dark',
+  scheme: 'alphatrainer',
+  splash: {
+    image: './assets/splash-icon.png',
+    resizeMode: 'contain',
+    backgroundColor: '#0D0D0D',
+  },
+  ios: {
+    supportsTablet: true,
+    bundleIdentifier: 'com.alphatrainer.app',
+    buildNumber: '2',
+  },
+  android: {
+    versionCode: 2,
+    adaptiveIcon: {
+      backgroundColor: '#0D0D0D',
+      foregroundImage: './assets/android-icon-foreground.png',
+      backgroundImage: './assets/android-icon-background.png',
+      monochromeImage: './assets/android-icon-monochrome.png',
+    },
+    package: 'com.alphatrainer.app',
+  },
+  web: {
+    favicon: './assets/favicon.png',
+    bundler: 'metro',
+  },
+  plugins: [
+    'expo-router',
+    '@react-native-community/datetimepicker',
+    'expo-sharing',
+    'expo-font',
+    [
+      'expo-camera',
+      {
+        cameraPermission:
+          'AlphaTrainer використовує камеру для сканування штрих-кодів та фото-логування їжі.',
+      },
+    ],
+    [
+      'expo-image-picker',
+      {
+        photosPermission: 'AlphaTrainer використовує галерею для фото-логування їжі.',
+        cameraPermission: 'AlphaTrainer використовує камеру для фото-логування їжі.',
+      },
+    ],
+    [
+      'expo-notifications',
+      {
+        icon: './assets/icon.png',
+        color: '#E63946',
+      },
+    ],
+    [
+      'expo-build-properties',
+      {
+        android: {
+          newArchEnabled: false,
+          kotlinVersion: '2.0.21',
+          gradleVersion: '8.13',
+          ndkVersion: '30.0.14904198',
+        },
+      },
+    ],
+  ],
+  experiments: {
+    typedRoutes: true,
+  },
   extra: {
-    ...base.expo.extra,
+    router: {},
+    eas: {
+      projectId: '75c0a8b6-b247-4316-9d4d-d005f772ceea',
+    },
     gitHash,
-    // зірочка = у збірку потрапили незакомічені зміни
+    // зірочка в UI = у збірку потрапили незакомічені зміни
     gitDirty,
     buildDate: new Date().toISOString(),
   },
