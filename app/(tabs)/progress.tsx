@@ -10,7 +10,7 @@ import { format, subDays, eachDayOfInterval } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getWorkouts, getStats, getPersonalRecords, PersonalRecord, getWeightLog, addWeightEntry, WeightEntry, getLocalDateString, getMeasurements, addMeasurement, getUserProfile } from '../../services/storage';
-import { getAchievements, checkAndUnlock, Achievement } from '../../services/achievements';
+import { syncAchievements, Achievement } from '../../services/achievements';
 import { getNutritionGoals, getNutritionHistory, computeAdaptiveTDEE, computeFoodCorrelation, getAgeFromProfile, AdaptiveTDEEResult, FoodCorrelationInsight } from '../../services/nutrition';
 import { useLocale } from '../../services/i18n';
 import { WorkoutEntry, BodyMeasurement } from '../../types';
@@ -87,8 +87,11 @@ export default function ProgressScreen() {
   const [foodCorrelation, setFoodCorrelation] = useState<FoodCorrelationInsight[]>([]);
 
   async function loadData() {
-    const [w, s, r, wl, ms, p] = await Promise.all([
-      getWorkouts(), getStats(), getPersonalRecords(),
+    // getStats() і getPersonalRecords() читали історію кожна сама — виходило
+    // три повні розбори JSON на один вхід у вкладку. Тепер читаємо раз.
+    const w = await getWorkouts();
+    const [s, r, wl, ms, p] = await Promise.all([
+      getStats(w), getPersonalRecords(w),
       getWeightLog(), getMeasurements(), getUserProfile(),
     ]);
     setWorkouts(w);
@@ -114,9 +117,8 @@ export default function ProgressScreen() {
     const weekEnd = toDateStr(endOfWeek(new Date(), { weekStartsOn: 1 }));
     setVolumeLandmarks(getVolumeLandmarks(w, weekStart, weekEnd));
 
-    // Achievements
-    await checkAndUnlock(w, s.streak);
-    const achs = await getAchievements(w, s.streak);
+    // Achievements — розблокування і список за один прохід
+    const { achievements: achs } = await syncAchievements(w, s.streak);
     setAchievements(achs);
 
     // Adaptive TDEE + food correlation

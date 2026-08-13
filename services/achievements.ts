@@ -62,51 +62,96 @@ function countPRs(workouts: WorkoutEntry[]): number {
   return count;
 }
 
-function calcCurrent(id: string, workouts: WorkoutEntry[], streak: number): number {
+/**
+ * Усі показники рахуються за один прохід.
+ *
+ * Раніше кожна ачівка рахувалась окремо, і `countPRs` (із сортуванням усієї
+ * історії) виконувався двічі на виклик — а екран прогресу викликає і
+ * `getAchievements`, і `checkAndUnlock`, тобто чотири рази поспіль.
+ */
+interface AchStats {
+  workoutCount: number;
+  streak: number;
+  runCount: number;
+  runKm: number;
+  prCount: number;
+  heaviestSession: number;
+  varietyCount: number;
+  earlyBirdCount: number;
+  longestSession: number;
+}
+
+function computeStats(workouts: WorkoutEntry[], streak: number): AchStats {
+  let runCount = 0;
+  let runKm = 0;
+  let heaviestSession = 0;
+  let earlyBirdCount = 0;
+  let longestSession = 0;
+  const types = new Set<string>();
+
+  for (const w of workouts) {
+    types.add(w.workoutType);
+    if (w.workoutType === 'run') {
+      runCount++;
+      // дистанція може бути записана на рівні тренування або в самій вправі
+      runKm += w.totalDistance || w.exercises.reduce((s, e) => s + (e.distance || 0), 0);
+    }
+    // Math.max(...array) розгортає масив в аргументи і на кількох тисячах
+    // записів переповнює стек — тому накопичуємо в циклі
+    const tonnage = w.exercises.reduce((s, ex) => s + exerciseTonnage(ex), 0);
+    if (tonnage > heaviestSession) heaviestSession = tonnage;
+    if ((w.duration || 0) > longestSession) longestSession = w.duration || 0;
+
+    const h = new Date(w.completedAt).getHours();
+    if (!Number.isNaN(h) && h < 8) earlyBirdCount++;
+  }
+
+  return {
+    workoutCount: workouts.length,
+    streak,
+    runCount,
+    runKm: Math.round(runKm * 10) / 10,
+    prCount: countPRs(workouts),
+    heaviestSession,
+    varietyCount: types.size,
+    earlyBirdCount,
+    longestSession,
+  };
+}
+
+function calcCurrent(id: string, s: AchStats): number {
   switch (id) {
     case 'first_workout':
     case 'workouts_10':
     case 'workouts_50':
     case 'workouts_100':
-      return workouts.length;
+      return s.workoutCount;
 
     case 'streak_7':
     case 'streak_30':
-      return streak;
+      return s.streak;
 
     case 'first_run':
-      return workouts.filter((w) => w.workoutType === 'run').length;
+      return s.runCount;
 
     case 'run_50km':
-      return Math.round(
-        workouts
-          .filter((w) => w.workoutType === 'run')
-          .reduce((s, w) => s + (w.totalDistance || 0), 0) * 10
-      ) / 10;
+      return s.runKm;
 
     case 'first_pr':
     case 'pr_5':
-      return countPRs(workouts);
+      return s.prCount;
 
     case 'heavy_session':
-      return Math.max(
-        0,
-        ...workouts.map((w) =>
-          w.exercises.reduce((s, ex) => s + exerciseTonnage(ex), 0)
-        )
-      );
+      return s.heaviestSession;
 
     case 'variety_5':
-      return new Set(workouts.map((w) => w.workoutType)).size;
+      return s.varietyCount;
 
     case 'early_bird':
-      return workouts.filter((w) => {
-        const h = new Date(w.completedAt).getHours();
-        return h < 8;
-      }).length;
+      return s.earlyBirdCount;
 
     case 'long_session':
-      return Math.max(0, ...workouts.map((w) => w.duration || 0));
+      return s.longestSession;
 
     default:
       return 0;
@@ -115,21 +160,49 @@ function calcCurrent(id: string, workouts: WorkoutEntry[], streak: number): numb
 
 type StoredMap = Record<string, string>; // id → unlockedAt ISO
 
-export async function getAchievements(
+/** Пошкоджений запис не має ронити екран — повертаємо порожню мапу. */
+async function readStored(): Promise<StoredMap> {
+  try {
+    const json = await AsyncStorage.getItem(KEY);
+    return json ? (JSON.parse(json) ?? {}) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Перевіряє нові розблокування і одразу повертає повний список ачівок.
+ * Один прохід замість пари `checkAndUnlock` + `getAchievements`.
+ */
+export async function syncAchievements(
   workouts: WorkoutEntry[],
   streak: number,
-): Promise<Achievement[]> {
-  const json = await AsyncStorage.getItem(KEY);
-  const stored: StoredMap = json ? JSON.parse(json) : {};
+): Promise<{ achievements: Achievement[]; newlyUnlocked: string[] }> {
+  const stored = await readStored();
+  const stats = computeStats(workouts, streak);
+  const newlyUnlocked: string[] = [];
 
-  return DEFINITIONS.map((def) => {
-    const current = calcCurrent(def.id, workouts, streak);
+  const achievements = DEFINITIONS.map((def) => {
+    const current = calcCurrent(def.id, stats);
+    if (!stored[def.id] && current >= def.target) {
+      stored[def.id] = new Date().toISOString();
+      newlyUnlocked.push(def.id);
+    }
     return {
       ...def,
       current: Math.min(current, def.target),
       unlockedAt: stored[def.id],
     };
   });
+
+  if (newlyUnlocked.length > 0) {
+    try {
+      await AsyncStorage.setItem(KEY, JSON.stringify(stored));
+    } catch {
+      // не критично — розблокується наступного разу
+    }
+  }
+  return { achievements, newlyUnlocked };
 }
 
 // Returns newly unlocked achievement ids
@@ -137,22 +210,7 @@ export async function checkAndUnlock(
   workouts: WorkoutEntry[],
   streak: number,
 ): Promise<string[]> {
-  const json = await AsyncStorage.getItem(KEY);
-  const stored: StoredMap = json ? JSON.parse(json) : {};
-  const newlyUnlocked: string[] = [];
-
-  for (const def of DEFINITIONS) {
-    if (stored[def.id]) continue; // already unlocked
-    const current = calcCurrent(def.id, workouts, streak);
-    if (current >= def.target) {
-      stored[def.id] = new Date().toISOString();
-      newlyUnlocked.push(def.id);
-    }
-  }
-
-  if (newlyUnlocked.length > 0) {
-    await AsyncStorage.setItem(KEY, JSON.stringify(stored));
-  }
+  const { newlyUnlocked } = await syncAchievements(workouts, streak);
   return newlyUnlocked;
 }
 
