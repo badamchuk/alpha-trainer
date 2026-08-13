@@ -39,9 +39,16 @@ export function computeWaterGoal(profile: UserProfile): number {
 
 async function getToday(): Promise<DailyWater> {
   const today = getLocalDateString(new Date());
-  const json = await AsyncStorage.getItem(WATER_KEY);
-  if (!json) return { date: today, glasses: 0, goal: DEFAULT_GOAL };
-  const data: DailyWater = JSON.parse(json);
+  const fresh = { date: today, glasses: 0, goal: DEFAULT_GOAL };
+  let data: DailyWater;
+  try {
+    const json = await AsyncStorage.getItem(WATER_KEY);
+    if (!json) return fresh;
+    data = JSON.parse(json);
+    if (!data) return fresh;
+  } catch {
+    return fresh; // пошкоджений запис не має ронити головний екран
+  }
   // Reset if new day (preserve goal)
   if (data.date !== today) return { date: today, glasses: 0, goal: data.goal || DEFAULT_GOAL };
   return data;

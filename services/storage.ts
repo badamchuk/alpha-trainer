@@ -14,10 +14,56 @@ const KEYS = {
   TRAINER_CONTEXT: '@alpha_trainer:trainer_context',
 };
 
+// ─── Безпечне читання/запис ──────────────────────────────────────────────────
+
+/**
+ * Читає JSON зі сховища так, щоб пошкоджений запис не ронив додаток.
+ *
+ * Бекенду немає — усе живе локально, тож один битий байт у ключі workouts
+ * інакше клав би кожен екран, який його читає, без способу відновитись
+ * зсередини додатку.
+ *
+ * Биті дані НЕ видаляються: вони відкладаються під окремий ключ, бо інакше
+ * наступний же запис (`addWorkout` поверх порожнього масиву) стер би всю
+ * історію остаточно. Відкладене можна дістати експортом бекапу.
+ */
+async function readJSON<T>(key: string, fallback: T): Promise<T> {
+  let raw: string | null = null;
+  try {
+    raw = await AsyncStorage.getItem(key);
+    if (raw == null) return fallback;
+    const parsed = JSON.parse(raw);
+    return (parsed ?? fallback) as T;
+  } catch {
+    if (raw != null) {
+      // не через readJSON — інакше рекурсія на пошкодженому ключі
+      AsyncStorage.setItem(`${key}:corrupt:${Date.now()}`, raw).catch(() => {});
+    }
+    return fallback;
+  }
+}
+
+/**
+ * Черга операцій «прочитати → змінити → записати» для одного ключа.
+ *
+ * Без неї два одночасні виклики (подвійний тап на «Зберегти», паралельне
+ * збереження ваги й вимірів) читають однаковий масив, і другий запис
+ * перетирає перший.
+ */
+const writeQueues = new Map<string, Promise<unknown>>();
+
+function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = writeQueues.get(key) ?? Promise.resolve();
+  // fn запускається і після успіху, і після помилки попередньої операції —
+  // одна невдача не має заблокувати чергу назавжди
+  const next = prev.then(fn, fn);
+  writeQueues.set(key, next.catch(() => undefined));
+  return next;
+}
+
 // --- User Profile ---
 export async function getUserProfile(): Promise<UserProfile | null> {
-  const json = await AsyncStorage.getItem(KEYS.USER_PROFILE);
-  return json ? JSON.parse(json) : null;
+  return readJSON<UserProfile | null>(KEYS.USER_PROFILE, null);
 }
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
@@ -26,8 +72,7 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
 
 // --- Goals ---
 export async function getGoals(): Promise<Goal[]> {
-  const json = await AsyncStorage.getItem(KEYS.GOALS);
-  return json ? JSON.parse(json) : [];
+  return readJSON<Goal[]>(KEYS.GOALS, []);
 }
 
 export async function saveGoals(goals: Goal[]): Promise<void> {
@@ -35,27 +80,32 @@ export async function saveGoals(goals: Goal[]): Promise<void> {
 }
 
 export async function addGoal(goal: Goal): Promise<void> {
-  const goals = await getGoals();
-  goals.push(goal);
-  await saveGoals(goals);
+  await withLock(KEYS.GOALS, async () => {
+    const goals = await getGoals();
+    goals.push(goal);
+    await saveGoals(goals);
+  });
 }
 
 export async function updateGoal(updated: Goal): Promise<void> {
-  const goals = await getGoals();
-  const idx = goals.findIndex((g) => g.id === updated.id);
-  if (idx !== -1) goals[idx] = updated;
-  await saveGoals(goals);
+  await withLock(KEYS.GOALS, async () => {
+    const goals = await getGoals();
+    const idx = goals.findIndex((g) => g.id === updated.id);
+    if (idx !== -1) goals[idx] = updated;
+    await saveGoals(goals);
+  });
 }
 
 export async function deleteGoal(id: string): Promise<void> {
-  const goals = await getGoals();
-  await saveGoals(goals.filter((g) => g.id !== id));
+  await withLock(KEYS.GOALS, async () => {
+    const goals = await getGoals();
+    await saveGoals(goals.filter((g) => g.id !== id));
+  });
 }
 
 // --- Workouts ---
 export async function getWorkouts(): Promise<WorkoutEntry[]> {
-  const json = await AsyncStorage.getItem(KEYS.WORKOUTS);
-  return json ? JSON.parse(json) : [];
+  return readJSON<WorkoutEntry[]>(KEYS.WORKOUTS, []);
 }
 
 export async function saveWorkouts(workouts: WorkoutEntry[]): Promise<void> {
@@ -63,21 +113,27 @@ export async function saveWorkouts(workouts: WorkoutEntry[]): Promise<void> {
 }
 
 export async function addWorkout(workout: WorkoutEntry): Promise<void> {
-  const workouts = await getWorkouts();
-  workouts.unshift(workout); // newest first
-  await saveWorkouts(workouts);
+  await withLock(KEYS.WORKOUTS, async () => {
+    const workouts = await getWorkouts();
+    workouts.unshift(workout); // newest first
+    await saveWorkouts(workouts);
+  });
 }
 
 export async function updateWorkout(updated: WorkoutEntry): Promise<void> {
-  const workouts = await getWorkouts();
-  const idx = workouts.findIndex((w) => w.id === updated.id);
-  if (idx !== -1) workouts[idx] = updated;
-  await saveWorkouts(workouts);
+  await withLock(KEYS.WORKOUTS, async () => {
+    const workouts = await getWorkouts();
+    const idx = workouts.findIndex((w) => w.id === updated.id);
+    if (idx !== -1) workouts[idx] = updated;
+    await saveWorkouts(workouts);
+  });
 }
 
 export async function deleteWorkout(id: string): Promise<void> {
-  const workouts = await getWorkouts();
-  await saveWorkouts(workouts.filter((w) => w.id !== id));
+  await withLock(KEYS.WORKOUTS, async () => {
+    const workouts = await getWorkouts();
+    await saveWorkouts(workouts.filter((w) => w.id !== id));
+  });
 }
 
 export async function getWorkoutsForDate(date: string): Promise<WorkoutEntry[]> {
@@ -92,8 +148,7 @@ export async function getRecentWorkouts(limit = 7): Promise<WorkoutEntry[]> {
 
 // --- Training Plan ---
 export async function getTrainingPlan(): Promise<TrainingPlan | null> {
-  const json = await AsyncStorage.getItem(KEYS.TRAINING_PLAN);
-  return json ? JSON.parse(json) : null;
+  return readJSON<TrainingPlan | null>(KEYS.TRAINING_PLAN, null);
 }
 
 export async function saveTrainingPlan(plan: TrainingPlan): Promise<void> {
@@ -102,8 +157,7 @@ export async function saveTrainingPlan(plan: TrainingPlan): Promise<void> {
 
 // --- Chat History ---
 export async function getChatHistory(): Promise<ChatMessage[]> {
-  const json = await AsyncStorage.getItem(KEYS.CHAT_HISTORY);
-  return json ? JSON.parse(json) : [];
+  return readJSON<ChatMessage[]>(KEYS.CHAT_HISTORY, []);
 }
 
 export async function saveChatHistory(messages: ChatMessage[]): Promise<void> {
@@ -118,8 +172,7 @@ export async function clearChatHistory(): Promise<void> {
 
 // --- Nutritionist Chat History ---
 export async function getNutritionistChatHistory(): Promise<ChatMessage[]> {
-  const json = await AsyncStorage.getItem(KEYS.NUTRITIONIST_CHAT_HISTORY);
-  return json ? JSON.parse(json) : [];
+  return readJSON<ChatMessage[]>(KEYS.NUTRITIONIST_CHAT_HISTORY, []);
 }
 
 export async function saveNutritionistChatHistory(messages: ChatMessage[]): Promise<void> {
@@ -137,9 +190,8 @@ interface DailyAdviceCache {
 }
 
 export async function getCachedDailyAdvice(): Promise<string | null> {
-  const json = await AsyncStorage.getItem(KEYS.DAILY_ADVICE);
-  if (!json) return null;
-  const cache: DailyAdviceCache = JSON.parse(json);
+  const cache = await readJSON<DailyAdviceCache | null>(KEYS.DAILY_ADVICE, null);
+  if (!cache) return null;
   const today = getLocalDateString(new Date());
   return cache.date === today ? cache.text : null;
 }
@@ -153,9 +205,8 @@ export async function saveDailyAdviceCache(text: string): Promise<void> {
 const TRAINER_CONTEXT_TTL = 2 * 60 * 60 * 1000; // 2 hours
 
 export async function getCachedTrainerContext(): Promise<{ text: string; ts: number } | null> {
-  const json = await AsyncStorage.getItem(KEYS.TRAINER_CONTEXT);
-  if (!json) return null;
-  const cache: { text: string; ts: number } = JSON.parse(json);
+  const cache = await readJSON<{ text: string; ts: number } | null>(KEYS.TRAINER_CONTEXT, null);
+  if (!cache) return null;
   if (Date.now() - cache.ts > TRAINER_CONTEXT_TTL) return null;
   return cache;
 }
@@ -175,21 +226,22 @@ export interface WeightEntry {
 }
 
 export async function getWeightLog(): Promise<WeightEntry[]> {
-  const json = await AsyncStorage.getItem(KEYS.WEIGHT_LOG);
-  return json ? JSON.parse(json) : [];
+  return readJSON<WeightEntry[]>(KEYS.WEIGHT_LOG, []);
 }
 
 export async function addWeightEntry(entry: WeightEntry): Promise<void> {
-  const log = await getWeightLog();
-  // Replace entry for same date if exists
-  const idx = log.findIndex((e) => e.date === entry.date);
-  if (idx !== -1) {
-    log[idx] = entry;
-  } else {
-    log.push(entry);
-  }
-  log.sort((a, b) => a.date.localeCompare(b.date));
-  await AsyncStorage.setItem(KEYS.WEIGHT_LOG, JSON.stringify(log));
+  await withLock(KEYS.WEIGHT_LOG, async () => {
+    const log = await getWeightLog();
+    // Replace entry for same date if exists
+    const idx = log.findIndex((e) => e.date === entry.date);
+    if (idx !== -1) {
+      log[idx] = entry;
+    } else {
+      log.push(entry);
+    }
+    log.sort((a, b) => a.date.localeCompare(b.date));
+    await AsyncStorage.setItem(KEYS.WEIGHT_LOG, JSON.stringify(log));
+  });
 }
 
 // --- Personal Records ---
@@ -201,11 +253,20 @@ export interface PersonalRecord {
   date: string; // when max was set
 }
 
-export async function getPersonalRecords(): Promise<PersonalRecord[]> {
-  const workouts = await getWorkouts();
+/**
+ * Найбільша вага і найбільше повторів по кожній вправі.
+ *
+ * Це НЕ те саме, що `analytics.getPersonalRecords` — та рахує найкращий
+ * розрахунковий 1RM. Тут — сирі максимуми для показу й пам'яті AI.
+ *
+ * `workouts` можна передати, якщо масив уже завантажено, — інакше
+ * екран прогресу перечитував би всю історію ще раз.
+ */
+export async function getPersonalRecords(workouts?: WorkoutEntry[]): Promise<PersonalRecord[]> {
+  const all = workouts ?? await getWorkouts();
   const map = new Map<string, PersonalRecord>();
 
-  for (const workout of workouts) {
+  for (const workout of all) {
     for (const ex of workout.exercises) {
       if (!ex.name) continue;
       const key = ex.name.toLowerCase().trim();
@@ -215,13 +276,22 @@ export async function getPersonalRecords(): Promise<PersonalRecord[]> {
         ? { ...existing }
         : { exerciseName: ex.name, maxWeight: 0, maxReps: 0, date: workout.date };
 
-      if (ex.weight && ex.weight > newRecord.maxWeight) {
-        newRecord.maxWeight = ex.weight;
-        newRecord.maxWeightReps = ex.reps;
-        newRecord.date = workout.date;
-      }
-      if (ex.reps && ex.reps > newRecord.maxReps) {
-        newRecord.maxReps = ex.reps;
+      // Політні підходи: сумарні поля описують лише найважчий підхід, тому
+      // максимум повторів треба шукати по всіх підходах, інакше піраміда
+      // 80×5 / 85×5 / 90×3 давала б "максимум повторів: 3".
+      const sets = ex.setsDetail && ex.setsDetail.length > 0
+        ? ex.setsDetail
+        : [{ weight: ex.weight, reps: ex.reps }];
+
+      for (const set of sets) {
+        if (set.weight && set.weight > newRecord.maxWeight) {
+          newRecord.maxWeight = set.weight;
+          newRecord.maxWeightReps = set.reps;
+          newRecord.date = workout.date;
+        }
+        if (set.reps && set.reps > newRecord.maxReps) {
+          newRecord.maxReps = set.reps;
+        }
       }
 
       map.set(key, newRecord);
@@ -236,20 +306,21 @@ export async function getPersonalRecords(): Promise<PersonalRecord[]> {
 
 // --- Body Measurements ---
 export async function getMeasurements(): Promise<BodyMeasurement[]> {
-  const json = await AsyncStorage.getItem(KEYS.MEASUREMENTS);
-  return json ? JSON.parse(json) : [];
+  return readJSON<BodyMeasurement[]>(KEYS.MEASUREMENTS, []);
 }
 
 export async function addMeasurement(entry: BodyMeasurement): Promise<void> {
-  const log = await getMeasurements();
-  const idx = log.findIndex((e) => e.date === entry.date);
-  if (idx !== -1) {
-    log[idx] = { ...log[idx], ...entry }; // merge fields for same date
-  } else {
-    log.push(entry);
-  }
-  log.sort((a, b) => a.date.localeCompare(b.date));
-  await AsyncStorage.setItem(KEYS.MEASUREMENTS, JSON.stringify(log));
+  await withLock(KEYS.MEASUREMENTS, async () => {
+    const log = await getMeasurements();
+    const idx = log.findIndex((e) => e.date === entry.date);
+    if (idx !== -1) {
+      log[idx] = { ...log[idx], ...entry }; // merge fields for same date
+    } else {
+      log.push(entry);
+    }
+    log.sort((a, b) => a.date.localeCompare(b.date));
+    await AsyncStorage.setItem(KEYS.MEASUREMENTS, JSON.stringify(log));
+  });
 }
 
 // --- Helpers ---
@@ -261,14 +332,18 @@ export function getLocalDateString(date: Date): string {
 }
 
 // --- Stats ---
-export async function getStats(): Promise<{
+/** `preloaded` — щоб не читати історію тренувань удруге, коли її вже завантажено. */
+export async function getStats(preloaded?: WorkoutEntry[]): Promise<{
   totalWorkouts: number;
   weeklyWorkouts: number;
   monthlyWorkouts: number;
   totalDuration: number;
   streak: number;
 }> {
-  const [workouts, profile] = await Promise.all([getWorkouts(), getUserProfile()]);
+  const [workouts, profile] = await Promise.all([
+    preloaded ? Promise.resolve(preloaded) : getWorkouts(),
+    getUserProfile(),
+  ]);
   const now = new Date();
   const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
