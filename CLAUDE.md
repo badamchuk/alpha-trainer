@@ -25,6 +25,10 @@
   - `wellbeing.ts` — самопочуття (сон, настрій)
   - `water.ts` — трекер води
   - `i18n.ts` — локалізація (укр/eng)
+  - `supersets.ts` — групування/розгрупування суперсетів і порядок вправ
+  - `achievements.ts` — 14 досягнень, рахуються за один прохід
+  - `timerPrefs.ts` — збережені схеми таймера
+- `__tests__/` — jest (`npm test`): supersets, storage, analytics
 - `types/index.ts` — всі TypeScript інтерфейси
 - `constants/theme.ts` — кольори, відступи, типографіка
 
@@ -35,7 +39,12 @@
 - KeyboardAvoidingView обов'язковий у всіх модалах з TextInput:
   `behavior={Platform.OS === 'ios' ? 'padding' : 'height'}`
 - Всі нові AsyncStorage ключі додавати в `services/backup.ts` ALL_KEYS
+- Читання зі сховища — тільки через `readJSON()`, запис зі змінами — через `withLock()`
+- `paddingTop` у шапках — через `insets.top`, ніколи числом
+- Конфіг Expo — в `app.config.js` (app.json видалено, було два джерела правди)
+- Перед комітом: `npm test` і `npm run typecheck`
 - Запуск: `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" && npx expo run:android`
+- Якщо правки не доїжджають на телефон: `adb reverse tcp:8081 tcp:8081`
 - Підключений пристрій: Pixel 8 Pro (ADB ID: 37171FDJG00AGK)
 
 ## Поточний стан
@@ -46,3 +55,8 @@
 - Харчування: навігація по датах (← →), КБЖВ + клітковина, редагування, бібліотека страв
 - Профіль: стать враховується у формулі Mifflin-St Jeor (BMR)
 - Резервне копіювання (експорт/імпорт JSON)
+- Вправи: політні підходи, редагування вже доданих, суперсети заднім числом,
+  переміщення стрілками — і при логуванні, і в збереженому тренуванні
+- Досягнення (14 шт.) у вкладці прогресу
+- Тести: `npm test` — 57 шт. на supersets/storage/analytics
+- Версія + хеш коміту + час збірки видно в Профіль → AI-моделі
