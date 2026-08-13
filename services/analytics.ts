@@ -17,6 +17,10 @@ export function classifyExercise(name: string): MuscleGroup | null {
   const exact = LIBRARY_BY_NAME.get(n);
   if (exact) return exact;
   // Keyword fallback — ordered so specific patterns win over generic ones
+  // "розгинання ніг" містить у собі підрядок "згинання ніг", тому квадрицепс
+  // треба перевірити ДО біцепса стегна — інакше leg extension потрапляв би
+  // у hamstrings. (JS-овий \b після кирилиці не працює, звідси такий порядок.)
+  if (/розгинання ніг|розгинання ноги|leg extension/.test(n)) return 'legs';
   if (/leg curl|згинання ніг|згинання ноги|nordic|підколін|hamstring|romanian|румунськ|rdl|на прямих ногах|good morning|доброго ранку|ghr|pull-through|протяжка/.test(n)) return 'hamstrings';
   if (/розгинання ніг|leg extension|squat|присідан|leg press|жим ногами|квадр|випад|lunge|step-up|підйом на крок|пістолет/.test(n)) return 'legs';
   if (/calf|литк|на носки/.test(n)) return 'calves';
