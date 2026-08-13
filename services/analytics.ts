@@ -87,7 +87,10 @@ export function getRunStats(workouts: WorkoutEntry[]): RunStats {
   const recentRuns: RunStats['recentRuns'] = [];
 
   for (const run of runs) {
-    const dist = run.totalDistance || 0;
+    // Форма дозволяє записати км і на рівні тренування, і в самій вправі —
+    // рахуємо обидва варіанти, інакше пів статистики показувало б нуль
+    const dist = run.totalDistance
+      || run.exercises.reduce((s, e) => s + (e.distance || 0), 0);
     const dur = run.duration || 0;
     const pace = run.avgPace || (dist > 0 && dur > 0 ? computePace(dist, dur) : 0);
 
