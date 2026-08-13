@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile } from '../../types';
 import { loadLanguage, setLanguage, setExerciseLanguage, useLocale, Lang } from '../../services/i18n';
 import { exportBackup, importBackup } from '../../services/backup';
+import Constants from 'expo-constants';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -544,6 +545,7 @@ export default function OnboardingScreen() {
                   name={name}
                 />
                 <BackupSection loading={backupLoading} onExport={handleExportBackup} onImport={handleImportBackup} />
+                <BuildInfo />
               </>
             )}
           </ScrollView>
@@ -643,6 +645,7 @@ export default function OnboardingScreen() {
                   onExport={handleExportBackup}
                   onImport={handleImportBackup}
                 />
+                <BuildInfo />
               </>
             )}
           </ScrollView>
@@ -1309,6 +1312,46 @@ function BackupSection({
     </View>
   );
 }
+
+/**
+ * Що саме зараз стоїть на телефоні.
+ *
+ * versionName у локальних debug-збірках завжди 1.0.0, тож сам по собі він
+ * не каже нічого. Хеш коміту й час збірки — кажуть.
+ */
+function BuildInfo() {
+  const extra = (Constants.expoConfig?.extra ?? {}) as {
+    gitHash?: string;
+    gitDirty?: boolean;
+    buildDate?: string;
+  };
+  const version = Constants.expoConfig?.version ?? '—';
+  const built = extra.buildDate
+    ? new Date(extra.buildDate).toLocaleString('uk-UA', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+    : '—';
+
+  return (
+    <View style={buildStyles.wrap}>
+      <Text style={buildStyles.line}>
+        Версія {version} · {extra.gitHash ?? 'unknown'}
+        {extra.gitDirty ? '*' : ''}
+      </Text>
+      <Text style={buildStyles.line}>Зібрано {built}</Text>
+      {extra.gitDirty && (
+        <Text style={buildStyles.dirty}>* у збірці є незакомічені зміни</Text>
+      )}
+    </View>
+  );
+}
+
+const buildStyles = StyleSheet.create({
+  wrap: { alignItems: 'center', paddingVertical: Spacing.lg, gap: 2 },
+  line: { color: Colors.textMuted, fontSize: 11 },
+  dirty: { color: Colors.warning, fontSize: 10, marginTop: 2 },
+});
 
 const backupStyles = StyleSheet.create({
   section: {
