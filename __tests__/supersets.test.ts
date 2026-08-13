@@ -3,6 +3,8 @@ import {
   ungroupSuperset,
   normalizeSupersets,
   removeFromSuperset,
+  moveExercise,
+  canMoveExercise,
   getSupersetColor,
 } from '../services/supersets';
 import { ExerciseLog } from '../types';
@@ -117,5 +119,73 @@ describe('getSupersetColor', () => {
 
   it('повертає валідний hex', () => {
     expect(getSupersetColor('ss_abc')).toMatch(/^#[0-9A-F]{6}$/i);
+  });
+});
+
+describe('moveExercise', () => {
+  it('міняє місцями сусідні вправи', () => {
+    const r = moveExercise([ex('A'), ex('B'), ex('C')], 1, -1);
+    expect(names(r)).toBe('B,A,C');
+  });
+
+  it('рухає вниз', () => {
+    const r = moveExercise([ex('A'), ex('B'), ex('C')], 0, 1);
+    expect(names(r)).toBe('B,A,C');
+  });
+
+  it('суперсет переїжджає цілком, а не розривається', () => {
+    // [A] [B,C — суперсет] [D]; рухаємо групу вгору
+    const src = [ex('A'), ex('B', 's1'), ex('C', 's1'), ex('D')];
+    const r = moveExercise(src, 1, -1);
+    expect(names(r)).toBe('B,C,A,D');
+    expect(ssOf(r, 'B')).toBe('s1');
+    expect(ssOf(r, 'C')).toBe('s1');
+  });
+
+  it('рух за будь-який елемент групи дає той самий результат', () => {
+    const src = [ex('A'), ex('B', 's1'), ex('C', 's1')];
+    expect(names(moveExercise(src, 1, -1))).toBe('B,C,A');
+    expect(names(moveExercise(src, 2, -1))).toBe('B,C,A'); // з другого рядка групи
+  });
+
+  it('окрема вправа перестрибує через цілий суперсет', () => {
+    const src = [ex('A', 's1'), ex('B', 's1'), ex('C')];
+    const r = moveExercise(src, 2, -1);
+    expect(names(r)).toBe('C,A,B');
+  });
+
+  it('на межах повертає той самий масив', () => {
+    const src = [ex('A'), ex('B')];
+    expect(moveExercise(src, 0, -1)).toBe(src);
+    expect(moveExercise(src, 1, 1)).toBe(src);
+  });
+
+  it('ігнорує індекс поза межами', () => {
+    const src = [ex('A'), ex('B')];
+    expect(moveExercise(src, 99, 1)).toBe(src);
+  });
+
+  it('не мутує вхідний масив', () => {
+    const src = [ex('A'), ex('B'), ex('C')];
+    const snapshot = JSON.stringify(src);
+    moveExercise(src, 0, 1);
+    expect(JSON.stringify(src)).toBe(snapshot);
+  });
+});
+
+describe('canMoveExercise', () => {
+  it('вимикає стрілки на межах', () => {
+    const src = [ex('A'), ex('B')];
+    expect(canMoveExercise(src, 0, -1)).toBe(false);
+    expect(canMoveExercise(src, 0, 1)).toBe(true);
+    expect(canMoveExercise(src, 1, 1)).toBe(false);
+  });
+
+  it('уся група вважається одним блоком', () => {
+    // A на початку, група [B,C] в кінці — групу вниз рухати нікуди
+    const src = [ex('A'), ex('B', 's1'), ex('C', 's1')];
+    expect(canMoveExercise(src, 1, 1)).toBe(false);
+    expect(canMoveExercise(src, 2, 1)).toBe(false);
+    expect(canMoveExercise(src, 1, -1)).toBe(true);
   });
 });

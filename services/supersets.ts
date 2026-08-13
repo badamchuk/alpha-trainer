@@ -62,6 +62,68 @@ export function ungroupSuperset(exercises: ExerciseLog[], ssId: string): Exercis
   return exercises.map((e) => (e.supersetId === ssId ? { ...e, supersetId: undefined } : e));
 }
 
+/**
+ * Розбиває список на блоки в тому вигляді, як він показується:
+ * окрема вправа — це блок, цілий суперсет — теж один блок.
+ */
+function buildBlocks(exercises: ExerciseLog[]): number[][] {
+  const blocks: number[][] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < exercises.length; i++) {
+    const ss = exercises[i].supersetId;
+    if (!ss) {
+      blocks.push([i]);
+      continue;
+    }
+    if (seen.has(ss)) continue;
+    seen.add(ss);
+    const group: number[] = [];
+    for (let j = 0; j < exercises.length; j++) {
+      if (exercises[j].supersetId === ss) group.push(j);
+    }
+    blocks.push(group);
+  }
+  return blocks;
+}
+
+/**
+ * Переміщує вправу на одну позицію вгору (dir = -1) або вниз (dir = 1).
+ *
+ * Рухається БЛОК, а не окремий рядок: якщо вправа в суперсеті, переїжджає
+ * вся група. Інакше переміщення розривало б її навпіл.
+ *
+ * Повертає той самий масив, якщо рухати нікуди — так UI розуміє, що
+ * стрілку треба вимкнути.
+ */
+export function moveExercise(
+  exercises: ExerciseLog[],
+  index: number,
+  dir: -1 | 1,
+): ExerciseLog[] {
+  if (index < 0 || index >= exercises.length) return exercises;
+  const blocks = buildBlocks(exercises);
+  const from = blocks.findIndex((b) => b.includes(index));
+  const to = from + dir;
+  if (from < 0 || to < 0 || to >= blocks.length) return exercises;
+
+  const swapped = [...blocks];
+  [swapped[from], swapped[to]] = [swapped[to], swapped[from]];
+  return swapped.flat().map((i) => exercises[i]);
+}
+
+/** Чи можна рухати вправу в цей бік — для вимкнення стрілок в UI. */
+export function canMoveExercise(
+  exercises: ExerciseLog[],
+  index: number,
+  dir: -1 | 1,
+): boolean {
+  if (index < 0 || index >= exercises.length) return false;
+  const blocks = buildBlocks(exercises);
+  const from = blocks.findIndex((b) => b.includes(index));
+  const to = from + dir;
+  return from >= 0 && to >= 0 && to < blocks.length;
+}
+
 /** Прибирає одну вправу з її суперсету (решта групи лишається). */
 export function removeFromSuperset(exercises: ExerciseLog[], index: number): ExerciseLog[] {
   if (index < 0 || index >= exercises.length) return exercises;

@@ -18,6 +18,7 @@ import ExercisePicker from '../../components/ExercisePicker';
 import { checkAndUnlock } from '../../services/achievements';
 import {
   getSupersetColor, groupIntoSuperset, ungroupSuperset, normalizeSupersets,
+  moveExercise, canMoveExercise,
 } from '../../services/supersets';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
@@ -112,6 +113,12 @@ export default function LogWorkoutScreen() {
 
   function handleUngroup(ssId: string) {
     setExercises((prev) => ungroupSuperset(prev, ssId));
+  }
+
+  function handleMove(index: number, dir: -1 | 1) {
+    // порядок змінюється — індекс редагованої вправи більше не вказує на неї
+    cancelEditExercise();
+    setExercises((prev) => moveExercise(prev, index, dir));
   }
 
   // Timer state — timestamp-based so час рахується вірно навіть коли
@@ -650,6 +657,7 @@ export default function LogWorkoutScreen() {
             exercises,
             onRemove: removeExercise,
             onEdit: startEditExercise,
+            onMove: handleMove,
             editingIdx: editingExIdx,
             groupMode,
             selected: groupSel,
@@ -1019,6 +1027,35 @@ function calcPlates(totalKg: number, barbell: number): { plates: { plate: number
 
 // кольори суперсетів — у services/supersets.ts (спільні з екраном деталей)
 
+/** Стрілки порядку. Вправа в суперсеті рухає всю групу — так само в деталях. */
+function MoveArrows({ exercises, idx, onMove }: {
+  exercises: ExerciseLog[];
+  idx: number;
+  onMove: (i: number, dir: -1 | 1) => void;
+}) {
+  const up = canMoveExercise(exercises, idx, -1);
+  const down = canMoveExercise(exercises, idx, 1);
+  if (!up && !down) return null; // єдина вправа — стрілки ні до чого
+  return (
+    <View style={styles.moveCol}>
+      <TouchableOpacity
+        onPress={() => onMove(idx, -1)}
+        disabled={!up}
+        hitSlop={{ top: 6, bottom: 2, left: 8, right: 8 }}
+      >
+        <Ionicons name="chevron-up" size={17} color={up ? Colors.textSecondary : Colors.border} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => onMove(idx, 1)}
+        disabled={!down}
+        hitSlop={{ top: 2, bottom: 6, left: 8, right: 8 }}
+      >
+        <Ionicons name="chevron-down" size={17} color={down ? Colors.textSecondary : Colors.border} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function renderExerciseMeta(ex: ExerciseLog): string {
   const SET_TYPE_LABELS: Record<string, string> = {
     warmup: '🔵 Розм.', dropset: '🟠 Дроп', failure: '🔴 Відмова',
@@ -1050,6 +1087,7 @@ interface ExerciseGroupOpts {
   exercises: ExerciseLog[];
   onRemove: (i: number) => void;
   onEdit: (i: number) => void;
+  onMove: (i: number, dir: -1 | 1) => void;
   editingIdx: number | null;
   groupMode: boolean;
   selected: number[];
@@ -1058,7 +1096,7 @@ interface ExerciseGroupOpts {
 }
 
 function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
-  const { exercises, onRemove, onEdit, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
+  const { exercises, onRemove, onEdit, onMove, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
   const nodes: React.ReactNode[] = [];
   let i = 0;
   // group consecutive exercises with the same supersetId
@@ -1088,6 +1126,7 @@ function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
         </TouchableOpacity>
         {!groupMode && (
           <>
+            <MoveArrows exercises={exercises} idx={idx} onMove={onMove} />
             <TouchableOpacity onPress={() => onEdit(idx)} style={styles.rowIconBtn} hitSlop={6}>
               <Ionicons
                 name="create-outline"
@@ -1193,6 +1232,7 @@ const styles = StyleSheet.create({
   exerciseMeta: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
   exerciseItemEditing: { borderColor: Colors.primary, backgroundColor: Colors.primary + '10' },
   rowIconBtn: { paddingHorizontal: Spacing.sm },
+  moveCol: { alignItems: 'center', justifyContent: 'center', paddingRight: 2 },
   selBox: { paddingRight: Spacing.sm },
   groupBar: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,

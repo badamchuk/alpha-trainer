@@ -16,6 +16,7 @@ import { computePace, formatPace } from '../../services/analytics';
 import { useLocale } from '../../services/i18n';
 import {
   getSupersetColor, groupIntoSuperset, ungroupSuperset, normalizeSupersets,
+  moveExercise, canMoveExercise,
 } from '../../services/supersets';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
@@ -171,6 +172,12 @@ export default function WorkoutDetailScreen() {
 
   function handleUngroup(ssId: string) {
     setExercises((prev) => ungroupSuperset(prev, ssId));
+  }
+
+  function handleMove(index: number, dir: -1 | 1) {
+    // порядок змінюється — індекс редагованої вправи більше не вказує на неї
+    clearExForm();
+    setExercises((prev) => moveExercise(prev, index, dir));
   }
 
   function removeExerciseAt(i: number) {
@@ -446,6 +453,7 @@ export default function WorkoutDetailScreen() {
               exercises,
               onRemove: removeExerciseAt,
               onEdit: startEditExercise,
+              onMove: handleMove,
               editingIdx: editingExIdx,
               groupMode,
               selected: groupSel,
@@ -736,12 +744,36 @@ function StatItem({ icon, label, value }: { icon: any; label: string; value: str
 
 // ─── SUPERSET HELPERS ────────────────────────────────────────────────────────
 
+/** Стрілки порядку. Вправа в суперсеті рухає всю групу — так само в логуванні. */
+function MoveArrows({ exercises, idx, onMove }: {
+  exercises: ExerciseLog[];
+  idx: number;
+  onMove: (i: number, dir: -1 | 1) => void;
+}) {
+  const up = canMoveExercise(exercises, idx, -1);
+  const down = canMoveExercise(exercises, idx, 1);
+  if (!up && !down) return null;
+  return (
+    <View style={styles.moveCol}>
+      <TouchableOpacity onPress={() => onMove(idx, -1)} disabled={!up}
+        hitSlop={{ top: 6, bottom: 2, left: 8, right: 8 }}>
+        <Ionicons name="chevron-up" size={17} color={up ? Colors.textSecondary : Colors.border} />
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => onMove(idx, 1)} disabled={!down}
+        hitSlop={{ top: 2, bottom: 6, left: 8, right: 8 }}>
+        <Ionicons name="chevron-down" size={17} color={down ? Colors.textSecondary : Colors.border} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // Редагований список вправ: тап відкриває вправу у формі нижче,
 // у режимі групування — чекбокси для об'єднання в суперсет.
 interface EditableListOpts {
   exercises: ExerciseLog[];
   onRemove: (i: number) => void;
   onEdit: (i: number) => void;
+  onMove: (i: number, dir: -1 | 1) => void;
   editingIdx: number | null;
   groupMode: boolean;
   selected: number[];
@@ -750,7 +782,7 @@ interface EditableListOpts {
 }
 
 function renderEditableExercises(o: EditableListOpts): React.ReactNode[] {
-  const { exercises, onRemove, onEdit, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
+  const { exercises, onRemove, onEdit, onMove, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
   const nodes: React.ReactNode[] = [];
   const seen = new Set<string>();
 
@@ -777,6 +809,7 @@ function renderEditableExercises(o: EditableListOpts): React.ReactNode[] {
         </TouchableOpacity>
         {!groupMode && (
           <>
+            <MoveArrows exercises={exercises} idx={idx} onMove={onMove} />
             <TouchableOpacity onPress={() => onEdit(idx)} style={styles.rowIconBtn} hitSlop={6}>
               <Ionicons
                 name="create-outline"
@@ -1020,6 +1053,7 @@ const styles = StyleSheet.create({
   },
   editPillText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   rowIconBtn: { paddingHorizontal: Spacing.sm },
+  moveCol: { alignItems: 'center', justifyContent: 'center', paddingRight: 2 },
   selBox: { paddingRight: Spacing.sm },
   groupBar: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
