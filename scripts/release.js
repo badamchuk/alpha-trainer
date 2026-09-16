@@ -7,6 +7,8 @@
 //   npm run release -- 2.0.0         конкретна версія
 //   npm run release -- --dry-run     лише перевірки й тести, нічого не змінює
 //
+// RELEASE_COMMIT_TRAILER="..." — додати рядок у кінець коміту релізу
+//
 // Порядок важливий: спершу коміт і тег, потім збірка — інакше в APK
 // потрапить хеш попереднього коміту з позначкою «незакомічені зміни».
 //
@@ -122,7 +124,9 @@ if (!patched.includes(`versionCode ${versionCode}`)) fail('Не вдалося �
 fs.writeFileSync(GRADLE_FILE, patched);
 
 run('git add package.json package-lock.json');
-run(`git commit -m "реліз ${tag}"`);
+// Необов'язковий трейлер коміту (напр., Co-Authored-By, коли реліз робить асистент)
+const trailer = process.env.RELEASE_COMMIT_TRAILER;
+run(`git commit -m "реліз ${tag}"${trailer ? ` -m "${trailer.replace(/"/g, '')}"` : ''}`);
 run(`git tag -a ${tag} -m "${tag}"`);
 
 // ─── Збірка ──────────────────────────────────────────────────────────────────
