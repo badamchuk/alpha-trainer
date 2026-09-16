@@ -7,19 +7,25 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
-import { addWorkout, getWorkouts, getLocalDateString } from '../../services/storage';
-import { WorkoutEntry, ExerciseLog, WorkoutType, SetType, SetDetail } from '../../types';
+import {
+  addWorkout, getWorkouts, getLocalDateString, getUserProfile, getWeightLog, WeightEntry,
+} from '../../services/storage';
+import { WorkoutEntry, ExerciseLog, WorkoutType, SetType, SetDetail, UserProfile } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
 import { computePace, formatPace, getOverloadSuggestion, estimate1RM } from '../../services/analytics';
 import RestTimer from '../../components/RestTimer';
-import { getTemplates, saveTemplate, WorkoutTemplate } from '../../services/templates';
+import { getTemplates, saveTemplate, deleteTemplate, WorkoutTemplate } from '../../services/templates';
 import { useLocale } from '../../services/i18n';
 import ExercisePicker from '../../components/ExercisePicker';
+import SupersetBar from '../../components/SupersetBar';
 import { checkAndUnlock } from '../../services/achievements';
 import {
   getSupersetColor, groupIntoSuperset, ungroupSuperset, normalizeSupersets,
   moveExercise, canMoveExercise,
 } from '../../services/supersets';
+import {
+  bodyParamsFor, estimateWorkoutCalories, paramsLabel, roundKcal, ExerciseCalories,
+} from '../../services/calories';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -42,7 +48,11 @@ export default function LogWorkoutScreen() {
   const router = useRouter();
   const { t } = useLocale();
   const insets = useSafeAreaInsets();
-  const { repeatId } = useLocalSearchParams<{ repeatId?: string }>();
+  const { repeatId, templateId } = useLocalSearchParams<{ repeatId?: string; templateId?: string }>();
+  // Редагування шаблону — той самий екран, але «Зберегти» оновлює шаблон,
+  // а не записує тренування. Так шаблонам дістається все: суперсети,
+  // переміщення, правка вправ — без третьої копії форми.
+  const isTemplateMode = !!templateId;
   const [workoutType, setWorkoutType] = useState<WorkoutType>('strength');
   const [date, setDate] = useState(() => getLocalDateString(new Date()));
   const [duration, setDuration] = useState('');
@@ -60,6 +70,13 @@ export default function LogWorkoutScreen() {
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [saveTemplateVisible, setSaveTemplateVisible] = useState(false);
   const [templateName, setTemplateName] = useState('');
+  // Шаблон, з якого почали (або який редагуємо), — щоб «Шаблон» міг його
+  // оновити, а не плодити копії
+  const [baseTemplate, setBaseTemplate] = useState<WorkoutTemplate | null>(null);
+
+  // Для оцінки калорій: вага на дату, зріст, вік, стать
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [weightLog, setWeightLog] = useState<WeightEntry[]>([]);
 
   // Progressive overload hint
   const [overloadHint, setOverloadHint] = useState('');
@@ -141,6 +158,25 @@ export default function LogWorkoutScreen() {
       setRepeatingFrom(src.workoutType);
     });
   }, [repeatId]);
+
+  useEffect(() => {
+    if (!templateId) return;
+    getTemplates().then((all) => {
+      const tpl = all.find((x) => x.id === templateId);
+      if (!tpl) return;
+      setBaseTemplate(tpl);
+      setTemplateName(tpl.name);
+      setWorkoutType(tpl.workoutType);
+      setExercises(tpl.exercises.map((e) => ({ ...e })));
+    });
+  }, [templateId]);
+
+  useEffect(() => {
+    Promise.all([getUserProfile(), getWeightLog()]).then(([p, wl]) => {
+      setProfile(p);
+      setWeightLog(wl);
+    });
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -275,24 +311,67 @@ export default function LogWorkoutScreen() {
     setTemplatesVisible(true);
   }
 
-  function applyTemplate(t: WorkoutTemplate) {
-    setWorkoutType(t.workoutType);
-    setExercises(t.exercises);
+  function applyTemplate(tpl: WorkoutTemplate) {
+    setWorkoutType(tpl.workoutType);
+    setExercises(tpl.exercises.map((e) => ({ ...e })));
+    setBaseTemplate(tpl);
     setTemplatesVisible(false);
   }
 
-  async function handleSaveTemplate() {
-    if (!templateName.trim()) { Alert.alert(t('enterExerciseName')); return; }
-    await saveTemplate({
-      id: Date.now().toString(),
+  // Окремий екран поверх — щоб не зачепити тренування, яке вже почали записувати
+  function editTemplate(tpl: WorkoutTemplate) {
+    setTemplatesVisible(false);
+    router.push(`/workout/log?templateId=${tpl.id}`);
+  }
+
+  function confirmDeleteTemplate(tpl: WorkoutTemplate) {
+    Alert.alert(`Видалити шаблон «${tpl.name}»?`, 'Записані тренування не зміняться.', [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('delete'), style: 'destructive',
+        onPress: async () => {
+          await deleteTemplate(tpl.id);
+          setTemplates((prev) => prev.filter((x) => x.id !== tpl.id));
+          if (baseTemplate?.id === tpl.id) setBaseTemplate(null);
+        },
+      },
+    ]);
+  }
+
+  function openSaveTemplate() {
+    setTemplateName(baseTemplate?.name ?? '');
+    setSaveTemplateVisible(true);
+  }
+
+  /** 'update' — перезаписати шаблон, з якого почали; 'new' — окремий шаблон. */
+  async function handleSaveTemplate(mode: 'new' | 'update') {
+    if (!templateName.trim()) { Alert.alert('Вкажи назву шаблону'); return; }
+    const base = mode === 'update' ? baseTemplate : null;
+    const saved: WorkoutTemplate = {
+      id: base?.id ?? Date.now().toString(),
       name: templateName.trim(),
       workoutType,
-      exercises,
-      createdAt: new Date().toISOString(),
-    });
+      exercises: normalizeSupersets(exercises),
+      createdAt: base?.createdAt ?? new Date().toISOString(),
+    };
+    await saveTemplate(saved);
+    setBaseTemplate(saved);
     setSaveTemplateVisible(false);
     setTemplateName('');
-    Alert.alert(t('templateSaved'));
+    Alert.alert(base ? 'Шаблон оновлено!' : t('templateSaved'));
+  }
+
+  async function handleSaveTemplateEdits() {
+    if (!baseTemplate) return;
+    if (!templateName.trim()) { Alert.alert('Вкажи назву шаблону'); return; }
+    if (exercises.length === 0) { Alert.alert('Додай хоча б одну вправу'); return; }
+    await saveTemplate({
+      ...baseTemplate,
+      name: templateName.trim(),
+      workoutType,
+      exercises: normalizeSupersets(exercises),
+    });
+    router.back();
   }
 
   function parseNum(v: string): number | undefined {
@@ -358,9 +437,9 @@ export default function LogWorkoutScreen() {
     setExercises(updatedExercises);
     clearExForm();
     setEditingExIdx(null);
-    // Таймер відпочинку і банер рекорду — тільки для нової вправи.
-    // Під час виправлення помилки вони б лише заважали.
-    if (isEdit) return;
+    // Таймер відпочинку і банер рекорду — тільки для нової вправи в тренуванні.
+    // Під час виправлення помилки чи правки шаблону вони б лише заважали.
+    if (isEdit || isTemplateMode) return;
     // Auto-open rest timer only for strength-type workouts (has sets/reps/weight)
     if (ex.sets || ex.reps || ex.weight) {
       setRestTimerVisible(true);
@@ -424,7 +503,8 @@ export default function LogWorkoutScreen() {
         id: Date.now().toString(),
         date,
         workoutType,
-        exercises,
+        // «суперсет» з однієї вправи (увімкнув режим, додав одну, вимкнув) — прибираємо
+        exercises: normalizeSupersets(exercises),
         notes: notes.trim(),
         duration: durMin,
         rating,
@@ -450,6 +530,19 @@ export default function LogWorkoutScreen() {
 
   const selectedType = WORKOUT_TYPES.find((t) => t.id === workoutType)!;
 
+  // Жива оцінка калорій. Поки тривалість не вписана — береться з таймера
+  const liveDuration = Number(duration.replace(',', '.')) || (timerSeconds >= 60 ? timerSeconds / 60 : 0);
+  const kcalParams = isTemplateMode ? null : bodyParamsFor(profile, weightLog, date);
+  const kcalEst = kcalParams && (exercises.length > 0 || liveDuration > 0)
+    ? estimateWorkoutCalories({
+        workoutType,
+        duration: liveDuration,
+        exercises,
+        totalDistance: Number(totalDistance.replace(',', '.')) || undefined,
+        totalCalories: Number(totalCalories) || undefined,
+      }, kcalParams)
+    : null;
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.container}>
@@ -458,12 +551,14 @@ export default function LogWorkoutScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="close" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t('newWorkout')}</Text>
+          <Text style={styles.headerTitle}>{isTemplateMode ? 'Шаблон' : t('newWorkout')}</Text>
           <View style={styles.headerRight}>
-            <TouchableOpacity onPress={openTemplates} style={styles.headerIconBtn}>
-              <Ionicons name="albums-outline" size={22} color={Colors.textSecondary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleSave} disabled={saving}>
+            {!isTemplateMode && (
+              <TouchableOpacity onPress={openTemplates} style={styles.headerIconBtn}>
+                <Ionicons name="albums-outline" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={isTemplateMode ? handleSaveTemplateEdits : handleSave} disabled={saving}>
               <Text style={[styles.saveBtn, saving && { opacity: 0.5 }]}>{t('save')}</Text>
             </TouchableOpacity>
           </View>
@@ -483,7 +578,29 @@ export default function LogWorkoutScreen() {
           </View>
         )}
 
+        {isTemplateMode && (
+          <View style={styles.repeatBanner}>
+            <Ionicons name="albums-outline" size={14} color={Colors.primary} />
+            <Text style={styles.repeatBannerText}>
+              Редагування шаблону — «Зберегти» оновить шаблон, тренування не запишеться
+            </Text>
+          </View>
+        )}
+
         <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          {isTemplateMode && (
+            <>
+              <Text style={styles.label}>Назва шаблону</Text>
+              <TextInput
+                style={styles.input}
+                value={templateName}
+                onChangeText={setTemplateName}
+                placeholder={t('templateNamePlaceholder')}
+                placeholderTextColor={Colors.textMuted}
+              />
+            </>
+          )}
+
           {/* Workout Type */}
           <Text style={styles.label}>{t('workoutTypeLabel')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeList}>
@@ -499,6 +616,9 @@ export default function LogWorkoutScreen() {
             ))}
           </ScrollView>
 
+          {/* Дата, таймер, тривалість, кардіо й оцінка — у шаблоні не мають сенсу */}
+          {!isTemplateMode && (
+          <>
           {/* Date & Duration */}
           <DatePickerField
             label="Дата"
@@ -599,12 +719,14 @@ export default function LogWorkoutScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          </>
+          )}
 
           {/* Exercises */}
           <View style={styles.exercisesHeader}>
             <Text style={styles.label}>{t('exercisesLabel')}</Text>
             <View style={styles.exercisesHeaderActions}>
-              {exercises.length > 0 && (
+              {exercises.length > 0 && !isTemplateMode && (
                 <TouchableOpacity
                   style={styles.restTimerBtn}
                   onPress={() => setRestTimerVisible(true)}
@@ -613,10 +735,10 @@ export default function LogWorkoutScreen() {
                   <Text style={styles.restTimerBtnText}>{t('restTimerBtn')}</Text>
                 </TouchableOpacity>
               )}
-              {exercises.length > 0 && (
+              {exercises.length > 0 && !isTemplateMode && (
                 <TouchableOpacity
                   style={styles.saveTemplateBtn}
-                  onPress={() => setSaveTemplateVisible(true)}
+                  onPress={openSaveTemplate}
                 >
                   <Ionicons name="bookmark-outline" size={15} color={Colors.textSecondary} />
                   <Text style={styles.saveTemplateBtnText}>Шаблон</Text>
@@ -624,6 +746,19 @@ export default function LogWorkoutScreen() {
               )}
             </View>
           </View>
+
+          {/* Жива оцінка калорій під параметри профілю */}
+          {kcalEst && kcalParams && kcalEst.total > 0 && (
+            <View style={styles.kcalRow}>
+              <Ionicons name="flame-outline" size={15} color={Colors.accent} />
+              <Text style={styles.kcalRowText}>
+                {kcalEst.estimated ? `≈ ${roundKcal(kcalEst.total)}` : Math.round(kcalEst.total)} ккал
+              </Text>
+              <Text style={styles.kcalRowHint} numberOfLines={1}>
+                {kcalEst.estimated ? `оцінка · ${paramsLabel(kcalParams)}` : 'вписано вручну'}
+              </Text>
+            </View>
+          )}
 
           {/* Групування вже доданих вправ у суперсет */}
           {exercises.length > 1 && (
@@ -634,27 +769,15 @@ export default function LogWorkoutScreen() {
                   <Text style={styles.groupBarText}>Об'єднати в суперсет</Text>
                 </TouchableOpacity>
               ) : (
-                <>
-                  <Text style={styles.groupBarHint}>
-                    {groupSel.length < 2 ? 'Познач 2+ вправи' : `Вибрано: ${groupSel.length}`}
-                  </Text>
-                  <TouchableOpacity onPress={toggleGroupMode} style={styles.groupBarBtn}>
-                    <Text style={styles.groupBarCancel}>Скасувати</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={applyGrouping}
-                    disabled={groupSel.length < 2}
-                    style={[styles.groupApplyBtn, groupSel.length < 2 && { opacity: 0.4 }]}
-                  >
-                    <Text style={styles.groupApplyText}>Об'єднати</Text>
-                  </TouchableOpacity>
-                </>
+                // самі кнопки — на панелі внизу екрана, щоб не зникали при прокрутці
+                <Text style={styles.groupBarHint}>Відміть вправи — «Об'єднати» внизу екрана</Text>
               )}
             </View>
           )}
 
           {renderExerciseGroups({
             exercises,
+            kcal: kcalEst?.perExercise,
             onRemove: removeExercise,
             onEdit: startEditExercise,
             onMove: handleMove,
@@ -828,17 +951,24 @@ export default function LogWorkoutScreen() {
           </View>
 
           {/* Notes */}
-          <Text style={styles.label}>{t('notesLabel')}</Text>
-          <TextInput
-            style={[styles.input, styles.notesInput]}
-            placeholder={t('notesPlaceholder')}
-            placeholderTextColor={Colors.textMuted}
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            numberOfLines={4}
-          />
+          {!isTemplateMode && (
+            <>
+              <Text style={styles.label}>{t('notesLabel')}</Text>
+              <TextInput
+                style={[styles.input, styles.notesInput]}
+                placeholder={t('notesPlaceholder')}
+                placeholderTextColor={Colors.textMuted}
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+                numberOfLines={4}
+              />
+            </>
+          )}
         </ScrollView>
+        {groupMode && (
+          <SupersetBar count={groupSel.length} onCancel={toggleGroupMode} onApply={applyGrouping} />
+        )}
       </View>
 
       {/* Rest Timer Modal */}
@@ -868,22 +998,37 @@ export default function LogWorkoutScreen() {
                 <Text style={styles.modalEmptySubtext}>{t('noTemplatesText')}</Text>
               </View>
             ) : (
-              <FlatList
-                data={templates}
-                keyExtractor={(t) => t.id}
-                style={{ maxHeight: 360 }}
-                renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.templateItem} onPress={() => applyTemplate(item)}>
-                    <View style={styles.templateItemLeft}>
-                      <Text style={styles.templateName}>{item.name}</Text>
-                      <Text style={styles.templateMeta}>
-                        {item.exercises.length} вправ · {item.workoutType}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
-                  </TouchableOpacity>
-                )}
-              />
+              <>
+                <Text style={styles.templatesHint}>
+                  Торкнись шаблону, щоб застосувати. Олівець — змінити вправи й суперсети.
+                </Text>
+                <FlatList
+                  data={templates}
+                  keyExtractor={(t) => t.id}
+                  style={{ maxHeight: 360 }}
+                  renderItem={({ item }) => {
+                    const ssCount = new Set(item.exercises.map((e) => e.supersetId).filter(Boolean)).size;
+                    const typeLabel = WORKOUT_TYPES.find((w) => w.id === item.workoutType)?.label ?? item.workoutType;
+                    return (
+                      <View style={styles.templateItem}>
+                        <TouchableOpacity style={styles.templateItemLeft} onPress={() => applyTemplate(item)}>
+                          <Text style={styles.templateName}>{item.name}</Text>
+                          <Text style={styles.templateMeta}>
+                            {item.exercises.length} вправ · {typeLabel}
+                            {ssCount > 0 ? ` · суперсетів: ${ssCount}` : ''}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => editTemplate(item)} style={styles.templateIconBtn} hitSlop={6}>
+                          <Ionicons name="create-outline" size={19} color={Colors.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => confirmDeleteTemplate(item)} style={styles.templateIconBtn} hitSlop={6}>
+                          <Ionicons name="trash-outline" size={18} color={Colors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  }}
+                />
+              </>
             )}
           </View>
         </View>
@@ -988,8 +1133,19 @@ export default function LogWorkoutScreen() {
               onChangeText={setTemplateName}
               autoFocus
               returnKeyType="done"
-              onSubmitEditing={handleSaveTemplate}
+              onSubmitEditing={() => handleSaveTemplate(baseTemplate ? 'update' : 'new')}
             />
+            {/* Почали з шаблону — найчастіше його й хочуть оновити (напр., суперсетами) */}
+            {baseTemplate && (
+              <TouchableOpacity
+                style={[styles.modalConfirmBtn, styles.modalWideBtn]}
+                onPress={() => handleSaveTemplate('update')}
+              >
+                <Text style={styles.modalConfirmText} numberOfLines={1}>
+                  Оновити «{baseTemplate.name}»
+                </Text>
+              </TouchableOpacity>
+            )}
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalCancelBtn}
@@ -997,8 +1153,13 @@ export default function LogWorkoutScreen() {
               >
                 <Text style={styles.modalCancelText}>{t('cancel')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleSaveTemplate}>
-                <Text style={styles.modalConfirmText}>{t('save')}</Text>
+              <TouchableOpacity
+                style={baseTemplate ? styles.modalCancelBtn : styles.modalConfirmBtn}
+                onPress={() => handleSaveTemplate('new')}
+              >
+                <Text style={baseTemplate ? styles.modalCancelText : styles.modalConfirmText}>
+                  {baseTemplate ? 'Як новий' : t('save')}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1083,8 +1244,22 @@ function renderExerciseMeta(ex: ExerciseLog): string {
   ].filter(Boolean).join(' · ');
 }
 
+/**
+ * Підпис вправи + калорії на всі підходи. Вписані вручну вже є в підписі —
+ * окремо лише сума, коли їх записано на кілька підходів.
+ */
+function metaWithKcal(ex: ExerciseLog, k?: ExerciseCalories): string {
+  let kcalText = '';
+  if (k && k.kcal > 0) {
+    if (k.estimated) kcalText = `≈${roundKcal(k.kcal)} ккал`;
+    else if (Math.round(k.kcal) !== ex.calories) kcalText = `разом ${Math.round(k.kcal)} ккал`;
+  }
+  return [renderExerciseMeta(ex), kcalText].filter(Boolean).join(' · ');
+}
+
 interface ExerciseGroupOpts {
   exercises: ExerciseLog[];
+  kcal?: ExerciseCalories[];
   onRemove: (i: number) => void;
   onEdit: (i: number) => void;
   onMove: (i: number, dir: -1 | 1) => void;
@@ -1096,7 +1271,7 @@ interface ExerciseGroupOpts {
 }
 
 function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
-  const { exercises, onRemove, onEdit, onMove, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
+  const { exercises, kcal, onRemove, onEdit, onMove, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
   const nodes: React.ReactNode[] = [];
   let i = 0;
   // group consecutive exercises with the same supersetId
@@ -1122,7 +1297,7 @@ function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
           onPress={() => (groupMode ? onToggleSel(idx) : onEdit(idx))}
         >
           <Text style={styles.exerciseName}>{ex.name}</Text>
-          <Text style={styles.exerciseMeta}>{renderExerciseMeta(ex)}</Text>
+          <Text style={styles.exerciseMeta}>{metaWithKcal(ex, kcal?.[idx])}</Text>
         </TouchableOpacity>
         {!groupMode && (
           <>
@@ -1241,12 +1416,6 @@ const styles = StyleSheet.create({
   groupBarBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6 },
   groupBarText: { color: Colors.textSecondary, fontSize: 13 },
   groupBarHint: { color: Colors.textMuted, fontSize: 12, flex: 1 },
-  groupBarCancel: { color: Colors.textSecondary, fontSize: 13 },
-  groupApplyBtn: {
-    backgroundColor: Colors.primary, borderRadius: BorderRadius.full,
-    paddingHorizontal: 14, paddingVertical: 7,
-  },
-  groupApplyText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   ungroupBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' },
   ungroupBtnText: { color: Colors.textMuted, fontSize: 11 },
   cancelEditBtn: {
@@ -1386,6 +1555,13 @@ const styles = StyleSheet.create({
   templateItemLeft: { flex: 1 },
   templateName: { color: Colors.textPrimary, fontWeight: '600', fontSize: 15 },
   templateMeta: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
+  templateIconBtn: { paddingHorizontal: Spacing.sm, paddingVertical: 4 },
+  templatesHint: { color: Colors.textMuted, fontSize: 12, marginTop: -Spacing.xs, marginBottom: Spacing.sm },
+  // modalConfirmBtn розрахована на рядок (flex: 2) — у стовпці вона б сплющилась
+  modalWideBtn: { flex: 0, marginTop: Spacing.lg },
+  kcalRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing.xs },
+  kcalRowText: { color: Colors.accent, fontSize: 13, fontWeight: '700' },
+  kcalRowHint: { color: Colors.textMuted, fontSize: 12, flex: 1 },
   modalActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg },
   modalCancelBtn: {
     flex: 1, borderWidth: 1, borderColor: Colors.border,

@@ -338,29 +338,7 @@ export function getAllExerciseNames(workouts: WorkoutEntry[]): string[] {
     .map((g) => g.name);
 }
 
-// ─── Calorie estimation (MET-based) ──────────────────────────────────────────
-
-const MET: Record<string, number> = {
-  strength: 5,
-  crossfit: 9,
-  hiit: 10,
-  cardio: 7,
-  run: 9,
-  cycling: 7,
-  swimming: 7,
-  yoga: 2.5,
-  recovery: 2,
-  custom: 5,
-};
-
-export function estimateCalories(
-  workoutType: string,
-  durationMin: number,
-  bodyWeightKg: number
-): number {
-  const met = MET[workoutType] || 5;
-  return Math.round(met * bodyWeightKg * (durationMin / 60));
-}
+// Калорії рахує services/calories.ts — по вправах і з параметрами профілю
 
 // ─── HR zones ─────────────────────────────────────────────────────────────────
 

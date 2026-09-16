@@ -10,6 +10,11 @@
 // свіжішим через Fast Refresh.
 
 const { execSync } = require('child_process');
+const { versionCodeFor } = require('./scripts/version');
+
+// Версію піднімає scripts/release.js (npm version), тож джерело правди —
+// package.json. Саме її додаток порівнює з останнім GitHub-релізом.
+const version = require('./package.json').version;
 
 function sh(cmd) {
   try {
@@ -25,7 +30,7 @@ const gitDirty = sh('git status --porcelain') !== '';
 module.exports = () => ({
   name: 'AlphaTrainer',
   slug: 'alpha-trainer-app',
-  version: '1.0.0',
+  version,
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
@@ -38,10 +43,12 @@ module.exports = () => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.alphatrainer.app',
-    buildNumber: '2',
+    buildNumber: String(versionCodeFor(version)),
   },
   android: {
-    versionCode: 2,
+    // Наявна тека android/ цього не підхоплює (expo run:android не робить
+    // prebuild) — туди versionCode записує scripts/release.js.
+    versionCode: versionCodeFor(version),
     adaptiveIcon: {
       backgroundColor: '#0D0D0D',
       foregroundImage: './assets/android-icon-foreground.png',

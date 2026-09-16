@@ -13,12 +13,12 @@ import { getWorkouts, getStats, getPersonalRecords, PersonalRecord, getWeightLog
 import { syncAchievements, Achievement } from '../../services/achievements';
 import { getNutritionGoals, getNutritionHistory, computeAdaptiveTDEE, computeFoodCorrelation, getAgeFromProfile, AdaptiveTDEEResult, FoodCorrelationInsight } from '../../services/nutrition';
 import { useLocale } from '../../services/i18n';
+import { bodyParamsFor, estimateWorkoutCalories } from '../../services/calories';
 import { WorkoutEntry, BodyMeasurement } from '../../types';
 import {
   getRunStats, getStrengthStats, formatPace, RunStats, StrengthStats,
   getWeeklyTonnage, WeeklyTonnage,
   getExerciseProgress, getAllExerciseNames, ExerciseProgressPoint, estimate1RM,
-  estimateCalories,
   getHRZoneSummary, HRZoneSummary,
   getMuscleGroupBalance, MuscleGroupData,
   getStrengthScore, StrengthScoreResult,
@@ -624,18 +624,19 @@ export default function ProgressScreen() {
           {(() => {
             const monthCutoff = getLocalDateString(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
             const recentW = workouts.filter((w) => w.date >= monthCutoff);
-            const totalCal = recentW.reduce((sum, w) => {
-              if (w.totalCalories) return sum + w.totalCalories;
-              return sum + estimateCalories(w.workoutType, w.duration, profile.weight);
-            }, 0);
             const TYPE_LABELS_UA: Record<string, string> = {
               strength: 'Силове', cardio: 'Кардіо', crossfit: 'CrossFit',
               hiit: 'HIIT', yoga: 'Йога', recovery: 'Відновлення',
               run: 'Біг', cycling: 'Велосипед', swimming: 'Плавання', custom: 'Інше',
             };
+            // Та сама оцінка, що в деталях тренування: по вправах, з вагою на
+            // дату тренування; ккал, вписані з годинника, мають пріоритет
             const byType: Record<string, number> = {};
+            let totalCal = 0;
             recentW.forEach((w) => {
-              const cal = w.totalCalories || estimateCalories(w.workoutType, w.duration, profile.weight);
+              const params = bodyParamsFor(profile, weightLog, w.date);
+              const cal = params ? estimateWorkoutCalories(w, params).total : 0;
+              totalCal += cal;
               byType[w.workoutType] = (byType[w.workoutType] || 0) + cal;
             });
             return (
@@ -651,7 +652,7 @@ export default function ProgressScreen() {
                     <Text style={styles.calValue}>{Math.round(cal)} ккал</Text>
                   </View>
                 ))}
-                <Text style={styles.calNote}>* Оцінка на основі MET-значень. Точні значення вноси вручну при записі тренування.</Text>
+                <Text style={styles.calNote}>* Оцінка по вправах з урахуванням ваги, зросту, віку і статі. Ккал з годинника, вписані вручну, мають пріоритет.</Text>
               </>
             );
           })()}

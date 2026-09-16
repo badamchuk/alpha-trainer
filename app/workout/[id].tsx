@@ -9,15 +9,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { format, parseISO } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
-import { getWorkouts, deleteWorkout, updateWorkout, addWorkout } from '../../services/storage';
-import { WorkoutEntry, ExerciseLog, WorkoutType, SetType, SetDetail } from '../../types';
+import {
+  getWorkouts, deleteWorkout, updateWorkout, addWorkout, getUserProfile, getWeightLog, WeightEntry,
+} from '../../services/storage';
+import { WorkoutEntry, ExerciseLog, WorkoutType, SetType, SetDetail, UserProfile } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
+import SupersetBar from '../../components/SupersetBar';
 import { computePace, formatPace } from '../../services/analytics';
 import { useLocale } from '../../services/i18n';
 import {
   getSupersetColor, groupIntoSuperset, ungroupSuperset, normalizeSupersets,
   moveExercise, canMoveExercise,
 } from '../../services/supersets';
+import {
+  bodyParamsFor, estimateWorkoutCalories, paramsLabel, roundKcal, ExerciseCalories,
+} from '../../services/calories';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -60,6 +66,9 @@ export default function WorkoutDetailScreen() {
   const [workout, setWorkout] = useState<WorkoutEntry | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Для оцінки калорій: вага на дату тренування, зріст, вік, стать
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [weightLog, setWeightLog] = useState<WeightEntry[]>([]);
 
   // Edit form state
   const [workoutType, setWorkoutType] = useState<WorkoutType>('strength');
@@ -83,6 +92,8 @@ export default function WorkoutDetailScreen() {
   // Групування вправ у суперсет заднім числом
   const [groupMode, setGroupMode] = useState(false);
   const [groupSel, setGroupSel] = useState<number[]>([]);
+  // Те саме просто в перегляді — без форми редагування, зберігається одразу
+  const [quickGroup, setQuickGroup] = useState(false);
   // Cardio edit fields
   const [totalDistance, setTotalDistance] = useState('');
   const [avgHeartRate, setAvgHeartRate] = useState('');
@@ -92,9 +103,11 @@ export default function WorkoutDetailScreen() {
 
   useEffect(() => {
     async function load() {
-      const workouts = await getWorkouts();
+      const [workouts, p, wl] = await Promise.all([getWorkouts(), getUserProfile(), getWeightLog()]);
       const found = workouts.find((w) => w.id === id) || null;
       setWorkout(found);
+      setProfile(p);
+      setWeightLog(wl);
     }
     load();
   }, [id]);
@@ -106,18 +119,60 @@ export default function WorkoutDetailScreen() {
     setDuration(String(workout.duration));
     setNotes(workout.notes || '');
     setRating(workout.rating);
-    setExercises([...workout.exercises]);
+    setExercises(normalizeSupersets(workout.exercises));
     setTotalDistance(workout.totalDistance ? String(workout.totalDistance) : '');
     setAvgHeartRate(workout.avgHeartRate ? String(workout.avgHeartRate) : '');
     setMaxHeartRate(workout.maxHeartRate ? String(workout.maxHeartRate) : '');
     setElevationGain(workout.elevationGain ? String(workout.elevationGain) : '');
     setTotalCalories(workout.totalCalories ? String(workout.totalCalories) : '');
+    setGroupMode(false);
+    setGroupSel([]);
+    setQuickGroup(false);
     setEditing(true);
   }
 
   function cancelEdit() {
     setEditing(false);
+    setGroupMode(false);
     clearExForm();
+  }
+
+  // ── Суперсет просто з перегляду ───────────────────────────────────────────
+  // Раніше об'єднання ховалось за «Змінити», під формою з типом, датою й
+  // кардіо. Тут: «Суперсет» → відмітив → «Об'єднати» → уже збережено.
+  function startQuickGroup() {
+    setGroupSel([]);
+    setQuickGroup(true);
+  }
+
+  function endQuickGroup() {
+    setQuickGroup(false);
+    setGroupSel([]);
+  }
+
+  async function persistExercises(next: ExerciseLog[]) {
+    if (!workout) return;
+    const updated = { ...workout, exercises: normalizeSupersets(next) };
+    try {
+      await updateWorkout(updated);
+      setWorkout(updated);
+    } catch {
+      Alert.alert('Помилка збереження');
+    }
+  }
+
+  async function applyQuickGroup() {
+    if (!workout || groupSel.length < 2) return;
+    await persistExercises(groupIntoSuperset(normalizeSupersets(workout.exercises), groupSel));
+    // лишаємось у режимі: суперсетів у тренуванні зазвичай кілька.
+    // Індекси після об'єднання зсунулись — старий вибір уже ні до чого
+    setGroupSel([]);
+  }
+
+  async function quickUngroup(ssId: string) {
+    if (!workout) return;
+    await persistExercises(ungroupSuperset(workout.exercises, ssId));
+    setGroupSel([]);
   }
 
   function clearExForm() {
@@ -254,7 +309,7 @@ export default function WorkoutDetailScreen() {
         duration: durMin,
         notes: notes.trim(),
         rating,
-        exercises,
+        exercises: normalizeSupersets(exercises),
         totalDistance: distKm,
         avgPace: distKm && durMin ? computePace(distKm, durMin) : undefined,
         avgHeartRate: avgHeartRate ? Number(avgHeartRate) : undefined,
@@ -265,6 +320,7 @@ export default function WorkoutDetailScreen() {
       await updateWorkout(updated);
       setWorkout(updated);
       setEditing(false);
+      setGroupMode(false);
     } catch {
       Alert.alert('Помилка збереження');
     } finally {
@@ -314,6 +370,8 @@ export default function WorkoutDetailScreen() {
   const label = TYPE_LABELS[workout.workoutType] || workout.workoutType;
   const typeIcon = TYPE_ICONS[workout.workoutType] || 'barbell-outline';
   const dateFormatted = format(parseISO(workout.date), 'EEEE, d MMMM yyyy', { locale: uk });
+  const params = bodyParamsFor(profile, weightLog, workout.date);
+  const kcal = params ? estimateWorkoutCalories(workout, params) : null;
 
   // ─── EDIT MODE ────────────────────────────────────────────────────
   if (editing) {
@@ -430,21 +488,8 @@ export default function WorkoutDetailScreen() {
                     <Text style={styles.groupBarText}>Об'єднати в суперсет</Text>
                   </TouchableOpacity>
                 ) : (
-                  <>
-                    <Text style={styles.groupBarHint}>
-                      {groupSel.length < 2 ? 'Познач 2+ вправи' : `Вибрано: ${groupSel.length}`}
-                    </Text>
-                    <TouchableOpacity onPress={toggleGroupMode} style={styles.groupBarBtn}>
-                      <Text style={styles.groupBarCancel}>Скасувати</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={applyGrouping}
-                      disabled={groupSel.length < 2}
-                      style={[styles.groupApplyBtn, groupSel.length < 2 && { opacity: 0.4 }]}
-                    >
-                      <Text style={styles.groupApplyText}>Об'єднати</Text>
-                    </TouchableOpacity>
-                  </>
+                  // самі кнопки — на панелі внизу екрана, щоб не зникали при прокрутці
+                  <Text style={styles.groupBarHint}>Відміть вправи — «Об'єднати» внизу екрана</Text>
                 )}
               </View>
             )}
@@ -596,6 +641,9 @@ export default function WorkoutDetailScreen() {
               numberOfLines={4}
             />
           </ScrollView>
+          {groupMode && (
+            <SupersetBar count={groupSel.length} onCancel={toggleGroupMode} onApply={applyGrouping} />
+          )}
         </View>
       </KeyboardAvoidingView>
     );
@@ -701,11 +749,47 @@ export default function WorkoutDetailScreen() {
           </View>
         )}
 
+        {/* Калорії — оцінка по вправах під параметри профілю. Якщо ккал
+            вписано з годинника, їх уже показано вище */}
+        {kcal && params && kcal.total > 0 && !workout.totalCalories && (
+          <View style={styles.kcalCard}>
+            <Ionicons name="flame-outline" size={22} color={Colors.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.kcalValue}>
+                {kcal.estimated ? `≈ ${roundKcal(kcal.total)}` : Math.round(kcal.total)} ккал
+              </Text>
+              <Text style={styles.kcalHint}>
+                {kcal.estimated
+                  ? `оцінка під твої параметри: ${paramsLabel(params)}`
+                  : 'сума ккал, вписаних у вправи'}
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Exercises */}
         {workout.exercises.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Вправи</Text>
-            {renderDetailExercises(workout.exercises)}
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Вправи</Text>
+              {workout.exercises.length > 1 && !quickGroup && (
+                <TouchableOpacity style={styles.ssShortcut} onPress={startQuickGroup}>
+                  <Ionicons name="link-outline" size={14} color={Colors.primary} />
+                  <Text style={styles.ssShortcutText}>Суперсет</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {quickGroup && (
+              <Text style={styles.editHint}>
+                Відміть вправи й натисни «Об'єднати» внизу — збережеться одразу
+              </Text>
+            )}
+            {renderDetailExercises(
+              // «суперсет» з однієї вправи — артефакт запису, показуємо як звичайну
+              normalizeSupersets(workout.exercises),
+              kcal?.perExercise,
+              quickGroup ? { selected: groupSel, onToggle: toggleGroupSel, onUngroup: quickUngroup } : undefined,
+            )}
           </View>
         )}
 
@@ -728,6 +812,14 @@ export default function WorkoutDetailScreen() {
           </View>
         )}
       </ScrollView>
+      {quickGroup && (
+        <SupersetBar
+          count={groupSel.length}
+          onCancel={endQuickGroup}
+          onApply={applyQuickGroup}
+          cancelLabel="Готово"
+        />
+      )}
     </View>
   );
 }
@@ -879,54 +971,106 @@ function detailMeta(ex: ExerciseLog, sep: string): string {
   ].filter(Boolean).join(sep);
 }
 
-function renderDetailExercises(exercises: ExerciseLog[]): React.ReactNode[] {
+/**
+ * Калорії вправи на всі підходи. Оцінка — з «≈». Вписані вручну вже є в
+ * підписі; окремо — лише сума, коли їх записано на кілька підходів.
+ */
+function KcalTag({ ex, value }: { ex: ExerciseLog; value?: ExerciseCalories }) {
+  if (!value || value.kcal <= 0) return null;
+  if (!value.estimated && Math.round(value.kcal) === ex.calories) return null;
+  return (
+    <Text style={styles.exKcal}>
+      {value.estimated ? `≈${roundKcal(value.kcal)}` : Math.round(value.kcal)} ккал
+    </Text>
+  );
+}
+
+/** Вибір вправ для суперсету просто в перегляді */
+interface DetailSelect {
+  selected: number[];
+  onToggle: (i: number) => void;
+  onUngroup: (ssId: string) => void;
+}
+
+function renderDetailExercises(
+  exercises: ExerciseLog[],
+  kcal?: ExerciseCalories[],
+  select?: DetailSelect,
+): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   const seen = new Set<string>();
   let counter = 1;
+
+  const row = (ex: ExerciseLog, idx: number) => {
+    const num = counter++;
+    const body = (
+      <>
+        <View style={styles.exerciseBody}>
+          <Text style={styles.exerciseNameView}>{ex.name}</Text>
+          <Text style={styles.exerciseMetaView}>{detailMeta(ex, '  ')}</Text>
+          {ex.notes && <Text style={styles.exerciseNotes}>{ex.notes}</Text>}
+        </View>
+        <KcalTag ex={ex} value={kcal?.[idx]} />
+      </>
+    );
+    if (!select) {
+      return (
+        <View key={idx} style={styles.exerciseRow}>
+          <View style={styles.exerciseNumber}>
+            <Text style={styles.exerciseNumberText}>{num}</Text>
+          </View>
+          {body}
+        </View>
+      );
+    }
+    const isSel = select.selected.includes(idx);
+    return (
+      <TouchableOpacity
+        key={idx}
+        style={[styles.exerciseRow, isSel && styles.exerciseRowSelected]}
+        onPress={() => select.onToggle(idx)}
+        activeOpacity={0.7}
+      >
+        <Ionicons
+          name={isSel ? 'checkbox' : 'square-outline'}
+          size={22}
+          color={isSel ? Colors.primary : Colors.textMuted}
+        />
+        {body}
+      </TouchableOpacity>
+    );
+  };
 
   for (let i = 0; i < exercises.length; i++) {
     const ex = exercises[i];
     if (ex.supersetId && !seen.has(ex.supersetId)) {
       seen.add(ex.supersetId);
       const color = getSupersetColorDetail(ex.supersetId);
-      const group = exercises.filter((e) => e.supersetId === ex.supersetId);
+      // індекси потрібні, щоб знайти калорії саме цієї вправи
+      const group = exercises
+        .map((e, idx) => ({ e, idx }))
+        .filter(({ e }) => e.supersetId === ex.supersetId);
       nodes.push(
         <View key={`ss_${ex.supersetId}`} style={[styles.supersetGroupView, { borderLeftColor: color }]}>
           <View style={styles.supersetHeaderView}>
             <Ionicons name="link-outline" size={12} color={color} />
             <Text style={[styles.supersetLabelView, { color }]}>СУПЕРСЕТ</Text>
+            {select && (
+              <TouchableOpacity
+                onPress={() => select.onUngroup(ex.supersetId!)}
+                style={styles.ungroupBtn}
+                hitSlop={6}
+              >
+                <Ionicons name="unlink-outline" size={13} color={Colors.textMuted} />
+                <Text style={styles.ungroupBtnText}>Розгрупувати</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          {group.map((gEx, gi) => {
-            const num = counter++;
-            return (
-              <View key={gi} style={styles.exerciseRow}>
-                <View style={styles.exerciseNumber}>
-                  <Text style={styles.exerciseNumberText}>{num}</Text>
-                </View>
-                <View style={styles.exerciseBody}>
-                  <Text style={styles.exerciseNameView}>{gEx.name}</Text>
-                  <Text style={styles.exerciseMetaView}>{detailMeta(gEx, '  ')}</Text>
-                  {gEx.notes && <Text style={styles.exerciseNotes}>{gEx.notes}</Text>}
-                </View>
-              </View>
-            );
-          })}
+          {group.map(({ e, idx }) => row(e, idx))}
         </View>
       );
     } else if (!ex.supersetId) {
-      const num = counter++;
-      nodes.push(
-        <View key={i} style={styles.exerciseRow}>
-          <View style={styles.exerciseNumber}>
-            <Text style={styles.exerciseNumberText}>{num}</Text>
-          </View>
-          <View style={styles.exerciseBody}>
-            <Text style={styles.exerciseNameView}>{ex.name}</Text>
-            <Text style={styles.exerciseMetaView}>{detailMeta(ex, '  ')}</Text>
-            {ex.notes && <Text style={styles.exerciseNotes}>{ex.notes}</Text>}
-          </View>
-        </View>
-      );
+      nodes.push(row(ex, i));
     }
   }
   return nodes;
@@ -964,6 +1108,26 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, color: Colors.textMuted },
   section: { marginBottom: Spacing.lg },
   sectionTitle: { ...Typography.h3, fontSize: 16, marginBottom: Spacing.sm },
+  sectionHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  ssShortcut: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: Colors.primary + '60', borderRadius: BorderRadius.full,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  ssShortcutText: { color: Colors.primary, fontSize: 12, fontWeight: '600' },
+  kcalCard: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    backgroundColor: Colors.accent + '12', borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.accent + '35',
+    padding: Spacing.md, marginBottom: Spacing.lg,
+  },
+  kcalValue: { color: Colors.textPrimary, fontSize: 18, fontWeight: '700' },
+  kcalHint: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
+  exKcal: { color: Colors.accent, fontSize: 12, fontWeight: '600', marginTop: 3 },
+  exerciseRowSelected: { borderColor: Colors.primary, backgroundColor: Colors.primary + '10' },
   exerciseRow: {
     flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start',
     backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
@@ -1062,12 +1226,6 @@ const styles = StyleSheet.create({
   groupBarBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6 },
   groupBarText: { color: Colors.textSecondary, fontSize: 13 },
   groupBarHint: { color: Colors.textMuted, fontSize: 12, flex: 1 },
-  groupBarCancel: { color: Colors.textSecondary, fontSize: 13 },
-  groupApplyBtn: {
-    backgroundColor: Colors.primary, borderRadius: BorderRadius.full,
-    paddingHorizontal: 14, paddingVertical: 7,
-  },
-  groupApplyText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   ungroupBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' },
   ungroupBtnText: { color: Colors.textMuted, fontSize: 11 },
   draftSetsList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },

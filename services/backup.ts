@@ -34,6 +34,7 @@ const ALL_KEYS = [
   '@alpha_trainer:daily_advice',
   '@alpha_trainer:achievements',
   '@alpha_trainer:timer_prefs',
+  '@alpha_trainer:update_check',
 ];
 
 export interface BackupFile {

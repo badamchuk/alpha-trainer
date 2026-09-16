@@ -19,6 +19,7 @@ import { UserProfile } from '../../types';
 import { loadLanguage, setLanguage, setExerciseLanguage, useLocale, Lang } from '../../services/i18n';
 import { exportBackup, importBackup } from '../../services/backup';
 import Constants from 'expo-constants';
+import { checkForUpdate, openUpdate, showUpdateAlert, UpdateInfo } from '../../services/updates';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -1316,10 +1317,10 @@ function BackupSection({
 }
 
 /**
- * Що саме зараз стоїть на телефоні.
+ * Що саме зараз стоїть на телефоні + ручна перевірка оновлень.
  *
- * versionName у локальних debug-збірках завжди 1.0.0, тож сам по собі він
- * не каже нічого. Хеш коміту й час збірки — кажуть.
+ * Версію піднімає scripts/release.js, тож між релізами вона однакова —
+ * хеш коміту й час збірки показують, що саме зібрано.
  */
 function BuildInfo() {
   const extra = (Constants.expoConfig?.extra ?? {}) as {
@@ -1334,9 +1335,39 @@ function BuildInfo() {
         hour: '2-digit', minute: '2-digit',
       })
     : '—';
+  const [checking, setChecking] = useState(false);
+  const [available, setAvailable] = useState<UpdateInfo | null>(null);
+
+  async function handleCheck() {
+    setChecking(true);
+    try {
+      const info = await checkForUpdate(true);
+      setAvailable(info);
+      if (info) showUpdateAlert(info);
+      else Alert.alert('Оновлень немає', `У тебе остання версія — ${version}.`);
+    } catch (e: any) {
+      Alert.alert('Не вдалося перевірити', e?.message ?? 'Перевір інтернет і спробуй ще раз.');
+    } finally {
+      setChecking(false);
+    }
+  }
 
   return (
     <View style={buildStyles.wrap}>
+      <TouchableOpacity
+        style={buildStyles.updateBtn}
+        onPress={available ? () => openUpdate(available) : handleCheck}
+        disabled={checking}
+      >
+        <Ionicons
+          name={available ? 'download-outline' : 'refresh-outline'}
+          size={15}
+          color={Colors.primary}
+        />
+        <Text style={buildStyles.updateText}>
+          {checking ? 'Перевіряю…' : available ? `Оновити до ${available.version}` : 'Перевірити оновлення'}
+        </Text>
+      </TouchableOpacity>
       <Text style={buildStyles.line}>
         Версія {version} · {extra.gitHash ?? 'unknown'}
         {extra.gitDirty ? '*' : ''}
@@ -1351,6 +1382,12 @@ function BuildInfo() {
 
 const buildStyles = StyleSheet.create({
   wrap: { alignItems: 'center', paddingVertical: Spacing.lg, gap: 2 },
+  updateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderWidth: 1, borderColor: Colors.primary + '60', borderRadius: BorderRadius.full,
+    paddingHorizontal: 14, paddingVertical: 7, marginBottom: Spacing.sm,
+  },
+  updateText: { color: Colors.primary, fontSize: 13, fontWeight: '600' },
   line: { color: Colors.textMuted, fontSize: 11 },
   dirty: { color: Colors.warning, fontSize: 10, marginTop: 2 },
 });

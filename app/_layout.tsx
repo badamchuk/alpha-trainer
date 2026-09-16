@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { getUserProfile } from '../services/storage';
@@ -6,6 +7,7 @@ import { initGemini } from '../services/gemini';
 import { initGroq } from '../services/groq';
 import { requestPermissions } from '../services/notifications';
 import { loadLanguage } from '../services/i18n';
+import { promptIfUpdateAvailable } from '../services/updates';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 export default function RootLayout() {
@@ -16,8 +18,17 @@ export default function RootLayout() {
       if (profile?.geminiApiKey) initGemini(profile.geminiApiKey);
       if (profile?.groqApiKey) initGroq(profile.groqApiKey);
       await requestPermissions();
+      // після дозволів — щоб діалог оновлення не наліз на системний
+      promptIfUpdateAvailable();
     }
     init();
+
+    // Повернувся в додаток — перевірити знову. Частіше ніж раз на 6 годин
+    // сервіс у мережу не ходить, тож це дешево.
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') promptIfUpdateAvailable();
+    });
+    return () => sub.remove();
   }, []);
 
   return (

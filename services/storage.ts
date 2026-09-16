@@ -27,7 +27,7 @@ const KEYS = {
  * наступний же запис (`addWorkout` поверх порожнього масиву) стер би всю
  * історію остаточно. Відкладене можна дістати експортом бекапу.
  */
-async function readJSON<T>(key: string, fallback: T): Promise<T> {
+export async function readJSON<T>(key: string, fallback: T): Promise<T> {
   let raw: string | null = null;
   try {
     raw = await AsyncStorage.getItem(key);
@@ -52,7 +52,7 @@ async function readJSON<T>(key: string, fallback: T): Promise<T> {
  */
 const writeQueues = new Map<string, Promise<unknown>>();
 
-function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+export function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prev = writeQueues.get(key) ?? Promise.resolve();
   // fn запускається і після успіху, і після помилки попередньої операції —
   // одна невдача не має заблокувати чергу назавжди
