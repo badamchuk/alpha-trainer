@@ -123,7 +123,17 @@ const patched = gradle
 if (!patched.includes(`versionCode ${versionCode}`)) fail('Не вдалося оновити versionCode в android/app/build.gradle');
 fs.writeFileSync(GRADLE_FILE, patched);
 
+// build.gradle відстежується git, хоч /android і в .gitignore (закомічений
+// раніше за правило). Не додати його — збірка вийде «брудною» (зірочка біля хешу)
+let gradleTracked = true;
+try {
+  out('git ls-files --error-unmatch android/app/build.gradle');
+} catch {
+  gradleTracked = false;
+}
 run('git add package.json package-lock.json');
+// -f: без нього git відмовляється, бо тека android в ігнорі (хоч файл і відстежується)
+if (gradleTracked) run('git add -f android/app/build.gradle');
 // Необов'язковий трейлер коміту (напр., Co-Authored-By, коли реліз робить асистент)
 const trailer = process.env.RELEASE_COMMIT_TRAILER;
 run(`git commit -m "реліз ${tag}"${trailer ? ` -m "${trailer.replace(/"/g, '')}"` : ''}`);
