@@ -28,7 +28,13 @@
   - `supersets.ts` — групування/розгрупування суперсетів і порядок вправ
   - `achievements.ts` — 14 досягнень, рахуються за один прохід
   - `timerPrefs.ts` — збережені схеми таймера
-- `__tests__/` — jest (`npm test`): supersets, storage, analytics
+  - `templates.ts` — шаблони тренувань; редагуються в `log.tsx?templateId=...`
+  - `calories.ts` — оцінка ккал по вправах: MET + базовий обмін Mifflin-St Jeor,
+    вага на дату тренування з журналу ваги; вписані вручну ккал мають пріоритет.
+    Кардіо/вибухові, записані підходами, — робочі відрізки + відпочинок
+  - `updates.ts` — перевірка останнього GitHub Release і пропозиція оновитись
+- `scripts/release.js` — реліз: APK → GitHub Release (див. «Релізи»)
+- `__tests__/` — jest (`npm test`): supersets, storage, analytics, calories, updates
 - `types/index.ts` — всі TypeScript інтерфейси
 - `constants/theme.ts` — кольори, відступи, типографіка
 
@@ -39,13 +45,39 @@
 - KeyboardAvoidingView обов'язковий у всіх модалах з TextInput:
   `behavior={Platform.OS === 'ios' ? 'padding' : 'height'}`
 - Всі нові AsyncStorage ключі додавати в `services/backup.ts` ALL_KEYS
+- Час, дистанція й ккал у вправі — НА ПІДХІД: так їх вписує користувач
+  («Планка 3 підх. 1 хв», «Гребля 6 підх. 16 ккал» — кросфіт-інтервали).
+  Без підходів — на всю вправу. Рахуючи підсумки, множити на підходи
 - Читання зі сховища — тільки через `readJSON()`, запис зі змінами — через `withLock()`
 - `paddingTop` у шапках — через `insets.top`, ніколи числом
 - Конфіг Expo — в `app.config.js` (app.json видалено, було два джерела правди)
 - Перед комітом: `npm test` і `npm run typecheck`
 - Запуск: `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" && npx expo run:android`
 - Якщо правки не доїжджають на телефон: `adb reverse tcp:8081 tcp:8081`
-- Підключений пристрій: Pixel 8 Pro (ADB ID: 37171FDJG00AGK)
+- Підключений пристрій: Pixel 8 Pro (ADB ID: 37171FDJG00AGK). По adb буває
+  підключений і Quest 3 (2G0YC5ZF9604T8) — перед встановленням глянь `adb devices`
+- Release-APK без публікації (для перевірки на емуляторі/телефоні):
+  `cd android && caffeinate -i ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a -x lintVitalRelease -x lintVitalAnalyzeRelease`
+  — ~1 хв з кешем. Без `caffeinate` сон Mac вішає Gradle намертво
+  (лог стоїть, демон не відповідає навіть на `--stop` — лише kill)
+- Емулятор Pixel_8_Pro — образ з Play Store, root немає. Дані користувача
+  туди: спершу debug-збірка (дає `run-as`), залити RKStorage, потім
+  release поверх. Запускати з `-read-only`. На завантаженому Mac система
+  емулятора ловить ANR — це не додаток
+
+## Релізи (оновлення через GitHub)
+- `npm run release` (patch) / `npm run release -- minor` / `-- --dry-run`.
+  Скрипт: тести → версія в package.json → versionCode в android/ → коміт
+  «реліз vX.Y.Z» і тег → release-APK (arm64) → push → GitHub Release з APK.
+  Пушить і публікує — тож запускати лише за явною командою користувача
+- Версія живе тільки в `package.json` (app.config.js читає її звідти),
+  versionCode = semver (1.2.3 → 1002003). Руками не міняти
+- Додаток сам питає `releases/latest` на старті й при поверненні (не частіше
+  ніж раз на 6 год) і пропонує завантажити APK; вручну — Профіль → AI-моделі
+- Підпис APK — `android/app/debug.keystore` (стандартний debug-ключ RN, SHA1
+  5E:8F:16…F6:25), ним же підписані збірки з `expo run:android`. НЕ міняти:
+  з іншим ключем оновлення не стане поверх, лише перевстановлення — а це
+  втрата всіх локальних даних
 
 ## Поточний стан
 - Всі основні екрани реалізовані та працюють
@@ -58,5 +90,12 @@
 - Вправи: політні підходи, редагування вже доданих, суперсети заднім числом,
   переміщення стрілками — і при логуванні, і в збереженому тренуванні
 - Досягнення (14 шт.) у вкладці прогресу
-- Тести: `npm test` — 57 шт. на supersets/storage/analytics
+- Суперсети в збереженому тренуванні — прямо з перегляду («Суперсет» → відмітити
+  → «Об'єднати», зберігається одразу). Кнопки вибору — на панелі
+  `components/SupersetBar.tsx`, закріпленій унизу: над списком на 10+ вправ
+  вона виїжджала за екран. «Суперсет» з однієї вправи прибирається при збереженні
+- Шаблони: редагування (з суперсетами), видалення, «Оновити шаблон», з якого почали
+- Калорії: оцінка по кожній вправі й за тренування під параметри профілю
+- Автооновлення: реліз на GitHub → додаток сам пропонує поставити новий APK
+- Тести: `npm test` — 101 шт. на supersets/storage/analytics/calories/updates
 - Версія + хеш коміту + час збірки видно в Профіль → AI-моделі
