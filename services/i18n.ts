@@ -7,7 +7,10 @@ const STORAGE_KEY = '@alpha_trainer:language';
 const EXERCISE_LANG_KEY = '@alpha_trainer:exercise_language';
 
 let _lang: Lang = 'uk';
-let _exerciseLang: Lang = 'en'; // default: exercises in English
+// Бібліотека вправ тепер україномовна (services/library), тож і назви за
+// замовчуванням українські. Хто вже обрав English — вибір лежить у сховищі
+// й перебиває це значення, тож нічого не міняється.
+let _exerciseLang: Lang = 'uk';
 const _subscribers: Array<() => void> = [];
 
 export async function loadLanguage(): Promise<void> {
