@@ -92,8 +92,8 @@ android {
         applicationId 'com.alphatrainer.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1003000
-        versionName "1.3.0"
+        versionCode 1004000
+        versionName "1.4.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
