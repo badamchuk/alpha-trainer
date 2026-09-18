@@ -58,11 +58,14 @@ function loadFor(
   const backoff = BACKOFF ** backoffs;
 
   if (p.kind === 'linear') {
-    // до розвантаження додаємо крок щотижня; сам тиждень розвантаження — легкий
+    // Щотижня додаємо крок. На розвантаженні беремо частку від ПОТОЧНОЇ ваги,
+    // а не від стартової: після семи тижнів людина присідає 95 кг, і кидати її
+    // на 47.5 — це не розвантаження, а інша вправа.
     const grown = slot.role === 'main' ? p.stepKg * (week - 1) : 0;
+    const relief = deload ? DELOAD_FACTOR : 1;
     return {
-      factor: (slot.intensity ?? 1) * (deload ? DELOAD_FACTOR : 1) * backoff,
-      addKg: deload ? 0 : grown,
+      factor: (slot.intensity ?? 1) * relief * backoff,
+      addKg: grown * relief,
     };
   }
   if (p.kind === 'volume') {

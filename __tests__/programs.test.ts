@@ -15,7 +15,7 @@ import { getExercise } from '../services/library';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createResolver } from '../services/exerciseMatch';
 import {
-  getActiveProgram, markDayDone, repeatWeek, startProgram, suggestBaseWeights,
+  currentDay, getActiveProgram, markDayDone, repeatWeek, startProgram, suggestBaseWeights,
 } from '../services/programs/storage';
 
 const linear = getProgram('linear_strength')!;
@@ -87,6 +87,15 @@ describe('лінійна прогресія', () => {
     expect(isDeloadWeek(linear, 8)).toBe(true);
     expect(w8.weight!).toBeLessThan(w7.weight!);
     expect(w8.hint).toContain('розвантаження');
+  });
+
+  it('розвантаження рахується від поточної ваги, а не від стартової', () => {
+    // після семи тижнів працюємо з 115 кг; розвантаження має бути ~60–70%
+    // саме від неї, інакше це вже інша вправа
+    const w7 = prescriptionFor(linear, squat, 7, 100).weight!;
+    const w8 = prescriptionFor(linear, squat, 8, 100).weight!;
+    expect(w8).toBeGreaterThan(w7 * 0.5);
+    expect(w8).toBeLessThan(w7 * 0.75);
   });
 
   it('вага округлюється до дисків', () => {
@@ -284,5 +293,66 @@ describe('стан програми у сховищі', () => {
     const src = require('fs').readFileSync(
       require('path').join(__dirname, '..', 'services', 'backup.ts'), 'utf8');
     expect(src).toContain('@alpha_trainer:active_program');
+  });
+});
+
+describe('наскрізний прохід програми', () => {
+  beforeEach(async () => { await AsyncStorage.clear(); });
+
+  it('від старту до завершення: дні йдуть по черзі, вага росте', async () => {
+    await startProgram('linear_strength', { back_squat: 100, bench_press: 80 });
+
+    // перший день першого тижня
+    let state = (await currentDay())!;
+    expect('finished' in state).toBe(false);
+    if ('finished' in state) return;
+    expect(state.week).toBe(1);
+    expect(state.programDay.titleUk).toContain('День A');
+
+    const firstDay = programDayToExercises(
+      state.template, state.programDay, state.week, state.active.baseWeights,
+    );
+    expect(firstDay[0].weight).toBe(100);
+
+    // проходимо весь перший тиждень
+    for (let d = 1; d <= state.template.days.length; d++) await markDayDone(1, d);
+
+    // другий тиждень: та сама вправа, але важча
+    state = (await currentDay())!;
+    if ('finished' in state) throw new Error('програма не мала завершитись');
+    expect(state.week).toBe(2);
+    const secondWeek = programDayToExercises(
+      state.template, state.programDay, state.week, state.active.baseWeights,
+    );
+    expect(secondWeek[0].weight).toBe(102.5);
+  });
+
+  it('після невдалого тижня вага падає, а день повертається', async () => {
+    await startProgram('linear_strength', { back_squat: 100 });
+    for (let d = 1; d <= 3; d++) await markDayDone(1, d);
+    await markDayDone(2, 1);
+
+    await repeatWeek(2);
+    const state = (await currentDay())!;
+    if ('finished' in state) throw new Error('несподіване завершення');
+    expect(state.week).toBe(2);
+    expect(state.day).toBe(1);   // день повернувся
+
+    const logs = programDayToExercises(
+      state.template, state.programDay, state.week, state.active.baseWeights,
+      undefined, backoffsFor(state.active, state.week),
+    );
+    // другий тиждень без відкату дав би 102.5
+    expect(logs[0].weight!).toBeLessThan(102.5);
+  });
+
+  it('пройдена програма повідомляє про завершення, а не мовчить', async () => {
+    await startProgram('bodyweight_base', {});
+    const template = getProgram('bodyweight_base')!;
+    for (let w = 1; w <= template.weeks; w++) {
+      for (let d = 1; d <= template.days.length; d++) await markDayDone(w, d);
+    }
+    const state = (await currentDay())!;
+    expect('finished' in state).toBe(true);
   });
 });
