@@ -17,6 +17,7 @@ import {
 } from '../../services/storage';
 import { buildResolver } from '../../services/exerciseLinks';
 import { buildAIContext, parseExerciseIds, stripExerciseIds } from '../../services/aiContext';
+import { askProvider, isProviderDead, switchNote } from '../../services/aiProvider';
 import { getNutritionHistory, getDailyTotals, getNutritionGoals } from '../../services/nutrition';
 import { chatStream as geminiChatStream, initGemini, generateTrainingPlan as geminiGeneratePlan, extractMemoryNote as geminiExtractNote, generateTrainerContext as geminiGenerateContext } from '../../services/gemini';
 import { chatStream as groqChatStream, initGroq, generateTrainingPlan as groqGeneratePlan, extractMemoryNote as groqExtractNote, generateTrainerContext as groqGenerateContext } from '../../services/groq';
@@ -53,6 +54,10 @@ export default function TrainerScreen() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isPlanRequestInFlight, setIsPlanRequestInFlight] = useState(false);
+  // Хто саме відповідає і чи довелось перемикатись
+  const [activeProvider, setActiveProvider] = useState<'groq' | 'gemini' | null>(null);
+  const [providerNote, setProviderNote] = useState<string | null>(null);
+
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [memoryBlock, setMemoryBlock] = useState('');
   const [nutritionSummary, setNutritionSummary] = useState('');
@@ -106,9 +111,17 @@ export default function TrainerScreen() {
               const recent7 = allWorkouts.slice(0, 7);
               const nutDays = nutHist.map((d) => { const t = getDailyTotals(d); return { date: d.date, ...t }; });
               const goalCal = nutGoals?.calories ?? null;
-              const text = p?.groqApiKey
-                ? await groqGenerateContext(p, await getGoals(), recent7, nutDays, wl, goalCal, mem)
-                : await geminiGenerateContext(p!, await getGoals(), recent7, nutDays, wl, goalCal, mem);
+              const goalsNow = await getGoals();
+              const attempt = await askProvider(p, {
+                groq: () => groqGenerateContext(p!, goalsNow, recent7, nutDays, wl, goalCal, mem),
+                gemini: () => geminiGenerateContext(p!, goalsNow, recent7, nutDays, wl, goalCal, mem),
+              });
+              const text = attempt.result;
+              setActiveProvider(attempt.provider);
+              // якщо перемкнулись — скажемо чому, інакше «Gemini» у шапці виглядає загадково
+              if (attempt.switchedFrom) {
+                setProviderNote(switchNote(attempt.switchedFrom, attempt.provider));
+              }
               setCtxText(text);
               setCtxTs(Date.now());
               await saveTrainerContextCache(text);
@@ -126,6 +139,16 @@ export default function TrainerScreen() {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }, [messages]);
+
+  /** Запит до AI з перемиканням між провайдерами (services/aiProvider.ts). */
+  async function askAI<T>(groq: () => Promise<T>, gemini: () => Promise<T>): Promise<T> {
+    const attempt = await askProvider(profile, { groq, gemini });
+    setActiveProvider(attempt.provider);
+    if (attempt.switchedFrom) {
+      setProviderNote(switchNote(attempt.switchedFrom, attempt.provider));
+    }
+    return attempt.result;
+  }
 
   async function sendMessage(text: string, isPlanRequest = false) {
     if (!text.trim() || loading) return;
@@ -168,7 +191,6 @@ export default function TrainerScreen() {
         profile, workouts: await getRecentWorkouts(100), recentWorkouts: recent, resolver,
       });
 
-      const useGroq = !!profile.groqApiKey;
       const streamingMsgId = (Date.now() + 1).toString();
       const streamingMsg: ChatMessage = {
         id: streamingMsgId,
@@ -182,9 +204,10 @@ export default function TrainerScreen() {
 
       if (isPlanRequest) {
         // Plans don't stream — they use the structured generation function
-        reply = useGroq
-          ? await groqGeneratePlan(profile, goals)
-          : await geminiGeneratePlan(profile, goals);
+        reply = await askAI(
+          () => groqGeneratePlan(profile, goals),
+          () => geminiGeneratePlan(profile, goals),
+        );
         setMessages((prev) =>
           prev.map((m) => m.id === streamingMsgId ? { ...m, content: reply } : m)
         );
@@ -205,15 +228,16 @@ export default function TrainerScreen() {
           );
         };
 
-        reply = useGroq
-          ? await groqChatStream(
-              text.trim(), profile, goals, recent, groqHistory, onChunk,
-              memoryBlock, nutritionSummary, library,
-            )
-          : await geminiChatStream(
-              text.trim(), profile, goals, recent, geminiHistory, onChunk,
-              memoryBlock, nutritionSummary, library,
-            );
+        reply = await askAI(
+          () => groqChatStream(
+            text.trim(), profile, goals, recent, groqHistory, onChunk,
+            memoryBlock, nutritionSummary, library,
+          ),
+          () => geminiChatStream(
+            text.trim(), profile, goals, recent, geminiHistory, onChunk,
+            memoryBlock, nutritionSummary, library,
+          ),
+        );
       }
 
       const finalMessages = [...updatedMessages, { ...streamingMsg, content: reply }];
@@ -222,7 +246,7 @@ export default function TrainerScreen() {
 
       // Extract and save memory note in background (no await — doesn't block UI)
       if (!isPlanRequest) {
-        const extractFn = useGroq ? groqExtractNote : geminiExtractNote;
+        const extractFn = activeProvider === 'groq' ? groqExtractNote : geminiExtractNote;
         extractFn(text.trim(), reply)
           .then((note) => { if (note) addMemoryEntry(note); })
           .catch(() => {});
@@ -281,9 +305,15 @@ export default function TrainerScreen() {
       const mem = buildMemoryContext(memEntries, allWorkouts, wl, recs);
       const nutDays = nutHist.map((d) => { const t = getDailyTotals(d); return { date: d.date, ...t }; });
       const goalCal = nutGoals?.calories ?? null;
-      const text = profile.groqApiKey
-        ? await groqGenerateContext(profile, goals, recent7, nutDays, wl, goalCal, mem)
-        : await geminiGenerateContext(profile, goals, recent7, nutDays, wl, goalCal, mem);
+      const ctxAttempt = await askProvider(profile, {
+        groq: () => groqGenerateContext(profile, goals, recent7, nutDays, wl, goalCal, mem),
+        gemini: () => geminiGenerateContext(profile, goals, recent7, nutDays, wl, goalCal, mem),
+      });
+      const text = ctxAttempt.result;
+      setActiveProvider(ctxAttempt.provider);
+      if (ctxAttempt.switchedFrom) {
+        setProviderNote(switchNote(ctxAttempt.switchedFrom, ctxAttempt.provider));
+      }
       setCtxText(text);
       setCtxTs(Date.now());
       await saveTrainerContextCache(text);
@@ -319,7 +349,13 @@ export default function TrainerScreen() {
           </View>
           <View>
             <Text style={styles.headerTitle}>{t('trainerTitle')}</Text>
-            <Text style={styles.headerSub}>{profile?.groqApiKey ? 'Groq' : 'Gemini'} · {profile?.name || 'Налаштуй профіль'}</Text>
+            <Text style={styles.headerSub}>
+              {/* показуємо того, хто реально відповів, а не того, чий ключ перший */}
+              {activeProvider === 'groq' ? 'Groq'
+                : activeProvider === 'gemini' ? 'Gemini'
+                : profile?.groqApiKey && !isProviderDead('groq') ? 'Groq' : 'Gemini'}
+              {' · '}{profile?.name || 'Налаштуй профіль'}
+            </Text>
           </View>
         </View>
         <View style={styles.headerRight}>
@@ -466,6 +502,15 @@ export default function TrainerScreen() {
 
       {/* Input */}
       <View style={styles.inputContainer}>
+        {/* Пояснення, чому відповідає інший провайдер */}
+        {providerNote && (
+          <TouchableOpacity style={styles.providerNote} onPress={() => setProviderNote(null)}>
+            <Ionicons name="swap-horizontal" size={13} color={Colors.warning} />
+            <Text style={styles.providerNoteText}>{providerNote}</Text>
+            <Ionicons name="close" size={13} color={Colors.textMuted} />
+          </TouchableOpacity>
+        )}
+
         {/* Quick prompts row */}
         <FlatList
           horizontal
@@ -727,6 +772,11 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start', borderWidth: 1, borderColor: Colors.border,
   },
   thinkingText: { color: Colors.textMuted, fontSize: 13 },
+  providerNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: Spacing.md, paddingVertical: 6,
+  },
+  providerNoteText: { ...Typography.bodySmall, color: Colors.warning, flex: 1, fontSize: 12 },
   inputContainer: {
     borderTopWidth: 1, borderTopColor: Colors.border,
     backgroundColor: Colors.tabBar, paddingBottom: 8,

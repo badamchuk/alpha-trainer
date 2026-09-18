@@ -29,6 +29,7 @@ import {
   nutritionistChatStream as groqNutritionistStream,
   initGroq,
 } from '../../services/groq';
+import { askProvider } from '../../services/aiProvider';
 import {
   getNutritionistChatHistory, saveNutritionistChatHistory, clearNutritionistChatHistory,
   getRecentWorkouts,
@@ -458,20 +459,20 @@ export default function NutritionScreen() {
         setTimeout(() => nutListRef.current?.scrollToEnd({ animated: false }), 50);
       };
 
-      let reply: string;
-      if (profile?.groqApiKey) {
-        reply = await groqNutritionistStream(
-          userMsg.content, profile, goals, nutHistSummary, recentWorkouts,
+      // той самий запасний шлях, що й у тренера: недоступний провайдер не має
+      // означати «нутриціоніст мовчить»
+      const { result: reply } = await askProvider(profile, {
+        groq: () => groqNutritionistStream(
+          userMsg.content, profile!, goals, nutHistSummary, recentWorkouts,
           chatHistory as { role: 'user' | 'assistant'; content: string }[],
           onChunk, memBlock
-        );
-      } else {
-        reply = await geminiNutritionistStream(
+        ),
+        gemini: () => geminiNutritionistStream(
           userMsg.content, profile!, goals, nutHistSummary, recentWorkouts,
           chatHistory as { role: 'user' | 'model'; parts: { text: string }[] }[],
           onChunk, memBlock
-        );
-      }
+        ),
+      });
 
       const finalMessages = [...updatedMessages, { ...streamingMsg, content: reply }];
       setNutMessages(finalMessages);

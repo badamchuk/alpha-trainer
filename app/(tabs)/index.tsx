@@ -14,6 +14,7 @@ import { getUserProfile, getGoals, getRecentWorkouts, getStats, getWorkoutsForDa
 import { useLocale } from '../../services/i18n';
 import { getDailyAdvice as geminiDailyAdvice, initGemini } from '../../services/gemini';
 import { getDailyAdvice as groqDailyAdvice, initGroq } from '../../services/groq';
+import { askProvider, isProviderDead } from '../../services/aiProvider';
 import { getTodayPlan, WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS } from '../../services/planParser';
 import { UserProfile, WorkoutEntry, TrainingPlan, DayPlan } from '../../types';
 import { getWaterData, addGlass, removeGlass, setWaterGoal, computeWaterGoal } from '../../services/water';
@@ -124,14 +125,13 @@ export default function TodayScreen() {
     try {
       const goals = await getGoals();
       const recent = await getRecentWorkouts(5);
-      let text: string;
-      if (p.groqApiKey) {
-        initGroq(p.groqApiKey);
-        text = await groqDailyAdvice(p, goals, recent);
-      } else {
-        initGemini(p.geminiApiKey);
-        text = await geminiDailyAdvice(p, goals, recent);
-      }
+      // якщо один провайдер недоступний (напр. Groq блокує мережу) — питаємо іншого
+      if (p.groqApiKey) initGroq(p.groqApiKey);
+      if (p.geminiApiKey) initGemini(p.geminiApiKey);
+      const { result: text } = await askProvider(p, {
+        groq: () => groqDailyAdvice(p, goals, recent),
+        gemini: () => geminiDailyAdvice(p, goals, recent),
+      });
       setAdvice(text);
       await saveDailyAdviceCache(text);
     } catch {
@@ -480,7 +480,7 @@ export default function TodayScreen() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{t('coachAdvice')}</Text>
           <View style={styles.geminiTag}>
-            <Text style={styles.geminiTagText}>{profile?.groqApiKey ? 'Groq' : 'Gemini'}</Text>
+            <Text style={styles.geminiTagText}>{profile?.groqApiKey && !isProviderDead('groq') ? 'Groq' : 'Gemini'}</Text>
           </View>
         </View>
         {loadingAdvice ? (
