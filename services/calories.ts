@@ -1,6 +1,8 @@
 import { ExerciseLog, UserProfile, WorkoutEntry } from '../types';
 import { EXERCISES, Exercise, MuscleGroup } from './exercises';
 import { classifyExercise } from './analytics';
+import { getExercise } from './library';
+import type { ExerciseResolver } from './exerciseMatch';
 import { getAgeFromProfile } from './nutrition';
 
 // Оцінка витрат калорій по вправах з урахуванням параметрів користувача.
@@ -315,11 +317,27 @@ interface ExercisePlan {
   workMin: number;
 }
 
-function planExercise(ex: ExerciseLog, workoutType: string, groupSize: number, p: BodyParams): ExercisePlan {
+/**
+ * Тип навантаження для запису. Впізнану вправу питаємо в бібліотеки (ТЗ F7.4):
+ * там `metKind` проставлений вручну, тож жим вузьким хватом — це прес, а не
+ * ізоляція, а жим ногами — не те саме, що важка станова. Невпізнану розбираємо
+ * по назві, як раніше.
+ */
+function kindOf(ex: ExerciseLog, workoutType: string, resolver?: ExerciseResolver): ExerciseKind {
+  const timed = !!(ex.duration || ex.distance || ex.watts);
+  const id = resolver ? resolver(ex) : null;
+  const lib = id ? getExercise(id) : undefined;
+  return lib ? lib.metKind : exerciseKind(ex.name, workoutType, timed);
+}
+
+function planExercise(
+  ex: ExerciseLog, workoutType: string, groupSize: number, p: BodyParams,
+  resolver?: ExerciseResolver
+): ExercisePlan {
   const detail = ex.setsDetail && ex.setsDetail.length > 0 ? ex.setsDetail : null;
   // Значення в полях — на підхід; без підходів — на всю вправу
   const perSet = detail ? detail.length : ex.sets && ex.sets > 0 ? ex.sets : 1;
-  const kind = exerciseKind(ex.name, workoutType, !!(ex.duration || ex.distance || ex.watts));
+  const kind = kindOf(ex, workoutType, resolver);
   const met = exerciseMet(ex, kind, p, groupSize > 1);
   const manualKcal = ex.calories && ex.calories > 0 ? ex.calories * perSet : undefined;
   const plan: ExercisePlan = { kind, met, manualKcal, fixedMin: 0, estMin: 0, workMin: 0 };
@@ -370,7 +388,9 @@ function supersetSizes(exercises: ExerciseLog[]): number[] {
  * раза, решту часу рахує як легку активність — інакше три підходи жиму
  * в годинному тренуванні виглядали б як година безперервної роботи.
  */
-export function estimateWorkoutCalories(w: WorkoutLike, p: BodyParams): WorkoutCalories {
+export function estimateWorkoutCalories(
+  w: WorkoutLike, p: BodyParams, resolver?: ExerciseResolver
+): WorkoutCalories {
   const exercises = w.exercises ?? [];
 
   if (exercises.length === 0) {
@@ -381,7 +401,7 @@ export function estimateWorkoutCalories(w: WorkoutLike, p: BodyParams): WorkoutC
   }
 
   const sizes = supersetSizes(exercises);
-  const plans = exercises.map((e, i) => planExercise(e, w.workoutType, sizes[i], p));
+  const plans = exercises.map((e, i) => planExercise(e, w.workoutType, sizes[i], p, resolver));
 
   const fixedSum = plans.reduce((s, x) => s + x.fixedMin, 0);
   const estSum = plans.reduce((s, x) => s + x.estMin, 0);

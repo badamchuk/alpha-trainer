@@ -8,6 +8,7 @@ import { initGroq } from '../services/groq';
 import { requestPermissions } from '../services/notifications';
 import { loadLanguage } from '../services/i18n';
 import { promptIfUpdateAvailable } from '../services/updates';
+import { autoBackup } from '../services/backup';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 export default function RootLayout() {
@@ -20,6 +21,8 @@ export default function RootLayout() {
       await requestPermissions();
       // після дозволів — щоб діалог оновлення не наліз на системний
       promptIfUpdateAvailable();
+      // тиха копія даних раз на тиждень; помилки проковтуються всередині
+      autoBackup();
     }
     init();
 

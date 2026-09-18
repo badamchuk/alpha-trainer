@@ -282,14 +282,25 @@ export default function TodayScreen() {
             </Text>
           </View>
         </View>
-        {isWorkoutDay && (
+        {/* «Скласти» показуємо щодня: у день відпочинку теж буває настрій
+            потренуватись, а іншого входу в конструктор немає */}
+        <View style={styles.dayActions}>
+          {isWorkoutDay && (
+            <TouchableOpacity
+              style={styles.logBtn}
+              onPress={() => router.push('/workout/log')}
+            >
+              <Text style={styles.logBtnText}>{t('logBtn')}</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
-            style={styles.logBtn}
-            onPress={() => router.push('/workout/log')}
+            style={styles.buildBtn}
+            onPress={() => router.push('/workout/builder')}
           >
-            <Text style={styles.logBtnText}>{t('logBtn')}</Text>
+            <Ionicons name="sparkles-outline" size={15} color={Colors.primary} />
+            <Text style={styles.buildBtnText}>Скласти</Text>
           </TouchableOpacity>
-        )}
+        </View>
       </View>
 
       {/* Stats Row */}
@@ -416,14 +427,29 @@ export default function TodayScreen() {
 
       {/* No plan yet nudge */}
       {!todayPlan && (
-        <TouchableOpacity style={styles.noPlanCard} onPress={() => router.push('/(tabs)/trainer')}>
+        <View style={styles.noPlanCard}>
           <Ionicons name="sparkles" size={20} color={Colors.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.noPlanTitle}>{t('noPlanTitle')}</Text>
-            <Text style={styles.noPlanSub}>{t('noPlanSub')}</Text>
+            <Text style={styles.noPlanSub}>
+              Попроси AI скласти програму — або склади тренування сам, без інтернету
+            </Text>
+            <View style={styles.noPlanActions}>
+              <TouchableOpacity
+                style={styles.noPlanBtn}
+                onPress={() => router.push('/(tabs)/trainer')}
+              >
+                <Text style={styles.noPlanBtnText}>AI-програма</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.noPlanBtn, styles.noPlanBtnPrimary]}
+                onPress={() => router.push('/workout/builder')}
+              >
+                <Text style={[styles.noPlanBtnText, { color: Colors.primary }]}>Скласти сам</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
-        </TouchableOpacity>
+        </View>
       )}
 
       {/* Today's logged workouts */}
@@ -742,6 +768,20 @@ const styles = StyleSheet.create({
   todayCardLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   todayLabel: { ...Typography.h3, fontSize: 16 },
   todaySubtext: { ...Typography.bodySmall, marginTop: 2 },
+  noPlanActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
+  noPlanBtn: {
+    paddingHorizontal: Spacing.md, paddingVertical: 6,
+    borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.border,
+  },
+  noPlanBtnPrimary: { borderColor: Colors.primary },
+  noPlanBtnText: { ...Typography.bodySmall, color: Colors.textSecondary },
+  dayActions: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
+  buildBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.primary,
+  },
+  buildBtnText: { ...Typography.bodySmall, color: Colors.primary },
   logBtn: {
     backgroundColor: Colors.primary, borderRadius: BorderRadius.sm,
     paddingHorizontal: 14, paddingVertical: 8,

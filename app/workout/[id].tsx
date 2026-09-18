@@ -24,6 +24,8 @@ import {
 import {
   bodyParamsFor, estimateWorkoutCalories, paramsLabel, roundKcal, ExerciseCalories,
 } from '../../services/calories';
+import { buildResolver } from '../../services/exerciseLinks';
+import type { ExerciseResolver } from '../../services/exerciseMatch';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -69,6 +71,8 @@ export default function WorkoutDetailScreen() {
   // Для оцінки калорій: вага на дату тренування, зріст, вік, стать
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [weightLog, setWeightLog] = useState<WeightEntry[]>([]);
+  // Резолвер вправ: калорії рахуються за бібліотекою, а не за збігом назв (ТЗ F7.4)
+  const [resolver, setResolver] = useState<ExerciseResolver | undefined>(undefined);
 
   // Edit form state
   const [workoutType, setWorkoutType] = useState<WorkoutType>('strength');
@@ -103,7 +107,10 @@ export default function WorkoutDetailScreen() {
 
   useEffect(() => {
     async function load() {
-      const [workouts, p, wl] = await Promise.all([getWorkouts(), getUserProfile(), getWeightLog()]);
+      const [workouts, p, wl, res] = await Promise.all([
+        getWorkouts(), getUserProfile(), getWeightLog(), buildResolver(),
+      ]);
+      setResolver(() => res);
       const found = workouts.find((w) => w.id === id) || null;
       setWorkout(found);
       setProfile(p);
@@ -371,7 +378,7 @@ export default function WorkoutDetailScreen() {
   const typeIcon = TYPE_ICONS[workout.workoutType] || 'barbell-outline';
   const dateFormatted = format(parseISO(workout.date), 'EEEE, d MMMM yyyy', { locale: uk });
   const params = bodyParamsFor(profile, weightLog, workout.date);
-  const kcal = params ? estimateWorkoutCalories(workout, params) : null;
+  const kcal = params ? estimateWorkoutCalories(workout, params, resolver) : null;
 
   // ─── EDIT MODE ────────────────────────────────────────────────────
   if (editing) {

@@ -9,7 +9,13 @@ import { format } from 'date-fns';
 import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { getTrainingPlan, saveTrainingPlan, getUserProfile } from '../services/storage';
-import { TrainingPlan, DayPlan } from '../types';
+import { TrainingPlan, DayPlan, ExerciseLog } from '../types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import ExerciseImage from '../components/ExerciseImage';
+import RichText from '../components/RichText';
+import { stripExerciseIds } from '../services/aiContext';
+import { getExercise } from '../services/library';
+import { prescribe } from '../services/prescriptions';
 import {
   WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS,
 } from '../services/planParser';
@@ -41,6 +47,38 @@ export default function PlanScreen() {
   }, []));
 
   const today = new Date().getDay();
+
+  /**
+   * Відкрити форму запису, заповнену вправами дня (ТЗ F8.2).
+   *
+   * Вправи, впізнані бібліотекою, несуть id — тому в формі одразу працюють
+   * заміна, картинка й правильні калорії. Невпізнані йдуть просто назвою.
+   */
+  async function startFromPlan(day: DayPlan) {
+    const exercises: ExerciseLog[] = day.exercises.map((ex) => {
+      const lib = ex.exerciseId ? getExercise(ex.exerciseId) : undefined;
+      const scheme = lib ? prescribe(lib) : null;
+      const reps = ex.reps ? parseInt(ex.reps, 10) : undefined;
+      return {
+        name: lib?.nameUk ?? ex.name,
+        exerciseId: ex.exerciseId,
+        sets: ex.sets ?? scheme?.sets,
+        reps: Number.isFinite(reps) ? reps : scheme?.reps,
+        duration: scheme?.seconds ? Math.round(scheme.seconds / 6) / 10 : undefined,
+      };
+    });
+    if (exercises.length === 0) {
+      router.push('/workout/log');
+      return;
+    }
+    // той самий механізм, що в конструктора й у порад тренера
+    await AsyncStorage.setItem('@alpha_trainer:builder_started', JSON.stringify({
+      workoutType: day.workoutType || 'strength',
+      duration: day.estimatedDuration || 60,
+      exercises,
+    }));
+    router.push('/workout/log?fromBuilder=1');
+  }
 
   if (!plan) {
     return (
@@ -171,7 +209,18 @@ export default function PlanScreen() {
                         <View style={styles.exercisesList}>
                           {day.exercises.map((ex, i) => (
                             <View key={i} style={styles.exerciseRow}>
-                              <View style={[styles.exDot, { backgroundColor: color }]} />
+                              {/* впізнану вправу показуємо малюнком, невпізнану — крапкою */}
+                              {ex.exerciseId ? (
+                                <TouchableOpacity onPress={() => router.push(`/exercises/${ex.exerciseId}`)}>
+                                  <ExerciseImage
+                                    slug={getExercise(ex.exerciseId)?.imageSlug}
+                                    pattern={getExercise(ex.exerciseId)?.pattern}
+                                    size={40}
+                                  />
+                                </TouchableOpacity>
+                              ) : (
+                                <View style={[styles.exDot, { backgroundColor: color }]} />
+                              )}
                               <View style={styles.exContent}>
                                 <Text style={styles.exName}>{ex.name}</Text>
                                 {(ex.sets || ex.reps || ex.weight || ex.duration) && (
@@ -189,16 +238,20 @@ export default function PlanScreen() {
                           ))}
                         </View>
                       ) : day.description ? (
-                        <Text style={styles.dayDesc}>{day.description}</Text>
+                        // опис від AI приходить із розміткою й технічними id —
+                        // показуємо його так само, як у чаті
+                        <RichText style={styles.dayDesc} boldColor={Colors.textPrimary}>
+                          {stripExerciseIds(day.description)}
+                        </RichText>
                       ) : null}
 
                       {isToday && (
                         <TouchableOpacity
                           style={styles.logTodayBtn}
-                          onPress={() => router.push('/workout/log')}
+                          onPress={() => startFromPlan(day)}
                         >
-                          <Ionicons name="add-circle-outline" size={16} color="#FFF" />
-                          <Text style={styles.logTodayBtnText}>Записати сьогоднішнє тренування</Text>
+                          <Ionicons name="play" size={16} color="#FFF" />
+                          <Text style={styles.logTodayBtnText}>Почати тренування за планом</Text>
                         </TouchableOpacity>
                       )}
                     </View>

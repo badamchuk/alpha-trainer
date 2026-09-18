@@ -1,3 +1,5 @@
+import type { Equipment, JointZone } from '../services/library/types';
+
 export interface UserProfile {
   name: string;
   age: number;          // kept for backward compat; prefer computing from birthDate
@@ -8,6 +10,13 @@ export interface UserProfile {
   fitnessLevel: 'beginner' | 'intermediate' | 'advanced';
   availableDays: number[]; // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
   equipment: string[];
+  /**
+   * Обладнання в термінах бібліотеки (ТЗ F8). Старе `equipment` лишається для
+   * сумісності зі збереженими профілями й промптами AI.
+   */
+  equipmentIds?: Equipment[];
+  /** Зони, які користувач просить берегти постійно (плече, поперек, коліно…). */
+  protectZones?: JointZone[];
   geminiApiKey: string;
   groqApiKey?: string;
   onboardingComplete: boolean;
@@ -33,6 +42,11 @@ export interface SetDetail {
 
 export interface ExerciseLog {
   name: string;
+  /**
+   * id вправи з бібліотеки (services/library), якщо запис створено вибором зі
+   * списку. Старі записи його не мають — там вправу впізнають за назвою.
+   */
+  exerciseId?: string;
   sets?: number;
   reps?: number;
   weight?: number;
@@ -84,6 +98,8 @@ export interface DayPlan {
 
 export interface PlannedExercise {
   name: string;
+  /** id бібліотеки, якщо назву вдалось впізнати — для картинки й заміни (ТЗ F8.1). */
+  exerciseId?: string;
   sets?: number;
   reps?: string; // "8-12" or "AMRAP"
   weight?: string; // "60% of 1RM" or "bodyweight"

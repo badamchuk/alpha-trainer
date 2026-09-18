@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, KeyboardAvoidingView, Platform, Alert, Modal, FlatList,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,11 +13,11 @@ import {
 } from '../../services/storage';
 import { WorkoutEntry, ExerciseLog, WorkoutType, SetType, SetDetail, UserProfile } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
-import { computePace, formatPace, getOverloadSuggestion, estimate1RM } from '../../services/analytics';
+import { computePace, formatPace, getExerciseProgress, getOverloadSuggestion, estimate1RM } from '../../services/analytics';
 import RestTimer from '../../components/RestTimer';
 import { getTemplates, saveTemplate, deleteTemplate, WorkoutTemplate } from '../../services/templates';
 import { useLocale } from '../../services/i18n';
-import ExercisePicker from '../../components/ExercisePicker';
+import LibraryPicker from '../../components/LibraryPicker';
 import SupersetBar from '../../components/SupersetBar';
 import { checkAndUnlock } from '../../services/achievements';
 import {
@@ -26,6 +27,14 @@ import {
 import {
   bodyParamsFor, estimateWorkoutCalories, paramsLabel, roundKcal, ExerciseCalories,
 } from '../../services/calories';
+import { buildResolver } from '../../services/exerciseLinks';
+import type { ExerciseResolver } from '../../services/exerciseMatch';
+import { getExercise } from '../../services/library';
+import { Equipment, JointZone, LibraryExercise } from '../../services/library/types';
+import { formatPrescription, needsNewScheme, prescribe } from '../../services/prescriptions';
+import { equipmentOf } from '../../services/equipment';
+import { applySubstitution } from '../../services/substitutions';
+import SubstitutionSheet from '../../components/SubstitutionSheet';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -48,7 +57,9 @@ export default function LogWorkoutScreen() {
   const router = useRouter();
   const { t } = useLocale();
   const insets = useSafeAreaInsets();
-  const { repeatId, templateId } = useLocalSearchParams<{ repeatId?: string; templateId?: string }>();
+  const { repeatId, templateId, fromBuilder } = useLocalSearchParams<{
+    repeatId?: string; templateId?: string; fromBuilder?: string;
+  }>();
   // Редагування шаблону — той самий екран, але «Зберегти» оновлює шаблон,
   // а не записує тренування. Так шаблонам дістається все: суперсети,
   // переміщення, правка вправ — без третьої копії форми.
@@ -77,6 +88,12 @@ export default function LogWorkoutScreen() {
   // Для оцінки калорій: вага на дату, зріст, вік, стать
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [weightLog, setWeightLog] = useState<WeightEntry[]>([]);
+  const [resolver, setResolver] = useState<ExerciseResolver | undefined>(undefined);
+  const [equipmentIds, setEquipmentIds] = useState<Equipment[] | undefined>(undefined);
+  const [protectZones, setProtectZones] = useState<JointZone[]>([]);
+  // Заміна вправи (ТЗ F4): індекс у списку + сама вправа з бібліотеки
+  const [subsIdx, setSubsIdx] = useState<number | null>(null);
+  const [subsExercise, setSubsExercise] = useState<LibraryExercise | null>(null);
 
   // Progressive overload hint
   const [overloadHint, setOverloadHint] = useState('');
@@ -145,6 +162,26 @@ export default function LogWorkoutScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerStartRef = useRef<number | null>(null);
 
+  // Тренування, складене конструктором (ТЗ F5.7). Чернетка лежить у сховищі —
+  // через параметри маршруту такий обсяг передавати не можна.
+  useEffect(() => {
+    if (!fromBuilder) return;
+    AsyncStorage.getItem('@alpha_trainer:builder_started').then((raw) => {
+      if (!raw) return;
+      try {
+        const preset = JSON.parse(raw) as {
+          workoutType: WorkoutType; duration: number; exercises: ExerciseLog[];
+        };
+        setWorkoutType(preset.workoutType);
+        setExercises(preset.exercises);
+        setDuration(String(preset.duration));
+      } catch {
+        // зіпсована чернетка — просто відкриваємо порожню форму
+      }
+      AsyncStorage.removeItem('@alpha_trainer:builder_started').catch(() => {});
+    });
+  }, [fromBuilder]);
+
   // Load repeat workout if repeatId provided
   useEffect(() => {
     if (!repeatId) return;
@@ -172,9 +209,12 @@ export default function LogWorkoutScreen() {
   }, [templateId]);
 
   useEffect(() => {
-    Promise.all([getUserProfile(), getWeightLog()]).then(([p, wl]) => {
+    Promise.all([getUserProfile(), getWeightLog(), buildResolver()]).then(([p, wl, res]) => {
       setProfile(p);
       setWeightLog(wl);
+      setResolver(() => res);
+      setEquipmentIds(equipmentOf(p));
+      setProtectZones(p?.protectZones ?? []);
     });
   }, []);
 
@@ -225,6 +265,8 @@ export default function LogWorkoutScreen() {
 
   // Exercise form state
   const [exName, setExName] = useState('');
+  // id вправи з бібліотеки, якщо її обрали зі списку, а не набрали руками (ТЗ F2.5)
+  const [exId, setExId] = useState<string | undefined>(undefined);
   const [exSets, setExSets] = useState('');
   const [exReps, setExReps] = useState('');
   const [exWeight, setExWeight] = useState('');
@@ -256,7 +298,7 @@ export default function LogWorkoutScreen() {
   const formY = useRef(0);
 
   function clearExForm() {
-    setExName(''); setExSets(''); setExReps(''); setExWeight('');
+    setExName(''); setExId(undefined); setExSets(''); setExReps(''); setExWeight('');
     setExDuration(''); setExDistance(''); setExCalories(''); setExWatts('');
     setExRpe(undefined); setExSetType('normal'); setDraftSets([]);
     setOverloadHint('');
@@ -267,6 +309,7 @@ export default function LogWorkoutScreen() {
     if (!ex) return;
     const s = (v: number | undefined) => (v !== undefined ? String(v) : '');
     setExName(ex.name);
+    setExId(ex.exerciseId);
     setExSets(s(ex.sets)); setExReps(s(ex.reps)); setExWeight(s(ex.weight));
     setExDuration(s(ex.duration)); setExDistance(s(ex.distance));
     setExCalories(s(ex.calories)); setExWatts(s(ex.watts));
@@ -289,7 +332,7 @@ export default function LogWorkoutScreen() {
   async function lookupOverloadHint(name: string) {
     if (!name.trim()) { setOverloadHint(''); return; }
     const all = await getWorkouts();
-    const suggestion = getOverloadSuggestion(all, name);
+    const suggestion = getOverloadSuggestion(all, name, resolver);
     if (suggestion) {
       setOverloadHint(suggestion.message);
       // Auto-fill suggested values
@@ -404,6 +447,7 @@ export default function LogWorkoutScreen() {
       );
       ex = {
         name: exName.trim(),
+        exerciseId: exId,
         sets: draftSets.length,
         reps: bestSet.reps,
         weight: bestSet.weight,
@@ -419,6 +463,7 @@ export default function LogWorkoutScreen() {
     } else {
       ex = {
         name: exName.trim(),
+        exerciseId: exId,
         sets: parseNum(exSets),
         reps: parseNum(exReps),
         weight: parseNum(exWeight),
@@ -464,6 +509,52 @@ export default function LogWorkoutScreen() {
         if (prBannerTimer.current) clearTimeout(prBannerTimer.current);
         prBannerTimer.current = setTimeout(() => setPrBannerEx(null), 3000);
       }
+    }
+  }
+
+  /** Відкрити заміну для вправи в списку. Невпізнану замінити нема з чого — кажемо прямо. */
+  function openSubstitute(i: number) {
+    const log = exercises[i];
+    const id = resolver ? resolver(log) : null;
+    const lib = id ? getExercise(id) : undefined;
+    if (!lib) {
+      Alert.alert(
+        'Не знаємо цю вправу',
+        `«${log.name}» ще не прив’язана до бібліотеки. Профіль → Розпізнавання вправ — і заміни запрацюють.`,
+      );
+      return;
+    }
+    setSubsIdx(i);
+    setSubsExercise(lib);
+  }
+
+  /**
+   * Підставити нову вправу замість старої (ТЗ F4.5–F4.6).
+   *
+   * Позиція і суперсет зберігаються. Схема підходів переноситься, якщо намір
+   * вправи той самий; інакше береться схема нового наміру. Вага від старої
+   * вправи не переноситься — під іншим снарядом вона просто неправдива.
+   */
+  async function applySubstitute(next: LibraryExercise) {
+    if (subsIdx === null || !subsExercise) return;
+    const idx = subsIdx;
+    const prev = exercises[idx];
+    const equipmentChanged = subsExercise.equipment.join() !== next.equipment.join();
+
+    // остання робоча вага для НОВОЇ вправи, якщо вона вже була в історії
+    let lastWeight: number | undefined;
+    if (equipmentChanged && resolver) {
+      const history = getExerciseProgress(await getWorkouts(), next.nameUk, resolver);
+      lastWeight = history.length > 0 ? history[history.length - 1].weight || undefined : undefined;
+    }
+
+    const replaced = applySubstitution(prev, subsExercise, next, lastWeight);
+    setExercises(exercises.map((e, i) => (i === idx ? replaced : e)));
+    setSubsIdx(null);
+    setSubsExercise(null);
+
+    if (needsNewScheme(subsExercise, next)) {
+      Alert.alert('Схему підходів оновлено', `${next.nameUk}: ${formatPrescription(prescribe(next))}`);
     }
   }
 
@@ -540,7 +631,7 @@ export default function LogWorkoutScreen() {
         exercises,
         totalDistance: Number(totalDistance.replace(',', '.')) || undefined,
         totalCalories: Number(totalCalories) || undefined,
-      }, kcalParams)
+      }, kcalParams, resolver)
     : null;
 
   return (
@@ -780,6 +871,7 @@ export default function LogWorkoutScreen() {
             kcal: kcalEst?.perExercise,
             onRemove: removeExercise,
             onEdit: startEditExercise,
+            onSubstitute: openSubstitute,
             onMove: handleMove,
             editingIdx: editingExIdx,
             groupMode,
@@ -830,7 +922,12 @@ export default function LogWorkoutScreen() {
               placeholder={t('exerciseNamePlaceholder')}
               placeholderTextColor={Colors.textMuted}
               value={exName}
-              onChangeText={(v) => { setExName(v); setOverloadHint(''); }}
+              onChangeText={(v) => {
+                setExName(v);
+                // назву правлять руками — прив'язка до обраної вправи більше не чинна
+                setExId(undefined);
+                setOverloadHint('');
+              }}
               onBlur={() => lookupOverloadHint(exName)}
             />
             {overloadHint ? (
@@ -974,11 +1071,31 @@ export default function LogWorkoutScreen() {
       {/* Rest Timer Modal */}
       <RestTimer visible={restTimerVisible} onClose={() => setRestTimerVisible(false)} autoStart />
 
+      <SubstitutionSheet
+        visible={subsIdx !== null}
+        exercise={subsExercise}
+        equipment={equipmentIds}
+        protectZones={protectZones}
+        onClose={() => { setSubsIdx(null); setSubsExercise(null); }}
+        onPick={applySubstitute}
+      />
+
       {/* Exercise Picker Modal */}
-      <ExercisePicker
+      <LibraryPicker
         visible={pickerVisible}
+        availableEquipment={equipmentIds}
         onClose={() => setPickerVisible(false)}
-        onSelect={(name) => { setExName(name); setOverloadHint(''); lookupOverloadHint(name); }}
+        onSelect={(ex) => {
+          setExName(ex.nameUk);
+          setExId(ex.id);
+          setOverloadHint('');
+          lookupOverloadHint(ex.nameUk);
+          // схема з бібліотеки як стартова точка — користувач її поправить
+          const p = prescribe(ex);
+          if (!exSets) setExSets(String(p.sets));
+          if (!exReps && p.reps) setExReps(String(p.reps));
+          if (!exDuration && p.seconds) setExDuration(String(p.seconds / 60));
+        }}
       />
 
       {/* Templates Modal */}
@@ -1262,6 +1379,7 @@ interface ExerciseGroupOpts {
   kcal?: ExerciseCalories[];
   onRemove: (i: number) => void;
   onEdit: (i: number) => void;
+  onSubstitute: (i: number) => void;
   onMove: (i: number, dir: -1 | 1) => void;
   editingIdx: number | null;
   groupMode: boolean;
@@ -1271,7 +1389,7 @@ interface ExerciseGroupOpts {
 }
 
 function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
-  const { exercises, kcal, onRemove, onEdit, onMove, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
+  const { exercises, kcal, onRemove, onEdit, onSubstitute, onMove, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
   const nodes: React.ReactNode[] = [];
   let i = 0;
   // group consecutive exercises with the same supersetId
@@ -1302,6 +1420,9 @@ function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
         {!groupMode && (
           <>
             <MoveArrows exercises={exercises} idx={idx} onMove={onMove} />
+            <TouchableOpacity onPress={() => onSubstitute(idx)} style={styles.rowIconBtn} hitSlop={6}>
+              <Ionicons name="swap-horizontal-outline" size={19} color={Colors.textSecondary} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => onEdit(idx)} style={styles.rowIconBtn} hitSlop={6}>
               <Ionicons
                 name="create-outline"

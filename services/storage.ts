@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile, Goal, WorkoutEntry, TrainingPlan, ChatMessage, BodyMeasurement } from '../types';
+import { getExercise } from './library';
+import type { ExerciseResolver } from './exerciseMatch';
 
 const KEYS = {
   USER_PROFILE: '@alpha_trainer:user_profile',
@@ -262,19 +264,25 @@ export interface PersonalRecord {
  * `workouts` можна передати, якщо масив уже завантажено, — інакше
  * екран прогресу перечитував би всю історію ще раз.
  */
-export async function getPersonalRecords(workouts?: WorkoutEntry[]): Promise<PersonalRecord[]> {
+export async function getPersonalRecords(
+  workouts?: WorkoutEntry[],
+  resolver?: ExerciseResolver
+): Promise<PersonalRecord[]> {
   const all = workouts ?? await getWorkouts();
   const map = new Map<string, PersonalRecord>();
 
   for (const workout of all) {
     for (const ex of workout.exercises) {
       if (!ex.name) continue;
-      const key = ex.name.toLowerCase().trim();
+      // З резолвером «front squad» і «фронтальні присідання» — один рекорд
+      const id = resolver ? resolver(ex) : null;
+      const lib = id ? getExercise(id) : undefined;
+      const key = id ?? ex.name.toLowerCase().trim();
       const existing = map.get(key);
 
       const newRecord: PersonalRecord = existing
         ? { ...existing }
-        : { exerciseName: ex.name, maxWeight: 0, maxReps: 0, date: workout.date };
+        : { exerciseName: lib?.nameUk ?? ex.name, maxWeight: 0, maxReps: 0, date: workout.date };
 
       // Політні підходи: сумарні поля описують лише найважчий підхід, тому
       // максимум повторів треба шукати по всіх підходах, інакше піраміда
