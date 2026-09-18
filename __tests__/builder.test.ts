@@ -247,3 +247,37 @@ describe('перенесення у форму запису', () => {
     }
   });
 });
+
+describe('здоровий глузд (знайдено на телефоні)', () => {
+  it('плавання не потрапляє в зал — для нього потрібен басейн', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      for (const format of ['fullbody', 'crossfit'] as const) {
+        const d = generateWorkout({
+          format, durationMin: 45, equipment: CROSSFIT_PRESET,
+        }, seed);
+        const ids = d.blocks.flatMap((b) => b.exercises.map((e) => e.exercise.id));
+        expect(ids).not.toContain('swimming');
+      }
+    }
+  });
+
+  it('з басейном плавання знову можливе', () => {
+    const ex = getExercise('swimming')!;
+    expect(ex.equipment).toContain('pool');
+  });
+
+  it('розминка й заминка не тривають по 5 хвилин однією вправою', () => {
+    for (let seed = 1; seed <= 15; seed++) {
+      const d = generateWorkout(gym(), seed);
+      for (const b of d.blocks.filter((x) => x.role === 'warmup' || x.role === 'cooldown')) {
+        for (const e of b.exercises) {
+          if (e.prescription.seconds) expect(e.prescription.seconds).toBeLessThanOrEqual(180);
+          // мобільність — не довше хвилини
+          if (!e.exercise.cardio && e.prescription.seconds) {
+            expect(e.prescription.seconds).toBeLessThanOrEqual(60);
+          }
+        }
+      }
+    }
+  });
+});

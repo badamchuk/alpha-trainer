@@ -304,6 +304,13 @@ export function generateWorkout(input: BuilderInput, seed = 1, attempt = 0): Wor
       ? { sets: 1, seconds: 180, restSec: 0, note: 'легко, щоб зігрітись' }
       : prescribe(ex, focus, slot.prescriptionRole ?? 'accessory');
 
+    // Стретчинг «за замовчуванням» триває 5 хвилин — це окреме заняття, а не
+    // рядок розминки. У розминці й заминці обмежуємо мобільність хвилиною.
+    if ((slot.role === 'warmup' || slot.role === 'cooldown')
+      && prescription.seconds && prescription.seconds > 60 && !ex.cardio) {
+      prescription = { ...prescription, seconds: 60 };
+    }
+
     // У коротке заняття 5 робочих підходів двох великих рухів просто не влазять,
     // а викидати кор заради них — гірше, ніж зробити менше підходів (F5.2 + F5.5).
     const mainCap = input.durationMin === 30 ? 3 : input.durationMin === 45 ? 4 : 5;

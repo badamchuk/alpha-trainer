@@ -32,6 +32,7 @@ export const EQUIPMENT_LABELS: Record<Equipment, string> = {
   ab_wheel: 'Ролик', medicine_ball: 'Медбол', wall_ball: 'Воллбол',
   rower: 'Гребний', bike: 'Велосипед', air_bike: 'Air bike', ski_erg: 'Лижний',
   treadmill: 'Доріжка', jump_rope: 'Скакалка', sled: 'Сани', stick: 'Палиця',
+  pool: 'Басейн',
 };
 
 /** Групи для екрана профілю. */
@@ -39,7 +40,7 @@ export const EQUIPMENT_GROUPS: { title: string; items: Equipment[] }[] = [
   { title: 'Вільна вага', items: ['barbell', 'dumbbell', 'kettlebell', 'ez_bar', 'trap_bar', 'plate', 'bench'] },
   { title: 'Тренажери', items: ['machine', 'cable', 'smith', 'sled'] },
   { title: 'Гімнастика', items: ['pullup_bar', 'dip_bars', 'rings', 'band', 'box', 'wall', 'ab_wheel'] },
-  { title: 'Кардіо й метокон', items: ['rower', 'ski_erg', 'air_bike', 'bike', 'treadmill', 'jump_rope', 'wall_ball', 'medicine_ball', 'stick'] },
+  { title: 'Кардіо й метокон', items: ['rower', 'ski_erg', 'air_bike', 'bike', 'treadmill', 'jump_rope', 'pool', 'wall_ball', 'medicine_ball', 'stick'] },
 ];
 
 /** Старі рядки профілю → обладнання бібліотеки (F8.3). */

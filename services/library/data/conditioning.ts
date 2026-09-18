@@ -311,7 +311,7 @@ export const CONDITIONING_EXERCISES: LibraryExercise[] = [
     id: 'swimming', nameUk: 'Плавання', nameEn: 'Swimming',
     aliases: ['плавання', 'swim', 'swimming', 'басейн'],
     pattern: 'monostructural', family: 'swim', level: 2, intent: 'conditioning', metKind: 'swim',
-    metrics: ['distance', 'time'], equipment: [], displayGroup: 'cardio',
+    metrics: ['distance', 'time'], equipment: ['pool'], displayGroup: 'cardio',
     muscles: { primary: ['cardio'], secondary: ['lats', 'front_delts', 'glutes'] },
     stress: { shoulder: 1 },
     cues: ['Довгий гребок, рівне дихання', 'Тіло витягнуте, таз близько до поверхні'],

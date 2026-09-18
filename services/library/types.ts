@@ -28,7 +28,9 @@ export type Equipment =
   | 'barbell' | 'dumbbell' | 'kettlebell' | 'ez_bar' | 'trap_bar' | 'plate'
   | 'cable' | 'machine' | 'smith' | 'bench' | 'box' | 'wall'
   | 'pullup_bar' | 'dip_bars' | 'rings' | 'band' | 'ab_wheel' | 'medicine_ball' | 'wall_ball'
-  | 'rower' | 'bike' | 'air_bike' | 'ski_erg' | 'treadmill' | 'jump_rope' | 'sled' | 'stick';
+  | 'rower' | 'bike' | 'air_bike' | 'ski_erg' | 'treadmill' | 'jump_rope' | 'sled' | 'stick'
+  /** Так, це «обладнання»: без басейну плавати ніде, і в зал його не поставиш. */
+  | 'pool';
 
 export type Muscle =
   | 'quads' | 'hamstrings' | 'glutes' | 'adductors' | 'calves'
