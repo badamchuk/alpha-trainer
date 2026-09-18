@@ -350,7 +350,7 @@ export default function NutritionScreen() {
     try {
       const perm = await ImagePicker.requestCameraPermissionsAsync();
       if (perm.status !== 'granted') {
-        Alert.alert('Потрібен доступ до камери', 'Дозволь доступ до камери в Налаштуваннях телефону → Додатки → AlphaTrainer → Дозволи.');
+        Alert.alert('Потрібен доступ до камери', 'Дозволь доступ до камери в Налаштуваннях телефону → Додатки → Гарт → Дозволи.');
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
@@ -381,7 +381,7 @@ export default function NutritionScreen() {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (perm.status !== 'granted') {
-        Alert.alert('Потрібен доступ до галереї', 'Дозволь доступ до фото в Налаштуваннях телефону → Додатки → AlphaTrainer → Дозволи.');
+        Alert.alert('Потрібен доступ до галереї', 'Дозволь доступ до фото в Налаштуваннях телефону → Додатки → Гарт → Дозволи.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({

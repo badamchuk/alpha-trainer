@@ -24,7 +24,9 @@ import {
 import { Focus, formatPrescription, prescribe } from '../../services/prescriptions';
 import { familiarityFrom } from '../../services/substitutions';
 import { equipmentOf } from '../../services/equipment';
-import { recentExerciseIds } from '../../services/analytics';
+import {
+  LastResult, formatLastResult, lastResults, recentExerciseIds,
+} from '../../services/analytics';
 import { buildResolver } from '../../services/exerciseLinks';
 import { getUserProfile, getWorkouts } from '../../services/storage';
 import { saveTemplate } from '../../services/templates';
@@ -70,6 +72,8 @@ export default function BuilderScreen() {
   const [recentIds, setRecentIds] = useState<string[]>([]);
   // «нещодавні» для швидкого вибору — просто останні вправи користувача
   const [pickerRecent, setPickerRecent] = useState<string[]>([]);
+  // «минулого разу 80 кг × 5» — щоб не згадувати робочу вагу
+  const [last, setLast] = useState<Map<string, LastResult>>(new Map());
 
   // заміна й додавання
   const [subs, setSubs] = useState<{ blockIdx: number; exIdx: number; ex: LibraryExercise } | null>(null);
@@ -86,6 +90,7 @@ export default function BuilderScreen() {
       setResolver(() => res);
       setFamiliarity(familiarityFrom(workouts.flatMap((w) => w.exercises ?? []), res));
       setPickerRecent(recentExerciseIds(workouts, res));
+      setLast(lastResults(workouts, res));
 
       if (storedRaw) {
         try {
@@ -278,7 +283,12 @@ export default function BuilderScreen() {
                       <ExerciseImage slug={e.exercise.imageSlug} pattern={e.exercise.pattern} size={48} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.exName}>{exerciseName(e.exercise)}</Text>
-                        <Text style={styles.exScheme}>{formatPrescription(e.prescription)}</Text>
+                        <Text style={styles.exScheme}>
+                          {formatPrescription(e.prescription)}
+                          {formatLastResult(last.get(e.exercise.id))
+                            ? ` · ${formatLastResult(last.get(e.exercise.id))}`
+                            : ''}
+                        </Text>
                         {/* техніка й відео просто тут: у залі ніхто не шукатиме окремо */}
                         <ExerciseHowTo
                           exercise={e.exercise}

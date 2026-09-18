@@ -22,7 +22,7 @@ export async function lookupBarcode(barcode: string): Promise<OFFProduct | null>
   try {
     const res = await fetch(
       `https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=product_name,brands,quantity,serving_size,nutriments`,
-      { headers: { 'User-Agent': 'AlphaTrainer/1.0 (contact@alphatrainer.app)' } }
+      { headers: { 'User-Agent': 'Hart/1.0 (https://github.com/badamchuk/alpha-trainer)' } }
     );
     if (!res.ok) return null;
     const json = await res.json();
@@ -39,7 +39,7 @@ export async function searchFoodByName(query: string): Promise<OFFProduct[]> {
     const encoded = encodeURIComponent(query.trim());
     const res = await fetch(
       `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encoded}&search_simple=1&action=process&json=1&page_size=10&fields=product_name,brands,quantity,serving_size,nutriments`,
-      { headers: { 'User-Agent': 'AlphaTrainer/1.0 (contact@alphatrainer.app)' } }
+      { headers: { 'User-Agent': 'Hart/1.0 (https://github.com/badamchuk/alpha-trainer)' } }
     );
     if (!res.ok) return [];
     const json = await res.json();

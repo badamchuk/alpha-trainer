@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert,
-  TextInput, KeyboardAvoidingView, Platform,
+  TextInput, KeyboardAvoidingView, Platform, Share,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -118,6 +118,34 @@ export default function WorkoutDetailScreen() {
     }
     load();
   }, [id]);
+
+  /**
+   * Тренування текстом: скинути тренеру чи другу в месенджер.
+   * Формат навмисно простий — щоб читалось у будь-якому чаті.
+   */
+  async function handleShare() {
+    if (!workout) return;
+    const lines = [
+      `${TYPE_LABELS[workout.workoutType] ?? workout.workoutType} — ${
+        format(parseISO(workout.date), 'd MMMM yyyy', { locale: uk })}`,
+      `${workout.duration} хв${kcal ? ` · ≈${roundKcal(kcal.total)} ккал` : ''}`,
+      '',
+    ];
+    for (const e of workout.exercises) {
+      const parts = [
+        e.sets && e.reps && e.weight ? `${e.sets}×${e.reps} × ${e.weight} кг`
+          : e.sets && e.reps ? `${e.sets}×${e.reps}` : null,
+        e.distance ? `${e.distance} км` : null,
+        e.duration ? `${e.duration} хв` : null,
+        e.calories ? `${e.calories} ккал` : null,
+      ].filter(Boolean);
+      lines.push(`• ${e.name}${parts.length ? `: ${parts.join(', ')}` : ''}`);
+    }
+    if (workout.notes) lines.push('', workout.notes);
+    try {
+      await Share.share({ message: lines.join('\n') });
+    } catch { /* користувач закрив вікно — нічого робити */ }
+  }
 
   function enterEdit() {
     if (!workout) return;
@@ -666,6 +694,9 @@ export default function WorkoutDetailScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('workoutDetailTitle')}</Text>
         <View style={styles.headerActions}>
+          <TouchableOpacity onPress={handleShare} style={styles.iconBtn}>
+            <Ionicons name="share-outline" size={22} color={Colors.textSecondary} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleDuplicate} style={styles.iconBtn}>
             <Ionicons name="copy-outline" size={22} color={Colors.textSecondary} />
           </TouchableOpacity>

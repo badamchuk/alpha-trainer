@@ -156,7 +156,7 @@ try {
     + `  Або відкоти реліз: git tag -d ${tag} && git reset --hard HEAD~1`);
 }
 
-const apkOut = path.join(ROOT, 'dist', `AlphaTrainer-${tag}.apk`);
+const apkOut = path.join(ROOT, 'dist', `Hart-${tag}.apk`);
 fs.mkdirSync(path.dirname(apkOut), { recursive: true });
 fs.copyFileSync(APK_BUILT, apkOut);
 
@@ -170,11 +170,11 @@ const changes = out(`git log ${prevTag ? `${prevTag}..HEAD~1` : '-n 20 HEAD~1'} 
   .filter((s) => s && !/^(docs|chore|test)\b|^реліз/.test(s))
   .map((s) => `- ${s}`)
   .join('\n');
-const notesFile = path.join(os.tmpdir(), `alphatrainer-${tag}-notes.md`);
+const notesFile = path.join(os.tmpdir(), `hart-${tag}-notes.md`);
 fs.writeFileSync(notesFile, `${changes || '- дрібні виправлення'}\n\n`
   + 'Встановлення: відкрий APK на телефоні — стане поверх, дані збережуться.\n');
 
-run(`gh release create ${tag} "${apkOut}" --repo ${REPO} --title "AlphaTrainer ${version}" --notes-file "${notesFile}"`);
+run(`gh release create ${tag} "${apkOut}" --repo ${REPO} --title "Гарт ${version}" --notes-file "${notesFile}"`);
 
 console.log(`\n✔ Реліз ${tag} опубліковано: https://github.com/${REPO}/releases/tag/${tag}`);
 console.log('  Додаток запропонує оновлення при наступному запуску');

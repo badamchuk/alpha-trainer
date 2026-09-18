@@ -134,7 +134,7 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
           <View style={styles.permCard}>
             <Ionicons name="camera-outline" size={48} color={Colors.primary} />
             <Text style={styles.permTitle}>Потрібен доступ до камери</Text>
-            <Text style={styles.permText}>Для сканування штрих-кодів AlphaTrainer потребує доступ до камери.</Text>
+            <Text style={styles.permText}>Для сканування штрих-кодів «Гарт» потребує доступ до камери.</Text>
             <TouchableOpacity style={styles.permBtn} onPress={requestPermission}>
               <Text style={styles.permBtnText}>Надати доступ</Text>
             </TouchableOpacity>

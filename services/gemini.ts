@@ -66,7 +66,7 @@ function buildNutritionistContext(
     ? `Ціль: ${nutritionGoals.calories} ккал (режим: ${nutritionGoals.mode === 'cut' ? 'схуднення' : nutritionGoals.mode === 'bulk' ? 'набір маси' : 'підтримка'}) | Б:${nutritionGoals.protein}г В:${nutritionGoals.carbs}г Ж:${nutritionGoals.fat}г`
     : 'Цілі харчування не встановлено';
 
-  return `Ти персональний AI-нутріціолог в додатку AlphaTrainer. Відповідай українською мовою. Спілкуйся як досвідчений дієтолог та нутріціолог — фахово, але доступно.
+  return `Ти персональний AI-нутріціолог в додатку «Гарт». Відповідай українською мовою. Спілкуйся як досвідчений дієтолог та нутріціолог — фахово, але доступно.
 
 ПРОФІЛЬ:
 - Ім'я: ${profile.name}, ${genderLabel}, ${profile.age} років
@@ -127,7 +127,7 @@ function buildSystemContext(
   const days = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
   const availDays = profile.availableDays.map((d) => days[d]).join(', ');
 
-  return `Ти персональний AI-тренер в додатку AlphaTrainer. Відповідай українською мовою.
+  return `Ти персональний AI-тренер в додатку «Гарт». Відповідай українською мовою.
 
 ПРОФІЛЬ СПОРТСМЕНА:
 - Ім'я: ${profile.name}

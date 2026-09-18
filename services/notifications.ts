@@ -64,7 +64,7 @@ export async function scheduleWorkoutReminders(
     'Час тренуватися! Ти вже на шляху до своїх цілей.',
     'Сьогодні день тренування! Не пропускай.',
     'Тренування запланове на сьогодні. Вперед!',
-    'AlphaTrainer чекає на твої результати сьогодні!',
+    'Гарт чекає на твої результати сьогодні!',
   ];
 
   for (const day of workoutDays) {
@@ -72,7 +72,7 @@ export async function scheduleWorkoutReminders(
     await Notifications.scheduleNotificationAsync({
       identifier: `workout-reminder-${day}`,
       content: {
-        title: 'AlphaTrainer - Час тренуватися!',
+        title: 'Гарт — час тренуватися!',
         body: msg,
         data: { type: 'workout_reminder', day },
         sound: true,
@@ -144,7 +144,7 @@ export async function scheduleWaterReminders(
     await Notifications.scheduleNotificationAsync({
       identifier: `water-reminder-${i}`,
       content: {
-        title: 'AlphaTrainer — Вода',
+        title: 'Гарт — вода',
         body: msg,
         data: { type: 'water_reminder' },
         sound: true,

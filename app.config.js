@@ -28,13 +28,14 @@ const gitHash = sh('git rev-parse --short HEAD') || 'unknown';
 const gitDirty = sh('git status --porcelain') !== '';
 
 module.exports = () => ({
-  name: 'AlphaTrainer',
+  name: 'Гарт',
   slug: 'alpha-trainer-app',
   version,
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
-  scheme: 'alphatrainer',
+  // другу схему лишаємо, щоб уже створені посилання не побились
+  scheme: ['hart', 'alphatrainer'],
   splash: {
     image: './assets/splash-icon.png',
     resizeMode: 'contain',
@@ -70,14 +71,14 @@ module.exports = () => ({
       'expo-camera',
       {
         cameraPermission:
-          'AlphaTrainer використовує камеру для сканування штрих-кодів та фото-логування їжі.',
+          '«Гарт» використовує камеру для сканування штрих-кодів та фото-логування їжі.',
       },
     ],
     [
       'expo-image-picker',
       {
-        photosPermission: 'AlphaTrainer використовує галерею для фото-логування їжі.',
-        cameraPermission: 'AlphaTrainer використовує камеру для фото-логування їжі.',
+        photosPermission: '«Гарт» використовує галерею для фото-логування їжі.',
+        cameraPermission: '«Гарт» використовує камеру для фото-логування їжі.',
       },
     ],
     [

@@ -901,7 +901,7 @@ function StepWelcome({
       <View style={styles.bigIcon}>
         <Ionicons name="barbell-outline" size={52} color={Colors.primary} />
       </View>
-      <Text style={styles.stepTitle}>Ласкаво просимо до{'\n'}AlphaTrainer</Text>
+      <Text style={styles.stepTitle}>Ласкаво просимо до{'\n'}Гарту</Text>
       <Text style={styles.stepDesc}>
         Персональний AI-тренер, який будує план спеціально під тебе.{'\n\n'}
         Пройди 7 простих кроків щоб налаштувати додаток — це займе лише 2 хвилини.
@@ -1147,7 +1147,7 @@ function StepGemini({
     },
     {
       num: '3', title: 'Натисни "Create API Key"',
-      desc: 'Вибери назву (наприклад "AlphaTrainer") і натисни "Submit"',
+      desc: 'Вибери назву (наприклад "Hart") і натисни "Submit"',
       action: (
         <TouchableOpacity style={styles.doneStepBtn} onPress={() => setApiStep(3)}>
           <Ionicons name="checkmark" size={16} color={Colors.success} />

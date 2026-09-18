@@ -1107,3 +1107,44 @@ export function recentExerciseIds(
   }
   return out;
 }
+
+export interface LastResult {
+  weight?: number;
+  reps?: number;
+  date: string;
+}
+
+/**
+ * Що людина робила в цій вправі минулого разу — щоб не згадувати,
+ * з якою вагою вона працює. Ключ — id вправи з бібліотеки.
+ */
+export function lastResults(
+  workouts: WorkoutEntry[],
+  resolver: ExerciseResolver
+): Map<string, LastResult> {
+  const out = new Map<string, LastResult>();
+  for (const w of [...workouts].sort((a, b) => b.date.localeCompare(a.date))) {
+    for (const e of w.exercises ?? []) {
+      const id = resolver(e);
+      if (!id || out.has(id)) continue;
+      // найважчий підхід описує вправу краще, ніж зведене середнє
+      const sets = e.setsDetail && e.setsDetail.length > 0
+        ? e.setsDetail
+        : [{ weight: e.weight, reps: e.reps }];
+      let best = sets[0];
+      for (const s of sets) if ((s.weight ?? 0) > (best.weight ?? 0)) best = s;
+      if (!best.weight && !best.reps) continue;
+      out.set(id, { weight: best.weight, reps: best.reps, date: w.date });
+    }
+  }
+  return out;
+}
+
+/** Короткий підпис: «минулого разу 80 кг × 5». */
+export function formatLastResult(r: LastResult | undefined): string | null {
+  if (!r) return null;
+  if (r.weight && r.reps) return `минулого разу ${r.weight} кг × ${r.reps}`;
+  if (r.weight) return `минулого разу ${r.weight} кг`;
+  if (r.reps) return `минулого разу ${r.reps} повт.`;
+  return null;
+}

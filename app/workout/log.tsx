@@ -92,6 +92,9 @@ export default function LogWorkoutScreen() {
   const [resolver, setResolver] = useState<ExerciseResolver | undefined>(undefined);
   // останні вправи користувача — щоб не шукати щоразу те саме
   const [recentIds, setRecentIds] = useState<string[]>([]);
+  // Позначки «зроблено»: під час тренування важливо бачити, що вже позаду.
+  // Це стан екрана, у збережене тренування він не потрапляє.
+  const [done, setDone] = useState<number[]>([]);
   const [equipmentIds, setEquipmentIds] = useState<Equipment[] | undefined>(undefined);
   const [protectZones, setProtectZones] = useState<JointZone[]>([]);
   // Заміна вправи (ТЗ F4): індекс у списку + сама вправа з бібліотеки
@@ -819,7 +822,12 @@ export default function LogWorkoutScreen() {
 
           {/* Exercises */}
           <View style={styles.exercisesHeader}>
-            <Text style={styles.label}>{t('exercisesLabel')}</Text>
+            <Text style={styles.label}>
+              {t('exercisesLabel')}
+              {exercises.length > 0 && !isTemplateMode
+                ? `  ${done.length}/${exercises.length}`
+                : ''}
+            </Text>
             <View style={styles.exercisesHeaderActions}>
               {exercises.length > 0 && !isTemplateMode && (
                 <TouchableOpacity
@@ -876,6 +884,10 @@ export default function LogWorkoutScreen() {
             onRemove: removeExercise,
             onEdit: startEditExercise,
             onSubstitute: openSubstitute,
+            done,
+            onToggleDone: (i: number) => setDone((prev) => (
+              prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]
+            )),
             onMove: handleMove,
             editingIdx: editingExIdx,
             groupMode,
@@ -1385,6 +1397,8 @@ interface ExerciseGroupOpts {
   onRemove: (i: number) => void;
   onEdit: (i: number) => void;
   onSubstitute: (i: number) => void;
+  done: number[];
+  onToggleDone: (i: number) => void;
   onMove: (i: number, dir: -1 | 1) => void;
   editingIdx: number | null;
   groupMode: boolean;
@@ -1394,7 +1408,10 @@ interface ExerciseGroupOpts {
 }
 
 function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
-  const { exercises, kcal, onRemove, onEdit, onSubstitute, onMove, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
+  const {
+    exercises, kcal, onRemove, onEdit, onSubstitute, onMove, editingIdx,
+    groupMode, selected, onToggleSel, onUngroup, done, onToggleDone,
+  } = o;
   const nodes: React.ReactNode[] = [];
   let i = 0;
   // group consecutive exercises with the same supersetId
@@ -1415,11 +1432,22 @@ function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
             />
           </TouchableOpacity>
         )}
+        {!groupMode && (
+          <TouchableOpacity onPress={() => onToggleDone(idx)} style={styles.doneBox} hitSlop={8}>
+            <Ionicons
+              name={done.includes(idx) ? 'checkmark-circle' : 'ellipse-outline'}
+              size={20}
+              color={done.includes(idx) ? Colors.success : Colors.textMuted}
+            />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={styles.exerciseLeft}
           onPress={() => (groupMode ? onToggleSel(idx) : onEdit(idx))}
         >
-          <Text style={styles.exerciseName}>{ex.name}</Text>
+          <Text style={[styles.exerciseName, done.includes(idx) && styles.exerciseNameDone]}>
+            {ex.name}
+          </Text>
           <Text style={styles.exerciseMeta}>{metaWithKcal(ex, kcal?.[idx])}</Text>
         </TouchableOpacity>
         {!groupMode && (
@@ -1529,6 +1557,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs, borderWidth: 1, borderColor: Colors.border,
   },
   exerciseLeft: { flex: 1 },
+  doneBox: { paddingRight: 6 },
+  exerciseNameDone: { color: Colors.textMuted, textDecorationLine: 'line-through' },
   exerciseName: { ...Typography.body, fontWeight: '600' },
   exerciseMeta: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
   exerciseItemEditing: { borderColor: Colors.primary, backgroundColor: Colors.primary + '10' },

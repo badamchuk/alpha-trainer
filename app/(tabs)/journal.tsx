@@ -116,7 +116,7 @@ export default function JournalScreen() {
     });
     const csv = header + rows.join('\n');
     try {
-      await Share.share({ message: csv, title: 'AlphaTrainer – Журнал тренувань' });
+      await Share.share({ message: csv, title: 'Гарт – Журнал тренувань' });
     } catch { /* user cancelled */ }
   }
 

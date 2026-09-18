@@ -7,7 +7,7 @@
  */
 import {
   getExerciseList, getExerciseProgress, getMuscleGroupBalance, getOverloadSuggestion,
-  getPersonalRecords, getStrengthScore, getVolumeLandmarks, recentExerciseIds,
+  getPersonalRecords, getStrengthScore, getVolumeLandmarks, recentExerciseIds, lastResults, formatLastResult,
 } from '../services/analytics';
 import { createResolver } from '../services/exerciseMatch';
 import { ExerciseLog, WorkoutEntry } from '../types';
@@ -144,5 +144,30 @@ describe('нещодавні вправи (для швидкого вибору)
 
   it('обмеження кількості працює', () => {
     expect(recentExerciseIds(SPELLINGS, resolver, 1)).toHaveLength(1);
+  });
+});
+
+describe('підказка «минулого разу»', () => {
+  it('бере найважчий підхід останнього тренування', () => {
+    const last = lastResults(SPELLINGS, resolver).get('back_squat')!;
+    expect(last.weight).toBe(105);
+    expect(last.date).toBe('2026-09-05');
+  });
+
+  it('читається людиною', () => {
+    expect(formatLastResult({ weight: 80, reps: 5, date: '2026-09-01' }))
+      .toBe('минулого разу 80 кг × 5');
+    expect(formatLastResult({ reps: 12, date: '2026-09-01' }))
+      .toBe('минулого разу 12 повт.');
+    expect(formatLastResult(undefined)).toBeNull();
+  });
+
+  it('вправи без результатів не потрапляють у підказки', () => {
+    const w = [{
+      id: '1', date: '2026-09-10', workoutType: 'strength', notes: '', duration: 60,
+      completedAt: '2026-09-10T10:00:00.000Z',
+      exercises: [{ name: 'Планка' }],
+    }];
+    expect(lastResults(w, resolver).size).toBe(0);
   });
 });
