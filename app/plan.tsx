@@ -15,6 +15,9 @@ import ExerciseImage from '../components/ExerciseImage';
 import RichText from '../components/RichText';
 import { stripExerciseIds } from '../services/aiContext';
 import { getExercise } from '../services/library';
+import { Equipment, JointZone, LibraryExercise } from '../services/library/types';
+import { equipmentOf } from '../services/equipment';
+import SubstitutionSheet from '../components/SubstitutionSheet';
 import { prescribe } from '../services/prescriptions';
 import {
   WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS,
@@ -36,10 +39,16 @@ export default function PlanScreen() {
   const [plan, setPlan] = useState<TrainingPlan | null>(null);
   const [expanded, setExpanded] = useState<number | null>(new Date().getDay());
   const [aiProvider, setAiProvider] = useState<'Groq' | 'Gemini AI'>('Gemini AI');
+  // заміна вправи прямо в дні плану (ТЗ F8.1)
+  const [subs, setSubs] = useState<{ day: number; idx: number; ex: LibraryExercise } | null>(null);
+  const [equipment, setEquipment] = useState<Equipment[] | undefined>(undefined);
+  const [protectZones, setProtectZones] = useState<JointZone[]>([]);
 
   useFocusEffect(useCallback(() => {
     async function load() {
       const [p, profile] = await Promise.all([getTrainingPlan(), getUserProfile()]);
+      setEquipment(equipmentOf(profile));
+      setProtectZones(profile?.protectZones ?? []);
       setPlan(p);
       setAiProvider(profile?.groqApiKey ? 'Groq' : 'Gemini AI');
     }
@@ -54,6 +63,30 @@ export default function PlanScreen() {
    * Вправи, впізнані бібліотекою, несуть id — тому в формі одразу працюють
    * заміна, картинка й правильні калорії. Невпізнані йдуть просто назвою.
    */
+  /**
+   * Заміна вправи в дні плану. Правимо ТІЛЬКИ вправу — текст плану від тренера
+   * лишається як був, бо це його порада, а не наші дані.
+   */
+  async function applyPlanSubstitution(next: LibraryExercise) {
+    if (!plan || !subs) return;
+    const updated: TrainingPlan = {
+      ...plan,
+      weeklySchedule: plan.weeklySchedule.map((d) => (d.dayOfWeek !== subs.day ? d : {
+        ...d,
+        exercises: d.exercises.map((e, i) => (i !== subs.idx ? e : {
+          ...e,
+          name: next.nameUk,
+          exerciseId: next.id,
+          // вага від іншого снаряда не має сенсу
+          weight: next.equipment.join() === subs.ex.equipment.join() ? e.weight : undefined,
+        })),
+      })),
+    };
+    setPlan(updated);
+    setSubs(null);
+    await saveTrainingPlan(updated);
+  }
+
   async function startFromPlan(day: DayPlan) {
     const exercises: ExerciseLog[] = day.exercises.map((ex) => {
       const lib = ex.exerciseId ? getExercise(ex.exerciseId) : undefined;
@@ -234,6 +267,18 @@ export default function PlanScreen() {
                                   </Text>
                                 )}
                               </View>
+                              {/* замінити вправу прямо в плані — та сама панель,
+                                  що у формі запису й конструкторі */}
+                              {ex.exerciseId && (
+                                <TouchableOpacity
+                                  hitSlop={8}
+                                  onPress={() => setSubs({
+                                    day: day.dayOfWeek, idx: i, ex: getExercise(ex.exerciseId!)!,
+                                  })}
+                                >
+                                  <Ionicons name="swap-horizontal-outline" size={18} color={Colors.textSecondary} />
+                                </TouchableOpacity>
+                              )}
                             </View>
                           ))}
                         </View>
@@ -269,6 +314,15 @@ export default function PlanScreen() {
           </View>
         )}
       </ScrollView>
+
+      <SubstitutionSheet
+        visible={subs !== null}
+        exercise={subs?.ex ?? null}
+        equipment={equipment}
+        protectZones={protectZones}
+        onClose={() => setSubs(null)}
+        onPick={applyPlanSubstitution}
+      />
     </View>
   );
 }

@@ -23,6 +23,14 @@ export function createPlanFromAIText(
         if (id) ex.exerciseId = id;
       }
     }
+    // Заголовки без двокрапки («Цілі», «Примітки») на вигляд не відрізниш від
+    // назви вправи — але вправа або впізнається бібліотекою, або має цифри.
+    // Голе слово, за яким нічого немає, — це підзаголовок.
+    day.exercises = day.exercises.filter((ex) => (
+      ex.exerciseId
+      || ex.sets || ex.reps || ex.duration || ex.weight
+      || ex.name.trim().split(/\s+/).length > 2
+    ));
   }
   return {
     id: Date.now().toString(),

@@ -160,3 +160,31 @@ describe('коментарі й заголовки', () => {
     expect(names).toEqual(['Присідання', 'Махи гирею']);
   });
 });
+
+describe('підзаголовки без двокрапки', () => {
+  const TEXT = `**Понеділок**
+- **Присідання [back_squat]**: 5х5
+- Цілі
+- Примітки
+- Бурпі
+- Тримай спину рівно і не поспішай між підходами
+`;
+
+  it('голе слово-заголовок не стає вправою', () => {
+    const names = createPlanFromAIText(TEXT, [], createResolver())
+      .weeklySchedule[0].exercises.map((e) => e.name);
+    expect(names).not.toContain('Цілі');
+    expect(names).not.toContain('Примітки');
+  });
+
+  it('впізнана вправа без цифр лишається', () => {
+    const names = createPlanFromAIText(TEXT, [], createResolver())
+      .weeklySchedule[0].exercises.map((e) => e.name);
+    expect(names).toContain('Бурпі');
+  });
+
+  it('без резолвера теж не тягне заголовки', () => {
+    const names = createPlanFromAIText(TEXT, []).weeklySchedule[0].exercises.map((e) => e.name);
+    expect(names).not.toContain('Цілі');
+  });
+});

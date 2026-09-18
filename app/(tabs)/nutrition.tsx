@@ -656,7 +656,12 @@ export default function NutritionScreen() {
           <View style={styles.emptyState}>
             <Ionicons name="restaurant-outline" size={48} color={Colors.textMuted} />
             <Text style={styles.emptyText}>Ще нічого не додано</Text>
-            <Text style={styles.emptyHint}>Напиши що їв — AI порахує калорії</Text>
+            <Text style={styles.emptyHint}>
+              {/* без ключа AI не порахує — не обіцяємо того, чого не буде */}
+              {profile?.geminiApiKey || profile?.groqApiKey
+                ? 'Напиши що їв — AI порахує калорії'
+                : 'Додай прийом їжі вручну або зі штрихкоду. Для підрахунку з тексту й фото потрібен AI-ключ у профілі'}
+            </Text>
           </View>
         )}
       </ScrollView>
