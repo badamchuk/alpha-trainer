@@ -205,22 +205,4 @@ export const EXERCISES: Exercise[] = [
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 
-export function getExerciseName(exercise: Exercise, lang: Lang): string {
-  return lang === 'en' ? exercise.nameEn : exercise.nameUk;
-}
 
-export function searchExercises(
-  query: string,
-  lang: Lang,
-  group?: MuscleGroup | null
-): Exercise[] {
-  const q = query.trim().toLowerCase();
-  return EXERCISES.filter((ex) => {
-    if (group && ex.muscleGroup !== group) return false;
-    if (!q) return true;
-    return (
-      ex.nameEn.toLowerCase().includes(q) ||
-      ex.nameUk.toLowerCase().includes(q)
-    );
-  });
-}

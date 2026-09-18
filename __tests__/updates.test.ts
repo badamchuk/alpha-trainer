@@ -102,3 +102,29 @@ describe('checkForUpdate', () => {
     await expect(checkForUpdate(true)).rejects.toThrow('500');
   });
 });
+
+describe('збірка для магазину (правила Google Play)', () => {
+  it('самооновлення можна вимкнути прапорцем збірки', () => {
+    const Constants = require('expo-constants').default;
+    const extra = Constants.expoConfig?.extra ?? {};
+    // у звичайній збірці воно є
+    expect(extra.selfUpdate !== false).toBe(true);
+  });
+
+  it('прапорець читається саме з конфігу, а не зашитий у код', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '..', 'services', 'updates.ts'), 'utf8',
+    ) as string;
+    expect(src).toContain('extra.selfUpdate');
+    // перевірка оновлень не йде в мережу, якщо самооновлення вимкнене
+    const fn = src.slice(src.indexOf('export async function checkForUpdate'));
+    expect(fn.slice(0, 400)).toContain('selfUpdateEnabled()');
+  });
+
+  it('конфіг вимикає самооновлення для DISTRIBUTION=play', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '..', 'app.config.js'), 'utf8',
+    ) as string;
+    expect(src).toContain("selfUpdate: process.env.DISTRIBUTION !== 'play'");
+  });
+});

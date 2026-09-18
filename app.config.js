@@ -111,5 +111,12 @@ module.exports = () => ({
     // зірочка в UI = у збірку потрапили незакомічені зміни
     gitDirty,
     buildDate: new Date().toISOString(),
+    /**
+     * Самооновлення через APK з GitHub. Для збірки в Google Play його треба
+     * вимкнути: правила магазину забороняють додаткам оновлювати себе повз
+     * нього. Збірка для магазину: DISTRIBUTION=play npm run release.
+     */
+    selfUpdate: process.env.DISTRIBUTION !== 'play',
+    distribution: process.env.DISTRIBUTION || 'direct',
   },
 });

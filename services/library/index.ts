@@ -7,6 +7,7 @@ import {
   Equipment, LibraryExercise, Level, MovementPattern, Muscle, MuscleGroup, MUSCLE_TO_GROUP,
 } from './types';
 import { normalizeName } from './normalize';
+import { Lang, getCurrentExerciseLang } from '../i18n';
 import { LEG_EXERCISES } from './data/legs';
 import { PUSH_EXERCISES } from './data/push';
 import { PULL_EXERCISES } from './data/pull';
@@ -92,6 +93,17 @@ function indexes(): Indexes {
 
   cache = { byId, byName, byPattern, byFamily };
   return cache;
+}
+
+/**
+ * Назва вправи мовою, яку обрав користувач (Профіль → «Мова вправ»).
+ *
+ * Багато хто звик до англійських назв у залі («back squat», а не «присідання
+ * зі штангою на спині»), тому вибір лишається за людиною. Без явної мови
+ * беремо поточну — так сервіси не тягнуть її через усі виклики.
+ */
+export function exerciseName(ex: LibraryExercise, lang?: Lang): string {
+  return (lang ?? getCurrentExerciseLang()) === 'en' ? ex.nameEn : ex.nameUk;
 }
 
 export function allExercises(): LibraryExercise[] {

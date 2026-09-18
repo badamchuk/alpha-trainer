@@ -29,7 +29,7 @@ import {
 } from '../../services/calories';
 import { buildResolver } from '../../services/exerciseLinks';
 import type { ExerciseResolver } from '../../services/exerciseMatch';
-import { getExercise } from '../../services/library';
+import { exerciseName, getExercise } from '../../services/library';
 import { Equipment, JointZone, LibraryExercise } from '../../services/library/types';
 import { formatPrescription, needsNewScheme, prescribe } from '../../services/prescriptions';
 import { equipmentOf } from '../../services/equipment';
@@ -554,7 +554,7 @@ export default function LogWorkoutScreen() {
     setSubsExercise(null);
 
     if (needsNewScheme(subsExercise, next)) {
-      Alert.alert('Схему підходів оновлено', `${next.nameUk}: ${formatPrescription(prescribe(next))}`);
+      Alert.alert('Схему підходів оновлено', `${exerciseName(next)}: ${formatPrescription(prescribe(next))}`);
     }
   }
 
@@ -1086,10 +1086,10 @@ export default function LogWorkoutScreen() {
         availableEquipment={equipmentIds}
         onClose={() => setPickerVisible(false)}
         onSelect={(ex) => {
-          setExName(ex.nameUk);
+          setExName(exerciseName(ex));
           setExId(ex.id);
           setOverloadHint('');
-          lookupOverloadHint(ex.nameUk);
+          lookupOverloadHint(exerciseName(ex));
           // схема з бібліотеки як стартова точка — користувач її поправить
           const p = prescribe(ex);
           if (!exSets) setExSets(String(p.sets));

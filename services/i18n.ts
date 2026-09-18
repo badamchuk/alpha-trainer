@@ -6,11 +6,14 @@ export type Lang = 'uk' | 'en';
 const STORAGE_KEY = '@alpha_trainer:language';
 const EXERCISE_LANG_KEY = '@alpha_trainer:exercise_language';
 
-let _lang: Lang = 'uk';
+const DEFAULT_LANG: Lang = 'uk';
+const DEFAULT_EXERCISE_LANG: Lang = 'uk';
+
+let _lang: Lang = DEFAULT_LANG;
 // Бібліотека вправ тепер україномовна (services/library), тож і назви за
 // замовчуванням українські. Хто вже обрав English — вибір лежить у сховищі
 // й перебиває це значення, тож нічого не міняється.
-let _exerciseLang: Lang = 'uk';
+let _exerciseLang: Lang = DEFAULT_EXERCISE_LANG;
 const _subscribers: Array<() => void> = [];
 
 export async function loadLanguage(): Promise<void> {
@@ -19,8 +22,10 @@ export async function loadLanguage(): Promise<void> {
       AsyncStorage.getItem(STORAGE_KEY),
       AsyncStorage.getItem(EXERCISE_LANG_KEY),
     ]);
-    if (stored === 'uk' || stored === 'en') _lang = stored;
-    if (storedEx === 'uk' || storedEx === 'en') _exerciseLang = storedEx;
+    // Порожнє чи зіпсоване значення означає «нічого не обирали» — тоді
+    // повертаємось до типової мови, а не лишаємо те, що було в пам'яті.
+    _lang = stored === 'uk' || stored === 'en' ? stored : DEFAULT_LANG;
+    _exerciseLang = storedEx === 'uk' || storedEx === 'en' ? storedEx : DEFAULT_EXERCISE_LANG;
   } catch {
     // defaults
   }

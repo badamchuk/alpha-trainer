@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import ExerciseImage from '../../components/ExerciseImage';
-import { getExercise, muscleGroupOf } from '../../services/library';
+import { exerciseName, getExercise, muscleGroupOf } from '../../services/library';
 import { LibraryExercise, MUSCLE_GROUP_LABELS } from '../../services/library/types';
 import { EQUIPMENT_LABELS, equipmentOf } from '../../services/equipment';
 import { formatPrescription, prescribe } from '../../services/prescriptions';
@@ -98,7 +98,7 @@ export default function ExerciseCardScreen() {
 
   return (
     <View style={styles.container}>
-      <Header title={exercise.nameUk} onBack={() => router.back()} top={insets.top} />
+      <Header title={exerciseName(exercise)} onBack={() => router.back()} top={insets.top} />
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}>
@@ -219,7 +219,7 @@ function Related({ ex, note, onPress }: { ex: LibraryExercise; note: string; onP
     <TouchableOpacity style={styles.relatedRow} onPress={onPress}>
       <ExerciseImage slug={ex.imageSlug} pattern={ex.pattern} size={44} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.text}>{ex.nameUk}</Text>
+        <Text style={styles.text}>{exerciseName(ex)}</Text>
         <Text style={styles.muted}>{note}</Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />

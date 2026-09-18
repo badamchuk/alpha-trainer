@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import ExerciseImage from './ExerciseImage';
-import { searchLibrary } from '../services/library';
+import { exerciseName, searchLibrary } from '../services/library';
 import {
   Equipment, LibraryExercise, MUSCLE_GROUP_LABELS, MuscleGroup,
 } from '../services/library/types';
@@ -117,7 +117,7 @@ export default function LibraryPicker({
             <TouchableOpacity style={styles.row} onPress={() => { onSelect(item); close(); }}>
               <ExerciseImage slug={item.imageSlug} pattern={item.pattern} size={44} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.rowName}>{item.nameUk}</Text>
+                <Text style={styles.rowName}>{exerciseName(item)}</Text>
                 <Text style={styles.rowMeta}>
                   {MUSCLE_GROUP_LABELS[item.displayGroup ?? 'fullbody'].uk}
                   {' · '}{LEVEL_LABEL[item.level]}

@@ -4,6 +4,7 @@
 // Постійні обмеження живуть у профілі й підставляються початково.
 
 import { useMemo, useState } from 'react';
+import { exerciseName } from '../services/library';
 import {
   Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
@@ -83,7 +84,7 @@ export default function SubstitutionSheet({
           <View style={styles.origin}>
             <ExerciseImage slug={exercise.imageSlug} pattern={exercise.pattern} size={56} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.originName}>{exercise.nameUk}</Text>
+              <Text style={styles.originName}>{exerciseName(exercise)}</Text>
               <Text style={styles.originMeta}>замість чого шукаємо</Text>
             </View>
           </View>
@@ -169,7 +170,7 @@ function OptionRow(
     <TouchableOpacity style={styles.row} onPress={onPick}>
       <ExerciseImage slug={exercise.imageSlug} pattern={exercise.pattern} size={48} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.rowName}>{exercise.nameUk}</Text>
+        <Text style={styles.rowName}>{exerciseName(exercise)}</Text>
         <Text style={styles.rowReason}>{reason}</Text>
         {caution && (
           <View style={styles.cautionRow}>

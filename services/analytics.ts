@@ -1,7 +1,7 @@
 import { WorkoutEntry, ExerciseLog } from '../types';
 import { getLocalDateString } from './storage';
 import { EXERCISES, MuscleGroup } from './exercises';
-import { LibraryExercise, getExercise, muscleGroupOf } from './library';
+import { LibraryExercise, exerciseName, getExercise, muscleGroupOf } from './library';
 import type { ExerciseResolver } from './exerciseMatch';
 
 // ─── Вправа з бібліотеки, якщо запис вдалося впізнати ────────────────────────
@@ -397,7 +397,7 @@ export function getExerciseList(
       const key = groupKey(e, resolver);
       const lib = libOf(e, resolver);
       const entry = groups.get(key) ?? {
-        label: lib?.nameUk ?? e.name.trim(),
+        label: lib ? exerciseName(lib) : e.name.trim(),
         records: 0,
         id: lib?.id ?? null,
         spellings: new Map<string, number>(),
@@ -966,7 +966,7 @@ export function getPersonalRecords(
         const existing = records.get(key);
         if (!existing || rm > existing.estimated1RM) {
           records.set(key, {
-            exerciseName: lib?.nameUk ?? e.name.trim(),
+            exerciseName: lib ? exerciseName(lib) : e.name.trim(),
             weight: set.weight,
             reps: set.reps,
             estimated1RM: rm,

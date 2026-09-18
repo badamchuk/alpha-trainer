@@ -10,7 +10,7 @@
 import {
   Equipment, Intent, JointZone, Level, LibraryExercise, MovementPattern,
 } from './library/types';
-import { allExercises, getExercise, isAvailable } from './library';
+import { allExercises, exerciseName, getExercise, isAvailable } from './library';
 import { Focus, Prescription, needsNewScheme, prescribe } from './prescriptions';
 import { ExerciseLog, WorkoutEntry } from '../types';
 
@@ -428,7 +428,7 @@ export function draftToExercises(draft: WorkoutDraft): ExerciseLog[] {
     for (const e of block.exercises) {
       const p = e.prescription;
       out.push({
-        name: e.exercise.nameUk,
+        name: exerciseName(e.exercise),
         exerciseId: e.exercise.id,
         sets: p.sets,
         reps: p.reps,

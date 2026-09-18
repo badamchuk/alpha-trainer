@@ -14,7 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import ExerciseImage from '../components/ExerciseImage';
 import RichText from '../components/RichText';
 import { stripExerciseIds } from '../services/aiContext';
-import { getExercise } from '../services/library';
+import { exerciseName, getExercise } from '../services/library';
 import { Equipment, JointZone, LibraryExercise } from '../services/library/types';
 import { equipmentOf } from '../services/equipment';
 import SubstitutionSheet from '../components/SubstitutionSheet';
@@ -75,7 +75,7 @@ export default function PlanScreen() {
         ...d,
         exercises: d.exercises.map((e, i) => (i !== subs.idx ? e : {
           ...e,
-          name: next.nameUk,
+          name: exerciseName(next),
           exerciseId: next.id,
           // вага від іншого снаряда не має сенсу
           weight: next.equipment.join() === subs.ex.equipment.join() ? e.weight : undefined,
@@ -93,7 +93,7 @@ export default function PlanScreen() {
       const scheme = lib ? prescribe(lib) : null;
       const reps = ex.reps ? parseInt(ex.reps, 10) : undefined;
       return {
-        name: lib?.nameUk ?? ex.name,
+        name: lib ? exerciseName(lib) : ex.name,
         exerciseId: ex.exerciseId,
         sets: ex.sets ?? scheme?.sets,
         reps: Number.isFinite(reps) ? reps : scheme?.reps,

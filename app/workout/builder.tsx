@@ -4,6 +4,7 @@
 // і покрите тестами. Тут — вибір формату, показ блоків і дії над ними.
 
 import { useCallback, useEffect, useState } from 'react';
+import { exerciseName } from '../../services/library';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
@@ -270,7 +271,7 @@ export default function BuilderScreen() {
                     <View key={e.exercise.id} style={styles.exRow}>
                       <ExerciseImage slug={e.exercise.imageSlug} pattern={e.exercise.pattern} size={48} />
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.exName}>{e.exercise.nameUk}</Text>
+                        <Text style={styles.exName}>{exerciseName(e.exercise)}</Text>
                         <Text style={styles.exScheme}>{formatPrescription(e.prescription)}</Text>
                       </View>
                       <TouchableOpacity

@@ -616,8 +616,10 @@ export default function OnboardingScreen() {
                 >
                   <Ionicons name="image-outline" size={20} color={Colors.textSecondary} />
                   <View style={{ flex: 1 }}>
-                    <Text style={linkRowStyles.title}>Джерела ілюстрацій</Text>
-                    <Text style={linkRowStyles.hint}>Автори малюнків вправ і ліцензія CC BY-SA 4.0</Text>
+                    <Text style={linkRowStyles.title}>Джерела й умови</Text>
+                    <Text style={linkRowStyles.hint}>
+                      Автори ілюстрацій, дані про продукти, застереження про здоров'я
+                    </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
                 </TouchableOpacity>

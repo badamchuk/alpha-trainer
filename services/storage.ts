@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile, Goal, WorkoutEntry, TrainingPlan, ChatMessage, BodyMeasurement } from '../types';
-import { getExercise } from './library';
+import { exerciseName as libName, getExercise } from './library';
 import type { ExerciseResolver } from './exerciseMatch';
 
 const KEYS = {
@@ -282,7 +282,7 @@ export async function getPersonalRecords(
 
       const newRecord: PersonalRecord = existing
         ? { ...existing }
-        : { exerciseName: lib?.nameUk ?? ex.name, maxWeight: 0, maxReps: 0, date: workout.date };
+        : { exerciseName: lib ? libName(lib) : ex.name, maxWeight: 0, maxReps: 0, date: workout.date };
 
       // Політні підходи: сумарні поля описують лише найважчий підхід, тому
       // максимум повторів треба шукати по всіх підходах, інакше піраміда

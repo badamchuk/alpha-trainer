@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { exerciseName } from '../../services/library';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
-  Platform, Alert, Modal, ScrollView,
+  Platform, Alert, Modal, ScrollView, Linking,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -582,6 +583,7 @@ function MessageBubble({ message, isPlanMessage, planSaved, onSavePlan, savingPl
 
         {/* Вправи, які тренер назвав: із бібліотеки, з картинкою й кнопкою «почати» */}
         {!isUser && <AiExercises text={message.content} />}
+        {!isUser && message.content.length > 0 && <ReportAnswer text={message.content} />}
 
         {/* Save plan button — shown below AI message if it's a plan */}
         {isPlanMessage && !isUser && (
@@ -629,7 +631,7 @@ function AiExercises({ text }: { text: string }) {
     const exercises: ExerciseLog[] = found.map((ex) => {
       const p = prescribe(ex);
       return {
-        name: ex.nameUk,
+        name: exerciseName(ex),
         exerciseId: ex.id,
         sets: p.sets,
         reps: p.reps,
@@ -654,7 +656,7 @@ function AiExercises({ text }: { text: string }) {
           onPress={() => router.push(`/exercises/${ex.id}`)}
         >
           <ExerciseImage slug={ex.imageSlug} pattern={ex.pattern} size={36} />
-          <Text style={aiExStyles.name} numberOfLines={1}>{ex.nameUk}</Text>
+          <Text style={aiExStyles.name} numberOfLines={1}>{exerciseName(ex)}</Text>
           <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
         </TouchableOpacity>
       ))}
@@ -665,6 +667,70 @@ function AiExercises({ text }: { text: string }) {
     </View>
   );
 }
+
+/**
+ * Скарга на відповідь AI.
+ *
+ * Модель може написати дурницю або щось недоречне. Користувач має бачити, що
+ * з цим можна щось зробити: позначити відповідь і надіслати її розробнику.
+ * Цього ж вимагають правила магазинів для додатків із генеративним AI.
+ */
+function ReportAnswer({ text }: { text: string }) {
+  const [sent, setSent] = useState(false);
+
+  function report() {
+    Alert.alert(
+      'Поскаржитись на відповідь?',
+      'Відповідь позначиться як невдала. Можеш надіслати її розробнику — '
+      + 'разом із нею піде лише текст самої відповіді, без твоїх даних.',
+      [
+        { text: 'Скасувати', style: 'cancel' },
+        {
+          text: 'Лише позначити',
+          onPress: async () => {
+            await addMemoryEntry('Користувач позначив відповідь тренера як невдалу — '
+              + 'уникай подібних формулювань.');
+            setSent(true);
+          },
+        },
+        {
+          text: 'Надіслати',
+          onPress: async () => {
+            await addMemoryEntry('Користувач позначив відповідь тренера як невдалу — '
+              + 'уникай подібних формулювань.');
+            setSent(true);
+            const body = encodeURIComponent(`Скарга на відповідь AI:\n\n${text.slice(0, 1500)}`);
+            Linking.openURL(
+              `https://github.com/badamchuk/alpha-trainer/issues/new?title=${
+                encodeURIComponent('Невдала відповідь AI')}&body=${body}`,
+            ).catch(() => {});
+          },
+        },
+      ],
+    );
+  }
+
+  if (sent) {
+    return (
+      <View style={reportStyles.row}>
+        <Ionicons name="checkmark-circle-outline" size={13} color={Colors.success} />
+        <Text style={reportStyles.done}>Позначено — тренер це врахує</Text>
+      </View>
+    );
+  }
+  return (
+    <TouchableOpacity style={reportStyles.row} onPress={report} hitSlop={6}>
+      <Ionicons name="flag-outline" size={13} color={Colors.textMuted} />
+      <Text style={reportStyles.text}>Погана відповідь</Text>
+    </TouchableOpacity>
+  );
+}
+
+const reportStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, paddingLeft: 2 },
+  text: { ...Typography.bodySmall, color: Colors.textMuted, fontSize: 11 },
+  done: { ...Typography.bodySmall, color: Colors.success, fontSize: 11 },
+});
 
 const aiExStyles = StyleSheet.create({
   box: { marginTop: Spacing.sm, gap: 6 },

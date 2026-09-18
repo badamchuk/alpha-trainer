@@ -11,7 +11,7 @@
 import {
   Equipment, JointZone, LibraryExercise, MovementPattern, Muscle,
 } from './library/types';
-import { allExercises, getExercise, isAvailable } from './library';
+import { allExercises, exerciseName, getExercise, isAvailable } from './library';
 import { convertCardio, needsNewScheme, prescribe } from './prescriptions';
 import { ExerciseLog } from '../types';
 
@@ -287,7 +287,7 @@ export function applySubstitution(
 
   const next: ExerciseLog = {
     ...prev,
-    name: to.nameUk,
+    name: exerciseName(to),
     exerciseId: to.id,
     sets: scheme?.sets ?? prev.sets,
   };

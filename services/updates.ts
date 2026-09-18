@@ -102,7 +102,19 @@ async function fetchLatest(): Promise<UpdateInfo | null> {
  * помилку, щоб її можна було показати. Автоматична перевірка бере кеш,
  * якщо з минулої не минуло 6 годин.
  */
+/**
+ * Чи можна оновлюватись самотужки. Вимикається змінною DISTRIBUTION=play під
+ * час збірки (app.config.js) — для Google Play, де це заборонено правилами.
+ */
+export function selfUpdateEnabled(): boolean {
+  const extra = (Constants.expoConfig?.extra ?? {}) as { selfUpdate?: boolean };
+  return extra.selfUpdate !== false;
+}
+
 export async function checkForUpdate(force = false): Promise<UpdateInfo | null> {
+  // У збірці для магазину оновлення роздає сам магазин; шукати APK на GitHub
+  // не можна — правила це прямо забороняють.
+  if (!selfUpdateEnabled()) return null;
   const state = await readState();
   if (!force && Date.now() - state.lastCheck < CHECK_EVERY_MS) {
     return newerThanCurrent(state.latest);

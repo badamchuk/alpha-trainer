@@ -15,6 +15,8 @@ const LICENSE_URL = 'https://creativecommons.org/licenses/by-sa/4.0/';
 const SOURCE_URL = 'https://github.com/bryllim/workout-guide';
 const BASE_URL = 'https://github.com/everkinetic/data';
 const AUTHOR_URL = 'https://bryllim.com';
+const OFF_URL = 'https://world.openfoodfacts.org';
+const ODBL_URL = 'https://opendatacommons.org/licenses/odbl/1-0/';
 
 const CHANGES = [
   'PNG 512×512 перетворено у WebP 256 px, щоб не роздувати розмір застосунку',
@@ -35,7 +37,7 @@ export default function AttributionScreen() {
         <TouchableOpacity onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Джерела ілюстрацій</Text>
+        <Text style={styles.headerTitle}>Джерела й умови</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -61,6 +63,27 @@ export default function AttributionScreen() {
               <Text style={styles.text}>{c}</Text>
             </View>
           ))}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Дані про продукти</Text>
+          <Text style={styles.text}>
+            Пошук за штрихкодом бере дані з Open Food Facts — відкритої бази,
+            яку наповнюють люди з усього світу. База поширюється за ліцензією
+            ODbL: нею можна користуватись, зазначивши джерело.
+          </Text>
+          <Link label="Open Food Facts" url={OFF_URL} />
+          <Link label="Ліцензія ODbL 1.0" url={ODBL_URL} />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Це не медична порада</Text>
+          <Text style={styles.text}>
+            Додаток рахує й підказує, але не знає твого здоров'я. Поради AI-тренера,
+            схеми підходів і оцінки калорій — орієнтир, а не призначення лікаря.
+            Гострий чи тривалий біль, хронічні хвороби, вагітність, відновлення після
+            травми — це привід спершу поговорити з лікарем, а не з додатком.
+          </Text>
         </View>
 
         <View style={styles.card}>
