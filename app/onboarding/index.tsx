@@ -511,6 +511,21 @@ export default function OnboardingScreen() {
                   </Text>
                 </View>
 
+                {/* Програми */}
+                <TouchableOpacity
+                  style={linkRowStyles.row}
+                  onPress={() => router.push('/programs')}
+                >
+                  <Ionicons name="flag-outline" size={20} color={Colors.textSecondary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={linkRowStyles.title}>Програми тренувань</Text>
+                    <Text style={linkRowStyles.hint}>
+                      Багатотижневі цикли, які самі піднімають навантаження
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
+
                 {/* Розпізнавання вправ */}
                 <TouchableOpacity
                   style={linkRowStyles.row}

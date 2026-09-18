@@ -40,6 +40,7 @@ const ALL_KEYS = [
   '@alpha_trainer:exercise_links',
   '@alpha_trainer:custom_exercises',
   '@alpha_trainer:builder_draft',
+  '@alpha_trainer:active_program',
 ];
 
 export interface BackupFile {

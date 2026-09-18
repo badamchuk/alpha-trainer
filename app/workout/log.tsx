@@ -33,6 +33,7 @@ import { exerciseName, getExercise } from '../../services/library';
 import { Equipment, JointZone, LibraryExercise } from '../../services/library/types';
 import { formatPrescription, needsNewScheme, prescribe } from '../../services/prescriptions';
 import { equipmentOf } from '../../services/equipment';
+import { markDayDone } from '../../services/programs/storage';
 import { applySubstitution } from '../../services/substitutions';
 import { recentExerciseIds } from '../../services/analytics';
 import SubstitutionSheet from '../../components/SubstitutionSheet';
@@ -73,6 +74,8 @@ export default function LogWorkoutScreen() {
   const [exercises, setExercises] = useState<ExerciseLog[]>([]);
   const [saving, setSaving] = useState(false);
   const [repeatingFrom, setRepeatingFrom] = useState<string | null>(null); // workout type label for banner
+  // Якщо тренування прийшло з програми — після збереження позначимо день пройденим
+  const [programDay, setProgramDay] = useState<{ week: number; day: number } | null>(null);
 
   // Rest timer
   const [restTimerVisible, setRestTimerVisible] = useState(false);
@@ -177,10 +180,12 @@ export default function LogWorkoutScreen() {
       try {
         const preset = JSON.parse(raw) as {
           workoutType: WorkoutType; duration: number; exercises: ExerciseLog[];
+          programDay?: { week: number; day: number };
         };
         setWorkoutType(preset.workoutType);
         setExercises(preset.exercises);
         setDuration(String(preset.duration));
+        if (preset.programDay) setProgramDay(preset.programDay);
       } catch {
         // зіпсована чернетка — просто відкриваємо порожню форму
       }
@@ -615,6 +620,8 @@ export default function LogWorkoutScreen() {
         totalCalories: totalCalories ? Number(totalCalories) : undefined,
       };
       await addWorkout(entry);
+      // день програми зараховується лише після справжнього збереження
+      if (programDay) await markDayDone(programDay.week, programDay.day);
       const allAfter = await getWorkouts();
       const stats = await import('../../services/storage').then((m) => m.getStats());
       checkAndUnlock(allAfter, stats.streak).catch(() => {});

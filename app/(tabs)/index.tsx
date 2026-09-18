@@ -15,6 +15,11 @@ import { useLocale } from '../../services/i18n';
 import { getDailyAdvice as geminiDailyAdvice, initGemini } from '../../services/gemini';
 import { getDailyAdvice as groqDailyAdvice, initGroq } from '../../services/groq';
 import { askProvider, isProviderDead } from '../../services/aiProvider';
+import { currentDay } from '../../services/programs/storage';
+import { backoffsFor, programDayToExercises } from '../../services/programs/engine';
+import { findSubstitutions } from '../../services/substitutions';
+import { equipmentOf } from '../../services/equipment';
+import { LibraryExercise } from '../../services/library/types';
 import { getTodayPlan, WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS } from '../../services/planParser';
 import { UserProfile, WorkoutEntry, TrainingPlan, DayPlan } from '../../types';
 import { getWaterData, addGlass, removeGlass, setWaterGoal, computeWaterGoal } from '../../services/water';
@@ -34,6 +39,8 @@ export default function TodayScreen() {
   const [loadingAdvice, setLoadingAdvice] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [todayPlan, setTodayPlan] = useState<DayPlan | null>(null);
+  // активна багатотижнева програма: що робити сьогодні за планом на місяці
+  const [program, setProgram] = useState<Awaited<ReturnType<typeof currentDay>>>(null);
   const [weekWorkoutDates, setWeekWorkoutDates] = useState<Set<string>>(new Set());
   const [waterData, setWaterData] = useState({ glasses: 0, goal: 8 });
   const [waterRemindersOn, setWaterRemindersOn] = useState(false);
@@ -67,6 +74,7 @@ export default function TodayScreen() {
     setStats(s);
     setTodayWorkouts(tw);
     setTodayPlan(plan ? getTodayPlan(plan) : null);
+    setProgram(await currentDay());
     // Update water goal from profile if profile is complete
     if (p?.onboardingComplete) {
       const computed = computeWaterGoal(p);
@@ -109,6 +117,51 @@ export default function TodayScreen() {
       ? { mood: wb.mood, sleep: wb.sleep, stress: wb.stress }
       : undefined;
     setRecovery(getRecoveryScore(allWorkouts, today, wbSnapshot));
+  }
+
+  /**
+   * Почати тренування за програмою: беремо день, підставляємо ваги цього тижня
+   * і відкриваємо форму запису — тим самим механізмом, що конструктор і план.
+   *
+   * Вправи, яких не дозволяє обладнання, міняємо звичайним рушієм замін:
+   * програма не має зупинятись через відсутню штангу.
+   */
+  async function startProgramDay() {
+    const state = await currentDay();
+    if (!state || 'finished' in state) return;
+
+    const profile = await getUserProfile();
+    const equipment = equipmentOf(profile);
+    const zones = profile?.protectZones ?? [];
+    const swapped: string[] = [];
+
+    const substitute = (ex: LibraryExercise): LibraryExercise => {
+      const fits = (!equipment || ex.equipment.every((e) => equipment.includes(e)))
+        && zones.every((z) => (ex.stress?.[z] ?? 0) < 3);
+      if (fits) return ex;
+      const r = findSubstitutions({ exercise: ex, availableEquipment: equipment, protectZones: zones });
+      const best = r.easier[0] ?? r.variations[0];
+      if (!best) return ex;
+      swapped.push(`${ex.nameUk} → ${best.exercise.nameUk}`);
+      return best.exercise;
+    };
+
+    const exercises = programDayToExercises(
+      state.template, state.programDay, state.week, state.active.baseWeights,
+      substitute, backoffsFor(state.active, state.week),
+    );
+
+    await AsyncStorage.setItem('@alpha_trainer:builder_started', JSON.stringify({
+      workoutType: state.template.focus === 'endurance' ? 'crossfit' : 'strength',
+      duration: 60,
+      exercises,
+      programDay: { week: state.week, day: state.day },
+    }));
+
+    if (swapped.length > 0) {
+      Alert.alert('Замінили вправи під твоє обладнання', swapped.join('\n'));
+    }
+    router.push('/workout/log?fromBuilder=1');
   }
 
   async function loadAdvice(p: UserProfile) {
@@ -425,6 +478,49 @@ export default function TodayScreen() {
         </View>
       )}
 
+      {/* Активна програма: головніша за все інше на цьому екрані */}
+      {program && !('finished' in program) && (
+        <View style={styles.programCard}>
+          <View style={styles.programHead}>
+            <Ionicons name="flag" size={16} color={Colors.primary} />
+            <Text style={styles.programName}>
+              {program.template.nameUk}
+            </Text>
+            <Text style={styles.programProgress}>
+              {program.doneCount}/{program.totalDays}
+            </Text>
+          </View>
+          <Text style={styles.programDay}>
+            Тиждень {program.week} · {program.programDay.titleUk}
+          </Text>
+          <View style={styles.programActions}>
+            <TouchableOpacity
+              style={styles.programStart}
+              onPress={startProgramDay}
+            >
+              <Ionicons name="play" size={15} color="#FFF" />
+              <Text style={styles.programStartText}>Почати тренування</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.programMore}
+              onPress={() => router.push(`/programs/${program.template.id}`)}
+            >
+              <Text style={styles.programMoreText}>Програма</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {program && 'finished' in program && (
+        <TouchableOpacity style={styles.programCard} onPress={() => router.push('/programs')}>
+          <View style={styles.programHead}>
+            <Ionicons name="trophy" size={16} color={Colors.success} />
+            <Text style={styles.programName}>{program.template.nameUk} пройдено</Text>
+          </View>
+          <Text style={styles.programDay}>Обери наступну програму →</Text>
+        </TouchableOpacity>
+      )}
+
       {/* No plan yet nudge */}
       {!todayPlan && (
         <View style={styles.noPlanCard}>
@@ -446,6 +542,12 @@ export default function TodayScreen() {
                 onPress={() => router.push('/workout/builder')}
               >
                 <Text style={[styles.noPlanBtnText, { color: Colors.primary }]}>Скласти сам</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.noPlanBtn, styles.noPlanBtnPrimary]}
+                onPress={() => router.push('/programs')}
+              >
+                <Text style={[styles.noPlanBtnText, { color: Colors.primary }]}>Програма</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -768,6 +870,27 @@ const styles = StyleSheet.create({
   todayCardLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   todayLabel: { ...Typography.h3, fontSize: 16 },
   todaySubtext: { ...Typography.bodySmall, marginTop: 2 },
+  programCard: {
+    marginHorizontal: Spacing.md, marginBottom: Spacing.md, padding: Spacing.md,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.md, gap: 6,
+    borderWidth: 1, borderColor: `${Colors.primary}55`,
+  },
+  programHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  programName: { ...Typography.body, flex: 1 },
+  programProgress: { ...Typography.bodySmall, color: Colors.textMuted },
+  programDay: { ...Typography.bodySmall, color: Colors.textSecondary },
+  programActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: 4 },
+  programStart: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: Spacing.md, paddingVertical: 8,
+    borderRadius: BorderRadius.full, backgroundColor: Colors.primary,
+  },
+  programStartText: { ...Typography.bodySmall, color: '#FFF' },
+  programMore: {
+    paddingHorizontal: Spacing.md, paddingVertical: 8,
+    borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.border,
+  },
+  programMoreText: { ...Typography.bodySmall, color: Colors.textSecondary },
   noPlanActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
   noPlanBtn: {
     paddingHorizontal: Spacing.md, paddingVertical: 6,
