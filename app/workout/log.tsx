@@ -34,6 +34,7 @@ import { Equipment, JointZone, LibraryExercise } from '../../services/library/ty
 import { formatPrescription, needsNewScheme, prescribe } from '../../services/prescriptions';
 import { equipmentOf } from '../../services/equipment';
 import { applySubstitution } from '../../services/substitutions';
+import { recentExerciseIds } from '../../services/analytics';
 import SubstitutionSheet from '../../components/SubstitutionSheet';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
@@ -89,6 +90,8 @@ export default function LogWorkoutScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [weightLog, setWeightLog] = useState<WeightEntry[]>([]);
   const [resolver, setResolver] = useState<ExerciseResolver | undefined>(undefined);
+  // останні вправи користувача — щоб не шукати щоразу те саме
+  const [recentIds, setRecentIds] = useState<string[]>([]);
   const [equipmentIds, setEquipmentIds] = useState<Equipment[] | undefined>(undefined);
   const [protectZones, setProtectZones] = useState<JointZone[]>([]);
   // Заміна вправи (ТЗ F4): індекс у списку + сама вправа з бібліотеки
@@ -215,6 +218,7 @@ export default function LogWorkoutScreen() {
       setResolver(() => res);
       setEquipmentIds(equipmentOf(p));
       setProtectZones(p?.protectZones ?? []);
+      getWorkouts().then((all) => setRecentIds(recentExerciseIds(all, res)));
     });
   }, []);
 
@@ -1083,6 +1087,7 @@ export default function LogWorkoutScreen() {
       {/* Exercise Picker Modal */}
       <LibraryPicker
         visible={pickerVisible}
+        recentIds={recentIds}
         availableEquipment={equipmentIds}
         onClose={() => setPickerVisible(false)}
         onSelect={(ex) => {

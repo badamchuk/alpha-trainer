@@ -7,7 +7,7 @@
  */
 import {
   getExerciseList, getExerciseProgress, getMuscleGroupBalance, getOverloadSuggestion,
-  getPersonalRecords, getStrengthScore, getVolumeLandmarks,
+  getPersonalRecords, getStrengthScore, getVolumeLandmarks, recentExerciseIds,
 } from '../services/analytics';
 import { createResolver } from '../services/exerciseMatch';
 import { ExerciseLog, WorkoutEntry } from '../types';
@@ -119,5 +119,30 @@ describe('запис з exerciseId', () => {
     ])];
     expect(getExerciseProgress(typo, 'back squat', resolver)).toHaveLength(1);
     expect(getPersonalRecords(typo, resolver)[0].exerciseName).toBe('Присідання зі штангою на спині');
+  });
+});
+
+describe('нещодавні вправи (для швидкого вибору)', () => {
+  it('найсвіжіші йдуть першими', () => {
+    const ids = recentExerciseIds(SPELLINGS, resolver);
+    expect(ids[0]).toBe('back_squat');   // 5 вересня — останнє тренування
+  });
+
+  it('дублі не повторюються', () => {
+    const ids = recentExerciseIds(SPELLINGS, resolver);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('невпізнані вправи не потрапляють', () => {
+    const w = [{
+      id: '1', date: '2026-09-10', workoutType: 'strength', notes: '', duration: 60,
+      completedAt: '2026-09-10T10:00:00.000Z',
+      exercises: [{ name: 'вигадана вправа' }, { name: 'Станова тяга' }],
+    }];
+    expect(recentExerciseIds(w, resolver)).toEqual(['deadlift']);
+  });
+
+  it('обмеження кількості працює', () => {
+    expect(recentExerciseIds(SPELLINGS, resolver, 1)).toHaveLength(1);
   });
 });

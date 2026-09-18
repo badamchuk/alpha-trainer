@@ -12,6 +12,7 @@ import { getTrainingPlan, saveTrainingPlan, getUserProfile } from '../services/s
 import { TrainingPlan, DayPlan, ExerciseLog } from '../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ExerciseImage from '../components/ExerciseImage';
+import ExerciseHowTo from '../components/ExerciseHowTo';
 import RichText from '../components/RichText';
 import { stripExerciseIds } from '../services/aiContext';
 import { exerciseName, getExercise } from '../services/library';
@@ -265,6 +266,12 @@ export default function PlanScreen() {
                                       ex.duration && `${ex.duration}`,
                                     ].filter(Boolean).join('  ')}
                                   </Text>
+                                )}
+                                {ex.exerciseId && getExercise(ex.exerciseId) && (
+                                  <ExerciseHowTo
+                                    exercise={getExercise(ex.exerciseId)!}
+                                    onOpenCard={() => router.push(`/exercises/${ex.exerciseId}`)}
+                                  />
                                 )}
                               </View>
                               {/* замінити вправу прямо в плані — та сама панель,

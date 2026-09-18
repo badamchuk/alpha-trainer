@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import ExerciseImage from './ExerciseImage';
+import { openVideo } from './ExerciseHowTo';
 import { findSubstitutions, SubstitutionOption } from '../services/substitutions';
 import { Equipment, JointZone, LibraryExercise } from '../services/library/types';
 
@@ -178,6 +179,15 @@ function OptionRow(
             <Text style={styles.cautionText}>{caution}</Text>
           </View>
         )}
+        {/* подивитись, як це робиться, не виходячи з вибору */}
+        <TouchableOpacity
+          style={styles.videoRow}
+          onPress={() => openVideo(exercise)}
+          hitSlop={6}
+        >
+          <Ionicons name="logo-youtube" size={13} color={Colors.primary} />
+          <Text style={styles.videoText}>Відео</Text>
+        </TouchableOpacity>
       </View>
       <TouchableOpacity hitSlop={8} onPress={onInfo}>
         <Ionicons name="information-circle-outline" size={20} color={Colors.textMuted} />
@@ -232,6 +242,8 @@ const styles = StyleSheet.create({
   rowReason: { ...Typography.bodySmall, color: Colors.textMuted, marginTop: 2 },
   cautionRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   cautionText: { ...Typography.bodySmall, color: Colors.warning, fontSize: 12 },
+  videoRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  videoText: { ...Typography.bodySmall, color: Colors.primary, fontSize: 11 },
   empty: { alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.xl },
   emptyText: { ...Typography.bodySmall, textAlign: 'center', color: Colors.textMuted },
 });

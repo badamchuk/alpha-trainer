@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import ExerciseImage from '../../components/ExerciseImage';
+import ExerciseHowTo from '../../components/ExerciseHowTo';
 import SubstitutionSheet from '../../components/SubstitutionSheet';
 import LibraryPicker from '../../components/LibraryPicker';
 import {
@@ -23,6 +24,7 @@ import {
 import { Focus, formatPrescription, prescribe } from '../../services/prescriptions';
 import { familiarityFrom } from '../../services/substitutions';
 import { equipmentOf } from '../../services/equipment';
+import { recentExerciseIds } from '../../services/analytics';
 import { buildResolver } from '../../services/exerciseLinks';
 import { getUserProfile, getWorkouts } from '../../services/storage';
 import { saveTemplate } from '../../services/templates';
@@ -64,7 +66,10 @@ export default function BuilderScreen() {
   const [level, setLevel] = useState<Level>(2);
   const [familiarity, setFamiliarity] = useState<Map<string, number>>(new Map());
   const [resolver, setResolver] = useState<ExerciseResolver | undefined>(undefined);
+  // «не повторювати» — основні вправи минулих тренувань цього формату
   const [recentIds, setRecentIds] = useState<string[]>([]);
+  // «нещодавні» для швидкого вибору — просто останні вправи користувача
+  const [pickerRecent, setPickerRecent] = useState<string[]>([]);
 
   // заміна й додавання
   const [subs, setSubs] = useState<{ blockIdx: number; exIdx: number; ex: LibraryExercise } | null>(null);
@@ -80,6 +85,7 @@ export default function BuilderScreen() {
       setLevel(LEVEL_BY_FITNESS[profile?.fitnessLevel ?? 'intermediate'] ?? 2);
       setResolver(() => res);
       setFamiliarity(familiarityFrom(workouts.flatMap((w) => w.exercises ?? []), res));
+      setPickerRecent(recentExerciseIds(workouts, res));
 
       if (storedRaw) {
         try {
@@ -273,6 +279,11 @@ export default function BuilderScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.exName}>{exerciseName(e.exercise)}</Text>
                         <Text style={styles.exScheme}>{formatPrescription(e.prescription)}</Text>
+                        {/* техніка й відео просто тут: у залі ніхто не шукатиме окремо */}
+                        <ExerciseHowTo
+                          exercise={e.exercise}
+                          onOpenCard={() => router.push(`/exercises/${e.exercise.id}`)}
+                        />
                       </View>
                       <TouchableOpacity
                         onPress={() => setSubs({ blockIdx, exIdx, ex: e.exercise })}
@@ -329,6 +340,7 @@ export default function BuilderScreen() {
       <LibraryPicker
         visible={addTo !== null}
         title="Додати вправу"
+        recentIds={pickerRecent}
         availableEquipment={equipment}
         onClose={() => setAddTo(null)}
         onSelect={(ex) => {
@@ -382,7 +394,7 @@ const styles = StyleSheet.create({
   blockHead: { gap: 2 },
   blockTitle: { ...Typography.label },
   blockNote: { ...Typography.bodySmall, color: Colors.accent },
-  exRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  exRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
   exName: { ...Typography.body },
   exScheme: { ...Typography.bodySmall, color: Colors.textMuted, marginTop: 2 },
   iconBtn: { padding: 4 },

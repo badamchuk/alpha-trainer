@@ -1084,3 +1084,26 @@ export function getTypeSummaries(workouts: WorkoutEntry[]): TypeSummary[] {
 
   return Array.from(map.values()).sort((a, b) => b.count - a.count);
 }
+
+/**
+ * Вправи, які користувач робив востаннє — для секції «Нещодавні» у виборі.
+ * Порядок за датою: спершу те, що робив учора, а не те, що рік тому.
+ */
+export function recentExerciseIds(
+  workouts: WorkoutEntry[],
+  resolver: ExerciseResolver,
+  limit = 8
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const w of [...workouts].sort((a, b) => b.date.localeCompare(a.date))) {
+    for (const e of w.exercises ?? []) {
+      const id = resolver(e);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}

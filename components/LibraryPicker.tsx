@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import ExerciseImage from './ExerciseImage';
-import { exerciseName, searchLibrary } from '../services/library';
+import { exerciseName, getExercise, searchLibrary } from '../services/library';
 import {
   Equipment, LibraryExercise, MUSCLE_GROUP_LABELS, MuscleGroup,
 } from '../services/library/types';
@@ -24,6 +24,8 @@ const LEVEL_LABEL: Record<number, string> = { 1: 'просто', 2: 'серед�
 interface Props {
   visible: boolean;
   title?: string;
+  /** Останні вправи користувача — показуються першими, поки не почався пошук. */
+  recentIds?: string[];
   /** Показувати лише те, що можна зробити цим обладнанням. */
   availableEquipment?: Equipment[];
   onClose: () => void;
@@ -33,7 +35,7 @@ interface Props {
 }
 
 export default function LibraryPicker({
-  visible, title = 'Обрати вправу', availableEquipment, onClose, onSelect, footerAction,
+  visible, title = 'Обрати вправу', recentIds, availableEquipment, onClose, onSelect, footerAction,
 }: Props) {
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -48,6 +50,16 @@ export default function LibraryPicker({
     }),
     [query, group, onlyMine, availableEquipment],
   );
+
+  // «Нещодавні» мають сенс лише поки людина не почала шукати чи фільтрувати:
+  // інакше вони заважали б результатам пошуку
+  const recent = useMemo(() => {
+    if (query || group || !recentIds?.length) return [];
+    return recentIds
+      .map((id) => getExercise(id))
+      .filter((ex): ex is NonNullable<typeof ex> => !!ex)
+      .slice(0, 8);
+  }, [recentIds, query, group]);
 
   function close() {
     onClose();
@@ -111,6 +123,23 @@ export default function LibraryPicker({
         <FlatList
           data={results}
           keyExtractor={(e) => e.id}
+          ListHeaderComponent={recent.length > 0 ? (
+            <View style={styles.recentBox}>
+              <Text style={styles.recentTitle}>Нещодавні</Text>
+              {recent.map((item) => (
+                <TouchableOpacity
+                  key={`recent-${item.id}`}
+                  style={styles.row}
+                  onPress={() => { onSelect(item); close(); }}
+                >
+                  <ExerciseImage slug={item.imageSlug} pattern={item.pattern} size={44} />
+                  <Text style={[styles.rowName, { flex: 1 }]}>{exerciseName(item)}</Text>
+                  <Ionicons name="time-outline" size={16} color={Colors.textMuted} />
+                </TouchableOpacity>
+              ))}
+              <Text style={styles.recentTitle}>Уся бібліотека</Text>
+            </View>
+          ) : null}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
@@ -180,6 +209,8 @@ const styles = StyleSheet.create({
   chipText: { ...Typography.bodySmall, color: Colors.textMuted },
   chipTextActive: { color: Colors.primary },
   list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xl },
+  recentBox: { gap: Spacing.sm, marginBottom: Spacing.sm },
+  recentTitle: { ...Typography.label, marginTop: 4 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
     padding: Spacing.md, backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
