@@ -18,13 +18,15 @@ import { WorkoutEntry, BodyMeasurement } from '../../types';
 import {
   getRunStats, getStrengthStats, formatPace, RunStats, StrengthStats,
   getWeeklyTonnage, WeeklyTonnage,
-  getExerciseProgress, getAllExerciseNames, ExerciseProgressPoint, estimate1RM,
+  getExerciseProgress, getExerciseList, ExerciseListItem, ExerciseProgressPoint, estimate1RM,
   getHRZoneSummary, HRZoneSummary,
   getMuscleGroupBalance, MuscleGroupData,
   getStrengthScore, StrengthScoreResult,
   getVolumeLandmarks, VolumeLandmark,
   getPersonalRecords as getPersonalRecordsAnalytics,
 } from '../../services/analytics';
+import { buildResolver } from '../../services/exerciseLinks';
+import type { ExerciseResolver } from '../../services/exerciseMatch';
 import { startOfWeek, endOfWeek } from 'date-fns';
 import { getLocalDateString as toDateStr } from '../../services/storage';
 
@@ -69,7 +71,7 @@ export default function ProgressScreen() {
   const [runStats, setRunStats] = useState<RunStats | null>(null);
   const [strengthStats, setStrengthStats] = useState<StrengthStats | null>(null);
   const [tonnage, setTonnage] = useState<WeeklyTonnage[]>([]);
-  const [exerciseNames, setExerciseNames] = useState<string[]>([]);
+  const [exerciseList, setExerciseList] = useState<ExerciseListItem[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [exerciseProgress, setExerciseProgress] = useState<ExerciseProgressPoint[]>([]);
   const [exerciseSearch, setExerciseSearch] = useState('');
@@ -84,14 +86,19 @@ export default function ProgressScreen() {
   const [strengthScore, setStrengthScore] = useState<StrengthScoreResult | null>(null);
   const [volumeLandmarks, setVolumeLandmarks] = useState<VolumeLandmark[]>([]);
   const [adaptiveTDEE, setAdaptiveTDEE] = useState<AdaptiveTDEEResult | null>(null);
+  // Резолвер вправ: зводить різні написання однієї вправи в одну (ТЗ F7.4).
+  const [resolver, setResolver] = useState<ExerciseResolver | undefined>(undefined);
   const [foodCorrelation, setFoodCorrelation] = useState<FoodCorrelationInsight[]>([]);
 
   async function loadData() {
     // getStats() і getPersonalRecords() читали історію кожна сама — виходило
     // три повні розбори JSON на один вхід у вкладку. Тепер читаємо раз.
     const w = await getWorkouts();
+    const res = await buildResolver();
+    // useState зі значенням-функцією вимагає обгортки, інакше React викличе її як апдейтер
+    setResolver(() => res);
     const [s, r, wl, ms, p] = await Promise.all([
-      getStats(w), getPersonalRecords(w),
+      getStats(w), getPersonalRecords(w, res),
       getWeightLog(), getMeasurements(), getUserProfile(),
     ]);
     setWorkouts(w);
@@ -105,17 +112,17 @@ export default function ProgressScreen() {
     const ss = getStrengthStats(w);
     setStrengthStats(ss.totalSessions > 0 ? ss : null);
     setTonnage(getWeeklyTonnage(w));
-    setExerciseNames(getAllExerciseNames(w));
+    setExerciseList(getExerciseList(w, res));
     if (p?.age || p?.birthDate) setHrZones(getHRZoneSummary(w, getAgeFromProfile(p)));
-    setMuscleGroups(getMuscleGroupBalance(w));
+    setMuscleGroups(getMuscleGroupBalance(w, res));
     if (p?.weight) {
-      const ss = getStrengthScore(w, p.weight);
+      const ss = getStrengthScore(w, p.weight, res);
       setStrengthScore(ss.lifts.length > 0 ? ss : null);
     }
     // Volume landmarks for current week
     const weekStart = toDateStr(startOfWeek(new Date(), { weekStartsOn: 1 }));
     const weekEnd = toDateStr(endOfWeek(new Date(), { weekStartsOn: 1 }));
-    setVolumeLandmarks(getVolumeLandmarks(w, weekStart, weekEnd));
+    setVolumeLandmarks(getVolumeLandmarks(w, weekStart, weekEnd, res));
 
     // Achievements — розблокування і список за один прохід
     const { achievements: achs } = await syncAchievements(w, s.streak);
@@ -141,7 +148,7 @@ export default function ProgressScreen() {
   function selectExercise(name: string) {
     setSelectedExercise(name);
     setExerciseSearch(name);
-    setExerciseProgress(getExerciseProgress(workouts, name));
+    setExerciseProgress(getExerciseProgress(workouts, name, resolver));
   }
 
   async function handleSaveMeasurement() {
@@ -474,7 +481,7 @@ export default function ProgressScreen() {
       )}
 
       {/* Exercise progress */}
-      {exerciseNames.length > 0 && (
+      {exerciseList.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('exerciseProgress')}</Text>
           <View style={styles.searchContainer}>
@@ -489,24 +496,26 @@ export default function ProgressScreen() {
           </View>
           {exerciseSearch.length > 0 && !selectedExercise && (
             <View style={styles.exSuggestions}>
-              {exerciseNames.filter((n) => n.toLowerCase().includes(exerciseSearch.toLowerCase())).slice(0, 5).map((name) => (
-                <TouchableOpacity key={name} style={styles.exSuggestionItem} onPress={() => selectExercise(name)}>
-                  <Text style={styles.exSuggestionText}>{name}</Text>
-                </TouchableOpacity>
-              ))}
+              {exerciseList
+                .filter((e) => e.label.toLowerCase().includes(exerciseSearch.toLowerCase()))
+                .slice(0, 5).map((e) => (
+                  <TouchableOpacity key={e.key} style={styles.exSuggestionItem} onPress={() => selectExercise(e.key)}>
+                    <Text style={styles.exSuggestionText}>{e.label}</Text>
+                  </TouchableOpacity>
+                ))}
             </View>
           )}
           {exerciseSearch.length === 0 && (
             <View style={styles.exAllContainer}>
               <TouchableOpacity style={styles.exAllToggle} onPress={() => setAllExercisesOpen(!allExercisesOpen)}>
-                <Text style={styles.exAllToggleText}>{t('allExercises')} ({exerciseNames.length})</Text>
+                <Text style={styles.exAllToggleText}>{t('allExercises')} ({exerciseList.length})</Text>
                 <Ionicons name={allExercisesOpen ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.textSecondary} />
               </TouchableOpacity>
               {allExercisesOpen && (
                 <View style={styles.exChipsWrap}>
-                  {exerciseNames.map((name) => (
-                    <TouchableOpacity key={name} style={styles.exChip} onPress={() => selectExercise(name)}>
-                      <Text style={styles.exChipText}>{name}</Text>
+                  {exerciseList.map((e) => (
+                    <TouchableOpacity key={e.key} style={styles.exChip} onPress={() => selectExercise(e.key)}>
+                      <Text style={styles.exChipText}>{e.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -635,7 +644,7 @@ export default function ProgressScreen() {
             let totalCal = 0;
             recentW.forEach((w) => {
               const params = bodyParamsFor(profile, weightLog, w.date);
-              const cal = params ? estimateWorkoutCalories(w, params).total : 0;
+              const cal = params ? estimateWorkoutCalories(w, params, resolver).total : 0;
               totalCal += cal;
               byType[w.workoutType] = (byType[w.workoutType] || 0) + cal;
             });

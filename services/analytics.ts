@@ -1,6 +1,36 @@
 import { WorkoutEntry, ExerciseLog } from '../types';
 import { getLocalDateString } from './storage';
 import { EXERCISES, MuscleGroup } from './exercises';
+import { LibraryExercise, getExercise, muscleGroupOf } from './library';
+import type { ExerciseResolver } from './exerciseMatch';
+
+// ─── Вправа з бібліотеки, якщо запис вдалося впізнати ────────────────────────
+//
+// Резолвер скрізь необов'язковий: без нього функції працюють точно як раніше —
+// це закріплено зліпками в __tests__/analytics-baseline.test.ts.
+
+function libOf(e: ExerciseLog, resolver?: ExerciseResolver): LibraryExercise | undefined {
+  if (!resolver) return undefined;
+  const id = resolver(e);
+  return id ? getExercise(id) : undefined;
+}
+
+/** Ключ групування: id бібліотеки, якщо впізнали, інакше — сама назва. */
+function groupKey(e: Pick<ExerciseLog, 'name' | 'exerciseId'>, resolver?: ExerciseResolver): string {
+  const id = resolver ? resolver(e) : null;
+  return id ? `id:${id}` : `name:${(e.name ?? '').toLowerCase().trim()}`;
+}
+
+/**
+ * Вага запису в гіпертрофічному об'ємі (ТЗ F7.3): кросфіт-метокон не має роздувати
+ * тижневі підходи. Невпізнану вправу рахуємо як раніше, щоб нічого не зникло.
+ */
+function volumeWeight(lib?: LibraryExercise): number {
+  if (!lib) return 1;
+  if (lib.intent === 'max_strength' || lib.intent === 'hypertrophy') return 1;
+  if (lib.intent === 'power') return 0.5;
+  return 0;
+}
 
 // ─── Exercise classification via library ────────────────────────────────────
 // Exact-name lookup into the curated exercise library; keyword matching is
@@ -271,14 +301,19 @@ export interface ExerciseProgressPoint {
 
 export function getExerciseProgress(
   workouts: WorkoutEntry[],
-  exerciseName: string
+  exerciseName: string,
+  resolver?: ExerciseResolver
 ): ExerciseProgressPoint[] {
   const key = exerciseName.toLowerCase().trim();
+  // З резолвером усі написання однієї вправи лягають в один графік
+  const targetKey = resolver ? groupKey({ name: exerciseName }, resolver) : null;
   const points: ExerciseProgressPoint[] = [];
 
   const sorted = [...workouts].sort((a, b) => a.date.localeCompare(b.date));
   for (const w of sorted) {
-    const matches = w.exercises.filter((e) => e.name.toLowerCase().trim() === key);
+    const matches = w.exercises.filter((e) => (targetKey
+      ? groupKey(e, resolver) === targetKey
+      : e.name.toLowerCase().trim() === key));
     if (matches.length === 0) continue;
     // Best set in this workout (by weight, then by reps) — set-by-set aware
     let weight = 0;
@@ -336,6 +371,53 @@ export function getAllExerciseNames(workouts: WorkoutEntry[]): string[] {
     })
     .sort((a, b) => b.total - a.total)
     .map((g) => g.name);
+}
+
+export interface ExerciseListItem {
+  /** Ключ для `getExerciseProgress`: бібліотечна назва або те, що набрав користувач. */
+  key: string;
+  /** Що показати в списку: назва з бібліотеки, якщо вправу впізнано. */
+  label: string;
+  records: number;
+  exerciseId: string | null;
+}
+
+/**
+ * Перелік вправ для екрана прогресу. З резолвером різні написання однієї вправи
+ * («front squad» і «front squat») зливаються в один рядок з бібліотечною назвою.
+ */
+export function getExerciseList(
+  workouts: WorkoutEntry[],
+  resolver?: ExerciseResolver
+): ExerciseListItem[] {
+  const groups = new Map<string, { label: string; records: number; id: string | null; spellings: Map<string, number> }>();
+  for (const w of workouts) {
+    for (const e of w.exercises) {
+      if (!e.name) continue;
+      const key = groupKey(e, resolver);
+      const lib = libOf(e, resolver);
+      const entry = groups.get(key) ?? {
+        label: lib?.nameUk ?? e.name.trim(),
+        records: 0,
+        id: lib?.id ?? null,
+        spellings: new Map<string, number>(),
+      };
+      entry.records++;
+      const spelling = e.name.trim();
+      entry.spellings.set(spelling, (entry.spellings.get(spelling) ?? 0) + 1);
+      groups.set(key, entry);
+    }
+  }
+  return [...groups.values()]
+    .map((g) => {
+      // без бібліотеки показуємо найчастіше написання — як робив getAllExerciseNames
+      let best = g.label;
+      let bestCount = 0;
+      for (const [name, n] of g.spellings) if (n > bestCount) { best = name; bestCount = n; }
+      const label = g.id ? g.label : best;
+      return { key: label, label, records: g.records, exerciseId: g.id };
+    })
+    .sort((a, b) => b.records - a.records);
 }
 
 // Калорії рахує services/calories.ts — по вправах і з параметрами профілю
@@ -424,20 +506,25 @@ const MG_TO_BALANCE: Partial<Record<MuscleGroup, string>> = {
   core: 'core',
 };
 
-export function getMuscleGroupBalance(workouts: WorkoutEntry[]): MuscleGroupData[] {
+export function getMuscleGroupBalance(
+  workouts: WorkoutEntry[],
+  resolver?: ExerciseResolver
+): MuscleGroupData[] {
   const counts: Record<string, number> = {};
   for (const g of BALANCE_GROUPS) counts[g.group] = 0;
 
   for (const w of workouts) {
     for (const e of w.exercises) {
-      const mg = classifyExercise(e.name);
+      const lib = libOf(e, resolver);
+      const mg = lib ? muscleGroupOf(lib) : classifyExercise(e.name);
       const balanceGroup = mg ? MG_TO_BALANCE[mg] : undefined;
-      if (balanceGroup) counts[balanceGroup] += exerciseSetCount(e);
+      // без бібліотеки рахуємо всі підходи, як раніше; з нею — за наміром вправи (F7.3)
+      if (balanceGroup) counts[balanceGroup] += exerciseSetCount(e) * volumeWeight(lib);
     }
   }
 
   return BALANCE_GROUPS
-    .map((mg) => ({ group: mg.group, label: mg.label, color: mg.color, count: counts[mg.group] }))
+    .map((mg) => ({ group: mg.group, label: mg.label, color: mg.color, count: Math.round(counts[mg.group]) }))
     .filter((mg) => mg.count > 0)
     .sort((a, b) => b.count - a.count);
 }
@@ -449,11 +536,16 @@ export function getMuscleGroupBalance(workouts: WorkoutEntry[]): MuscleGroupData
 // each lift is normalized to its own standard before averaging, so a heavy
 // deadlift doesn't inflate the score and a fair OHP doesn't drag it down.
 const KEY_LIFTS = [
-  { name: 'Squat',      keywords: ['squat', 'присідан', 'back squat', 'front squat', 'паузове присідання'],  weight: 1.2, standard: 1.6 },
-  { name: 'Deadlift',   keywords: ['deadlift', 'станова', 'rdl', 'rack pull', 'румунська'],                  weight: 1.3, standard: 2.0 },
-  { name: 'Bench',      keywords: ['bench', 'жим лежачи', 'жим леж'],                                       weight: 1.0, standard: 1.25 },
-  { name: 'OHP',        keywords: ['overhead', 'жим стоячи', 'military press', 'ohp', 'жим сидячи'],        weight: 0.8, standard: 0.75 },
-  { name: 'Row',        keywords: ['barbell row', 'тяга штанги', 'bent over', 'pendlay'],                   weight: 0.7, standard: 0.9 },
+  { name: 'Squat',      keywords: ['squat', 'присідан', 'back squat', 'front squat', 'паузове присідання'],  weight: 1.2, standard: 1.6,
+    ids: ['back_squat', 'front_squat', 'box_squat', 'smith_squat'] },
+  { name: 'Deadlift',   keywords: ['deadlift', 'станова', 'rdl', 'rack pull', 'румунська'],                  weight: 1.3, standard: 2.0,
+    ids: ['deadlift', 'sumo_deadlift', 'trap_bar_deadlift', 'romanian_deadlift', 'rack_pull'] },
+  { name: 'Bench',      keywords: ['bench', 'жим лежачи', 'жим леж'],                                       weight: 1.0, standard: 1.25,
+    ids: ['bench_press', 'incline_bench_press', 'close_grip_bench_press'] },
+  { name: 'OHP',        keywords: ['overhead', 'жим стоячи', 'military press', 'ohp', 'жим сидячи'],        weight: 0.8, standard: 0.75,
+    ids: ['strict_press', 'push_press', 'machine_shoulder_press'] },
+  { name: 'Row',        keywords: ['barbell row', 'тяга штанги', 'bent over', 'pendlay'],                   weight: 0.7, standard: 0.9,
+    ids: ['barbell_row', 'pendlay_row', 't_bar_row'] },
 ];
 
 export interface StrengthScoreResult {
@@ -464,7 +556,8 @@ export interface StrengthScoreResult {
 
 export function getStrengthScore(
   workouts: WorkoutEntry[],
-  bodyWeightKg: number
+  bodyWeightKg: number,
+  resolver?: ExerciseResolver
 ): StrengthScoreResult {
   const lifts: StrengthScoreResult['lifts'] = [];
   let weightedSum = 0;
@@ -476,7 +569,11 @@ export function getStrengthScore(
     for (const w of workouts) {
       for (const e of w.exercises) {
         const n = e.name.toLowerCase();
-        if (lift.keywords.some((k) => n.includes(k))) {
+        // впізнану вправу беремо за id (описка в назві не ламає бал),
+        // решту — по ключових словах, як раніше
+        const id = resolver ? resolver(e) : null;
+        const isLift = id ? lift.ids.includes(id) : lift.keywords.some((k) => n.includes(k));
+        if (isLift) {
           const sets = e.setsDetail && e.setsDetail.length > 0
             ? e.setsDetail
             : [{ weight: e.weight, reps: e.reps }];
@@ -551,23 +648,26 @@ export function getVolumeLandmarks(
   workouts: WorkoutEntry[],
   weekStartDate: string, // YYYY-MM-DD
   weekEndDate: string,
+  resolver?: ExerciseResolver,
 ): VolumeLandmark[] {
   const weekWorkouts = workouts.filter((w) => w.date >= weekStartDate && w.date <= weekEndDate);
   const setCounts: Record<string, number> = {};
 
   for (const w of weekWorkouts) {
     for (const e of w.exercises) {
-      const mg = classifyExercise(e.name);
+      const lib = libOf(e, resolver);
+      const mg = lib ? muscleGroupOf(lib) : classifyExercise(e.name);
       const matched = mg ? MG_TO_VT[mg] : undefined;
       if (matched) {
-        setCounts[matched] = (setCounts[matched] || 0) + exerciseSetCount(e);
+        // орієнтири MEV/MAV/MRV — про гіпертрофію, тому метокон сюди не додається (F7.3)
+        setCounts[matched] = (setCounts[matched] || 0) + exerciseSetCount(e) * volumeWeight(lib);
       }
     }
   }
 
   return Object.entries(VOLUME_TARGETS)
     .map(([group, target]) => {
-      const sets = setCounts[group] || 0;
+      const sets = Math.round(setCounts[group] || 0);
       const status: VolumeLandmarkStatus =
         sets < target.mev ? 'low' :
         sets <= target.mav ? 'optimal' :
@@ -721,15 +821,20 @@ export interface OverloadSuggestion {
 
 export function getOverloadSuggestion(
   workouts: WorkoutEntry[],
-  exerciseName: string
+  exerciseName: string,
+  resolver?: ExerciseResolver
 ): OverloadSuggestion | null {
   const key = exerciseName.toLowerCase().trim();
+  // З резолвером підказка бачить попередній раз навіть з іншим написанням назви
+  const targetKey = resolver ? groupKey({ name: exerciseName }, resolver) : null;
   const sorted = [...workouts].sort((a, b) => b.date.localeCompare(a.date));
 
   // Find last two appearances (set-by-set aware: take the heaviest set)
   const appearances: Array<{ date: string; weight: number; reps: number; sets: number; rpe?: number }> = [];
   for (const w of sorted) {
-    const match = w.exercises.find((e) => e.name.toLowerCase().trim() === key);
+    const match = w.exercises.find((e) => (targetKey
+      ? groupKey(e, resolver) === targetKey
+      : e.name.toLowerCase().trim() === key));
     if (!match) continue;
     let weight = match.weight || 0;
     let reps = match.reps || 0;
@@ -755,8 +860,13 @@ export function getOverloadSuggestion(
   const last = appearances[0];
   const prev = appearances[1];
 
-  // Determine increment based on movement type
-  const isCompound = /squat|deadlift|bench|press|row|станов|присід|жим|тяга/.test(key);
+  // Determine increment based on movement type.
+  // Впізнану вправу питаємо про обладнання: на штанзі найменший крок — пара
+  // дисків по 1.25 кг, тобто 2.5 кг; гантелі й тренажери йдуть дрібнішим кроком.
+  const libEx = targetKey?.startsWith('id:') ? getExercise(targetKey.slice(3)) : undefined;
+  const isCompound = libEx
+    ? libEx.equipment.includes('barbell')
+    : /squat|deadlift|bench|press|row|станов|присід|жим|тяга/.test(key);
   const increment = isCompound ? 2.5 : 1.25;
 
   let suggestedWeight = last.weight;
@@ -837,11 +947,16 @@ export interface PersonalRecord {
   date: string;
 }
 
-export function getPersonalRecords(workouts: WorkoutEntry[]): PersonalRecord[] {
+export function getPersonalRecords(
+  workouts: WorkoutEntry[],
+  resolver?: ExerciseResolver
+): PersonalRecord[] {
   const records = new Map<string, PersonalRecord>();
   for (const w of workouts) {
     for (const e of w.exercises) {
-      const key = e.name.trim().toLowerCase();
+      // з резолвером різні написання однієї вправи дають один рекорд, а не три
+      const key = resolver ? groupKey(e, resolver) : e.name.trim().toLowerCase();
+      const lib = libOf(e, resolver);
       const sets = e.setsDetail && e.setsDetail.length > 0
         ? e.setsDetail
         : [{ weight: e.weight, reps: e.reps }];
@@ -851,7 +966,7 @@ export function getPersonalRecords(workouts: WorkoutEntry[]): PersonalRecord[] {
         const existing = records.get(key);
         if (!existing || rm > existing.estimated1RM) {
           records.set(key, {
-            exerciseName: e.name.trim(),
+            exerciseName: lib?.nameUk ?? e.name.trim(),
             weight: set.weight,
             reps: set.reps,
             estimated1RM: rm,

@@ -1,0 +1,248 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`аналітика без резолвера — зліпок поведінки баланс груп м’язів 1`] = `
+[
+  {
+    "color": "#3498DB",
+    "count": 12,
+    "group": "back",
+    "label": "Спина",
+  },
+  {
+    "color": "#2ECC71",
+    "count": 6,
+    "group": "legs",
+    "label": "Ноги",
+  },
+  {
+    "color": "#E63946",
+    "count": 3,
+    "group": "chest",
+    "label": "Груди",
+  },
+  {
+    "color": "#1ABC9C",
+    "count": 3,
+    "group": "core",
+    "label": "Прес/Кор",
+  },
+]
+`;
+
+exports[`аналітика без резолвера — зліпок поведінки об’ємні орієнтири за тиждень 1`] = `
+[
+  {
+    "color": "#3498DB",
+    "group": "back",
+    "label": "Спина",
+    "mav": 16,
+    "mev": 8,
+    "mrv": 25,
+    "pct": 48,
+    "status": "optimal",
+    "weeklySets": 12,
+  },
+  {
+    "color": "#2EC4B6",
+    "group": "legs",
+    "label": "Квадри",
+    "mav": 14,
+    "mev": 6,
+    "mrv": 22,
+    "pct": 27,
+    "status": "optimal",
+    "weeklySets": 6,
+  },
+  {
+    "color": "#E63946",
+    "group": "chest",
+    "label": "Груди",
+    "mav": 12,
+    "mev": 6,
+    "mrv": 20,
+    "pct": 15,
+    "status": "low",
+    "weeklySets": 3,
+  },
+  {
+    "color": "#1ABC9C",
+    "group": "core",
+    "label": "Прес/Кор",
+    "mav": 12,
+    "mev": 4,
+    "mrv": 20,
+    "pct": 15,
+    "status": "low",
+    "weeklySets": 3,
+  },
+  {
+    "color": "#9B59B6",
+    "group": "shoulders",
+    "label": "Плечі",
+    "mav": 14,
+    "mev": 6,
+    "mrv": 22,
+    "pct": 0,
+    "status": "low",
+    "weeklySets": 0,
+  },
+  {
+    "color": "#F4A261",
+    "group": "biceps",
+    "label": "Біцепс",
+    "mav": 12,
+    "mev": 6,
+    "mrv": 20,
+    "pct": 0,
+    "status": "low",
+    "weeklySets": 0,
+  },
+  {
+    "color": "#2ECC71",
+    "group": "triceps",
+    "label": "Трицепс",
+    "mav": 10,
+    "mev": 4,
+    "mrv": 18,
+    "pct": 0,
+    "status": "low",
+    "weeklySets": 0,
+  },
+  {
+    "color": "#E67E22",
+    "group": "hamstrings",
+    "label": "Задня ст.",
+    "mav": 10,
+    "mev": 4,
+    "mrv": 16,
+    "pct": 0,
+    "status": "low",
+    "weeklySets": 0,
+  },
+  {
+    "color": "#FF6B6B",
+    "group": "glutes",
+    "label": "Сідниці",
+    "mav": 10,
+    "mev": 4,
+    "mrv": 16,
+    "pct": 0,
+    "status": "low",
+    "weeklySets": 0,
+  },
+  {
+    "color": "#F1C40F",
+    "group": "calves",
+    "label": "Литки",
+    "mav": 8,
+    "mev": 4,
+    "mrv": 16,
+    "pct": 0,
+    "status": "low",
+    "weeklySets": 0,
+  },
+]
+`;
+
+exports[`аналітика без резолвера — зліпок поведінки перелік назв вправ 1`] = `
+[
+  "Присідання зі штангою на спині",
+  "Жим штанги лежачи",
+  "Бурпі",
+  "Станова тяга",
+  "Підтягування",
+  "Планка",
+  "Гребля",
+  "Тяга штанги в нахилі",
+]
+`;
+
+exports[`аналітика без резолвера — зліпок поведінки персональні рекорди 1`] = `
+[
+  {
+    "date": "2026-09-03",
+    "estimated1RM": 154,
+    "exerciseName": "Станова тяга",
+    "reps": 3,
+    "weight": 140,
+  },
+  {
+    "date": "2026-09-05",
+    "estimated1RM": 123,
+    "exerciseName": "присідання зі штангою на спині",
+    "reps": 5,
+    "weight": 105,
+  },
+  {
+    "date": "2026-09-01",
+    "estimated1RM": 101,
+    "exerciseName": "Жим штанги лежачи",
+    "reps": 8,
+    "weight": 80,
+  },
+  {
+    "date": "2026-09-05",
+    "estimated1RM": 80,
+    "exerciseName": "Тяга штанги в нахилі",
+    "reps": 10,
+    "weight": 60,
+  },
+]
+`;
+
+exports[`аналітика без резолвера — зліпок поведінки прогрес по вправі 1`] = `
+[
+  {
+    "date": "2026-09-01",
+    "estimated1RM": 117,
+    "reps": 5,
+    "sets": 3,
+    "tonnage": 1500,
+    "weight": 100,
+  },
+  {
+    "date": "2026-09-05",
+    "estimated1RM": 123,
+    "reps": 5,
+    "sets": 3,
+    "tonnage": 1575,
+    "weight": 105,
+  },
+]
+`;
+
+exports[`аналітика без резолвера — зліпок поведінки підказка прогресії 1`] = `
+{
+  "lastDate": "2026-09-05",
+  "lastReps": 5,
+  "lastSets": 3,
+  "lastWeight": 105,
+  "message": "Збільш кількість повторів до 6–7",
+  "suggestedReps": "6–7",
+  "suggestedWeight": 105,
+}
+`;
+
+exports[`аналітика без резолвера — зліпок поведінки силовий бал 1`] = `
+{
+  "level": "intermediate",
+  "lifts": [
+    {
+      "estimated1RM": 123,
+      "lastDate": "2026-09-05",
+      "name": "Squat",
+    },
+    {
+      "estimated1RM": 154,
+      "lastDate": "2026-09-03",
+      "name": "Deadlift",
+    },
+    {
+      "estimated1RM": 80,
+      "lastDate": "2026-09-05",
+      "name": "Row",
+    },
+  ],
+  "score": 477,
+}
+`;

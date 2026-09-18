@@ -1,10 +1,17 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { UserProfile, Goal, WorkoutEntry } from '../types';
+import type { AIContextBlocks } from './aiContext';
 
 let genAI: GoogleGenerativeAI | null = null;
 
 export function initGemini(apiKey: string): void {
   genAI = new GoogleGenerativeAI(apiKey);
+}
+
+/** Чи це збій самого середовища (немає Web Streams), а не помилка API. */
+export function isStreamingUnsupported(e: unknown): boolean {
+  const msg = (e as { message?: string })?.message ?? String(e);
+  return /pipeThrough|ReadableStream|getReader|TextDecoderStream|not a function/i.test(msg);
 }
 
 function getModel() {
@@ -82,13 +89,16 @@ ${workoutText}
 - Давай практичні поради, не загальні фрази${memoryBlock}`;
 }
 
-function buildSystemContext(profile: UserProfile, goals: Goal[], recentWorkouts: WorkoutEntry[], memoryBlock = '', nutritionSummary = ''): string {
+function buildSystemContext(
+  profile: UserProfile, goals: Goal[], recentWorkouts: WorkoutEntry[],
+  memoryBlock = '', nutritionSummary = '', library?: AIContextBlocks
+): string {
   const goalsList = goals
     .filter((g) => !g.completed)
     .map((g) => `- ${g.title}: ${g.target}`)
     .join('\n');
 
-  const workoutHistory = recentWorkouts
+  const workoutHistory = library?.workouts || recentWorkouts
     .slice(0, 5)
     .map((w) => {
       const rating = w.rating ? ` ⭐${w.rating}` : '';
@@ -139,7 +149,7 @@ ${workoutHistory || 'Тренувань ще немає'}
 - Пропонуй конкретні ваги/повтори на наступне тренування
 - Якщо спортсмен повторює одні й ті ж вправи — давай варіації
 - Враховуй харчування при рекомендаціях (відновлення, силові показники)
-Будь мотивуючим але реалістичним.${nutritionSummary ? `\n\nХАРЧУВАННЯ (останні 3 дні):\n${nutritionSummary}` : ''}${memoryBlock}`;
+Будь мотивуючим але реалістичним.${nutritionSummary ? `\n\nХАРЧУВАННЯ (останні 3 дні):\n${nutritionSummary}` : ''}${memoryBlock}${library?.today ?? ''}${library?.exercises ?? ''}`;
 }
 
 export async function chat(
@@ -149,9 +159,10 @@ export async function chat(
   recentWorkouts: WorkoutEntry[],
   history: { role: 'user' | 'model'; parts: { text: string }[] }[],
   memoryBlock = '',
-  nutritionSummary = ''
+  nutritionSummary = '',
+  library?: AIContextBlocks
 ): Promise<string> {
-  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock, nutritionSummary);
+  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock, nutritionSummary, library);
   return callWithFallback(async (model) => {
     const chatSession = model.startChat({
       history: [
@@ -173,9 +184,10 @@ export async function chatStream(
   history: { role: 'user' | 'model'; parts: { text: string }[] }[],
   onChunk: (text: string) => void,
   memoryBlock = '',
-  nutritionSummary = ''
+  nutritionSummary = '',
+  library?: AIContextBlocks
 ): Promise<string> {
-  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock, nutritionSummary);
+  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock, nutritionSummary, library);
   return callWithFallback(async (model) => {
     const chatSession = model.startChat({
       history: [
@@ -184,14 +196,26 @@ export async function chatStream(
         ...history,
       ],
     });
-    const result = await chatSession.sendMessageStream(message);
-    let fullText = '';
-    for await (const chunk of result.stream) {
-      const text = chunk.text();
-      fullText += text;
-      onChunk(fullText);
+    // Потокова відповідь у React Native працює не завжди: SDK всередині
+    // спирається на Web Streams (`pipeThrough`), яких у Hermes немає, і падає
+    // з «Cannot read property 'pipeThrough' of undefined». Тоді беремо відповідь
+    // цілком — краще без ефекту друкарської машинки, ніж помилка замість поради.
+    try {
+      const result = await chatSession.sendMessageStream(message);
+      let fullText = '';
+      for await (const chunk of result.stream) {
+        const text = chunk.text();
+        fullText += text;
+        onChunk(fullText);
+      }
+      return fullText;
+    } catch (e: unknown) {
+      if (!isStreamingUnsupported(e)) throw e;   // справжню помилку API не ховаємо
+      const whole = await chatSession.sendMessage(message);
+      const text = whole.response.text();
+      onChunk(text);
+      return text;
     }
-    return fullText;
   });
 }
 
@@ -214,14 +238,26 @@ export async function nutritionistChatStream(
         ...history,
       ],
     });
-    const result = await chatSession.sendMessageStream(message);
-    let fullText = '';
-    for await (const chunk of result.stream) {
-      const text = chunk.text();
-      fullText += text;
-      onChunk(fullText);
+    // Потокова відповідь у React Native працює не завжди: SDK всередині
+    // спирається на Web Streams (`pipeThrough`), яких у Hermes немає, і падає
+    // з «Cannot read property 'pipeThrough' of undefined». Тоді беремо відповідь
+    // цілком — краще без ефекту друкарської машинки, ніж помилка замість поради.
+    try {
+      const result = await chatSession.sendMessageStream(message);
+      let fullText = '';
+      for await (const chunk of result.stream) {
+        const text = chunk.text();
+        fullText += text;
+        onChunk(fullText);
+      }
+      return fullText;
+    } catch (e: unknown) {
+      if (!isStreamingUnsupported(e)) throw e;   // справжню помилку API не ховаємо
+      const whole = await chatSession.sendMessage(message);
+      const text = whole.response.text();
+      onChunk(text);
+      return text;
     }
-    return fullText;
   });
 }
 
@@ -231,7 +267,7 @@ export async function extractMemoryNote(
 ): Promise<string> {
   if (!genAI) return '';
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+    const model = genAI.getGenerativeModel({ model: CHEAP_MODEL });
     const result = await model.generateContent(
       `Витягни 1-2 ключових факти про спортсмена з цього фрагменту розмови. Лише конкретні факти: травми, досягнення, переваги, проблеми зі здоров'ям, скарги, нові цілі. Якщо нічого важливого — відповідай "—". Без вступу, максимум 50 слів.
 
@@ -269,14 +305,23 @@ export async function generateTrainingPlan(
   });
 }
 
-// Models to try in order (fallback chain)
+// Ланцюжок моделей: пробуємо по черзі, поки якась не відповість.
+//
+// Порядок — від найкращого співвідношення швидкість/якість до найдешевшого.
+// Експериментальні (`-exp-`) і покоління 1.5 сюди НЕ додавати: перші живуть
+// кілька місяців і зникають, другі зняті. Кожна мертва модель — це зайвий
+// 404 на кожному запиті, поки ланцюжок дійде до робочої.
 const MODELS = [
-  'gemini-2.5-pro-exp-03-25', // experimental, окремий безкоштовний ліміт
-  'gemini-2.0-flash-exp',     // experimental fallback
+  'gemini-2.5-flash',       // основна: швидка, дешева, достатньо розумна для тренера
+  'gemini-2.5-pro',         // складніші запити або вичерпана квота flash
   'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash-8b',      // маленька модель, свій окремий ліміт
+  'gemini-2.0-flash-lite',  // найдешевша, для коротких службових запитів
 ];
+
+/** Найдешевша модель ланцюжка — для службових завдань на кшталт витягання фактів. */
+const CHEAP_MODEL = MODELS[MODELS.length - 1];
+
+export { MODELS as GEMINI_MODELS };
 
 function parseGeminiError(e: any): { type: 'invalid_key' | 'quota' | 'not_found' | 'network' | 'unknown'; message: string } {
   const msg: string = e?.message || String(e);

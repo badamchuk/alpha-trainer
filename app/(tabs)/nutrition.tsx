@@ -5,7 +5,7 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { readAsStringAsync } from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -335,7 +335,7 @@ export default function NutritionScreen() {
 
   async function getPhotoBase64(uri: string): Promise<string | null> {
     try {
-      return await readAsStringAsync(uri, { encoding: 'base64' });
+      return await new File(uri).base64();
     } catch {
       return null;
     }

@@ -16,8 +16,12 @@ import { scheduleWorkoutReminders, scheduleWaterReminders } from '../../services
 import { computeWaterGoal, setWaterGoal } from '../../services/water';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile } from '../../types';
+import { JointZone } from '../../services/library/types';
+import { equipmentOf } from '../../services/equipment';
 import { loadLanguage, setLanguage, setExerciseLanguage, useLocale, Lang } from '../../services/i18n';
-import { exportBackup, importBackup } from '../../services/backup';
+import {
+  AutoBackupState, autoBackup, exportBackup, getAutoBackupState, importBackup, shareAutoBackup,
+} from '../../services/backup';
 import Constants from 'expo-constants';
 import { checkForUpdate, openUpdate, showUpdateAlert, UpdateInfo } from '../../services/updates';
 
@@ -47,6 +51,15 @@ const EQUIPMENT_OPTIONS = [
   { id: 'Лише власна вага', icon: 'body-outline' },
 ];
 
+const PROTECT_ZONES: { id: JointZone; label: string }[] = [
+  { id: 'shoulder', label: 'Плече' },
+  { id: 'lower_back', label: 'Поперек' },
+  { id: 'knee', label: 'Коліно' },
+  { id: 'wrist', label: 'Зап’ястя' },
+  { id: 'elbow', label: 'Лікоть' },
+  { id: 'impact', label: 'Стрибки' },
+];
+
 const TOTAL_STEPS = 7;
 
 export default function OnboardingScreen() {
@@ -57,6 +70,8 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const [profileTab, setProfileTab] = useState<'personal' | 'training' | 'ai'>('personal');
+  // Зони, які користувач просить берегти постійно (ТЗ F8.4)
+  const [protectZones, setProtectZones] = useState<JointZone[]>([]);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   // Form state
@@ -94,6 +109,7 @@ export default function OnboardingScreen() {
         setFitnessLevel(profile.fitnessLevel);
         setAvailableDays(profile.availableDays);
         setEquipment(profile.equipment);
+        setProtectZones(profile.protectZones ?? []);
         setGeminiKey(profile.geminiApiKey || '');
         setGroqKey(profile.groqApiKey || '');
         if (profile.birthDate) {
@@ -239,6 +255,10 @@ export default function OnboardingScreen() {
       birthDate: birthDateStr(birthDate),
       weight: Number(weight), height: Number(height),
       gender, fitnessLevel, availableDays, equipment,
+      // обладнання в термінах бібліотеки виводимо зі старих рядків — окремого
+      // списку в профілі немає, щоб не просити заповнювати те саме двічі
+      equipmentIds: equipmentOf({ equipment } as UserProfile),
+      protectZones: protectZones.length > 0 ? protectZones : undefined,
       geminiApiKey: geminiKey.trim(),
       groqApiKey: groqKey.trim() || undefined,
       onboardingComplete: true,
@@ -491,6 +511,21 @@ export default function OnboardingScreen() {
                   </Text>
                 </View>
 
+                {/* Розпізнавання вправ */}
+                <TouchableOpacity
+                  style={linkRowStyles.row}
+                  onPress={() => router.push('/exercises/unresolved')}
+                >
+                  <Ionicons name="pricetags-outline" size={20} color={Colors.textSecondary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={linkRowStyles.title}>Розпізнавання вправ</Text>
+                    <Text style={linkRowStyles.hint}>
+                      Підкажи, що означають твої назви, — прогрес і калорії рахуватимуться точніше
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
+
                 {/* Equipment */}
                 <View style={settingsStyles.section}>
                   <Text style={settingsStyles.sectionTitle}>Обладнання</Text>
@@ -505,6 +540,33 @@ export default function OnboardingScreen() {
                         <Text style={[styles.equipLabel, equipment.includes(e.id) && { color: Colors.primary }]}>{e.id}</Text>
                       </TouchableOpacity>
                     ))}
+                  </View>
+                </View>
+
+                {/* Зони, які берегти (ТЗ F8.4) */}
+                <View style={settingsStyles.section}>
+                  <Text style={settingsStyles.sectionTitle}>Що берегти</Text>
+                  <Text style={linkRowStyles.hint}>
+                    Вправи з сильним навантаженням на ці зони не пропонуватимуться в замінах
+                    і в конструкторі. Порожньо — обмежень немає.
+                  </Text>
+                  <View style={zoneStyles.grid}>
+                    {PROTECT_ZONES.map((z) => {
+                      const on = protectZones.includes(z.id);
+                      return (
+                        <TouchableOpacity
+                          key={z.id}
+                          style={[zoneStyles.chip, on && zoneStyles.chipActive]}
+                          onPress={() => setProtectZones((prev) => (
+                            prev.includes(z.id) ? prev.filter((x) => x !== z.id) : [...prev, z.id]
+                          ))}
+                        >
+                          <Text style={[zoneStyles.chipText, on && zoneStyles.chipTextActive]}>
+                            {z.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
 
@@ -548,6 +610,17 @@ export default function OnboardingScreen() {
                   name={name}
                 />
                 <BackupSection loading={backupLoading} onExport={handleExportBackup} onImport={handleImportBackup} />
+                <TouchableOpacity
+                  style={linkRowStyles.row}
+                  onPress={() => router.push('/about/attribution')}
+                >
+                  <Ionicons name="image-outline" size={20} color={Colors.textSecondary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={linkRowStyles.title}>Джерела ілюстрацій</Text>
+                    <Text style={linkRowStyles.hint}>Автори малюнків вправ і ліцензія CC BY-SA 4.0</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
                 <BuildInfo />
               </>
             )}
@@ -1290,6 +1363,7 @@ function BackupSection({
         Збережи всі тренування, цілі та налаштування у файл.
         {'\n'}При зміні телефону — імпортуй файл для відновлення.
       </Text>
+      <AutoBackupRow />
       <View style={backupStyles.actions}>
         <TouchableOpacity
           style={[backupStyles.btn, backupStyles.btnExport]}
@@ -1315,6 +1389,65 @@ function BackupSection({
     </View>
   );
 }
+
+/**
+ * Стан автоматичної копії.
+ *
+ * Вона живе в теці додатку, тож рятує від «стер дані» й невдалого імпорту,
+ * але не від втрати телефона — про це й написано прямо, без ілюзій.
+ */
+function AutoBackupRow() {
+  const [state, setState] = useState<AutoBackupState | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { getAutoBackupState().then(setState); }, []);
+
+  const when = state
+    ? new Date(state.lastAt).toLocaleDateString('uk-UA', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+      })
+    : null;
+
+  return (
+    <View style={autoBackupStyles.row}>
+      <Ionicons name="time-outline" size={16} color={Colors.textMuted} />
+      <View style={{ flex: 1 }}>
+        <Text style={autoBackupStyles.text}>
+          {when ? `Автокопія в додатку: ${when}` : 'Автокопія з’явиться при наступному запуску'}
+        </Text>
+        <Text style={autoBackupStyles.note}>
+          Рятує, якщо дані стерлись у додатку. Від втрати телефона рятує лише експорт у файл.
+        </Text>
+      </View>
+      <TouchableOpacity
+        disabled={busy}
+        onPress={async () => {
+          setBusy(true);
+          const next = await autoBackup(true);
+          setState(next);
+          setBusy(false);
+          if (next) {
+            const res = await shareAutoBackup();
+            if (!res.success && res.error) Alert.alert('Не вдалось поділитись', res.error);
+          }
+        }}
+      >
+        <Text style={autoBackupStyles.action}>{busy ? '…' : 'Зберегти'}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const autoBackupStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm,
+    marginTop: Spacing.sm, paddingTop: Spacing.sm,
+    borderTopWidth: 1, borderTopColor: Colors.border,
+  },
+  text: { ...Typography.bodySmall },
+  note: { ...Typography.bodySmall, color: Colors.textMuted, fontSize: 11, marginTop: 2 },
+  action: { ...Typography.bodySmall, color: Colors.primary },
+});
 
 /**
  * Що саме зараз стоїть на телефоні + ручна перевірка оновлень.
@@ -1653,6 +1786,27 @@ const styles = StyleSheet.create({
 });
 
 // ─── Settings mode styles ─────────────────────────────────────────────────────
+
+const zoneStyles = StyleSheet.create({
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.sm },
+  chip: {
+    paddingHorizontal: Spacing.md, paddingVertical: 8,
+    borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.border,
+  },
+  chipActive: { borderColor: Colors.primary, backgroundColor: `${Colors.primary}18` },
+  chipText: { ...Typography.bodySmall },
+  chipTextActive: { color: Colors.primary },
+});
+
+const linkRowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    padding: Spacing.md, marginBottom: Spacing.lg,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
+  },
+  title: { ...Typography.body },
+  hint: { ...Typography.bodySmall, color: Colors.textMuted, marginTop: 2 },
+});
 
 const settingsStyles = StyleSheet.create({
   tabBar: {

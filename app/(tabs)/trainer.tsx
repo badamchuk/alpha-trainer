@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
@@ -15,12 +15,18 @@ import {
   getWeightLog, getPersonalRecords,
   getCachedTrainerContext, saveTrainerContextCache,
 } from '../../services/storage';
+import { buildResolver } from '../../services/exerciseLinks';
+import { buildAIContext, parseExerciseIds, stripExerciseIds } from '../../services/aiContext';
 import { getNutritionHistory, getDailyTotals, getNutritionGoals } from '../../services/nutrition';
 import { chatStream as geminiChatStream, initGemini, generateTrainingPlan as geminiGeneratePlan, extractMemoryNote as geminiExtractNote, generateTrainerContext as geminiGenerateContext } from '../../services/gemini';
 import { chatStream as groqChatStream, initGroq, generateTrainingPlan as groqGeneratePlan, extractMemoryNote as groqExtractNote, generateTrainerContext as groqGenerateContext } from '../../services/groq';
 import { getMemoryEntries, addMemoryEntry, buildMemoryContext } from '../../services/aiMemory';
 import { createPlanFromAIText } from '../../services/planParser';
-import { ChatMessage, UserProfile } from '../../types';
+import { ChatMessage, ExerciseLog, UserProfile } from '../../types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import ExerciseImage from '../../components/ExerciseImage';
+import RichText from '../../components/RichText';
+import { prescribe } from '../../services/prescriptions';
 import { useLocale } from '../../services/i18n';
 
 const QUICK_PROMPTS = [
@@ -66,9 +72,11 @@ export default function TrainerScreen() {
     useCallback(() => {
       setCtxExpanded(ctxExpandedRef.current);
       async function load() {
+        // Рекорди зводимо за бібліотекою: інакше AI бачить три «присідання» замість однієї вправи
+        const resolver = await buildResolver();
         const [p, history, memEntries, allWorkouts, wl, recs, nutHist, nutGoals] = await Promise.all([
           getUserProfile(), getChatHistory(), getMemoryEntries(),
-          getRecentWorkouts(100), getWeightLog(), getPersonalRecords(),
+          getRecentWorkouts(100), getWeightLog(), getPersonalRecords(undefined, resolver),
           getNutritionHistory(5), getNutritionGoals(),
         ]);
         setProfile(p);
@@ -153,6 +161,12 @@ export default function TrainerScreen() {
     try {
       const goals = await getGoals();
       const recent = await getRecentWorkouts(7);
+      // Те саме, що бачать заміни й конструктор: доступні вправи з урахуванням
+      // обладнання й зон, які треба берегти. Без цього тренер радить навмання.
+      const resolver = await buildResolver();
+      const library = buildAIContext({
+        profile, workouts: await getRecentWorkouts(100), recentWorkouts: recent, resolver,
+      });
 
       const useGroq = !!profile.groqApiKey;
       const streamingMsgId = (Date.now() + 1).toString();
@@ -192,8 +206,14 @@ export default function TrainerScreen() {
         };
 
         reply = useGroq
-          ? await groqChatStream(text.trim(), profile, goals, recent, groqHistory, onChunk, memoryBlock, nutritionSummary)
-          : await geminiChatStream(text.trim(), profile, goals, recent, geminiHistory, onChunk, memoryBlock, nutritionSummary);
+          ? await groqChatStream(
+              text.trim(), profile, goals, recent, groqHistory, onChunk,
+              memoryBlock, nutritionSummary, library,
+            )
+          : await geminiChatStream(
+              text.trim(), profile, goals, recent, geminiHistory, onChunk,
+              memoryBlock, nutritionSummary, library,
+            );
       }
 
       const finalMessages = [...updatedMessages, { ...streamingMsg, content: reply }];
@@ -232,7 +252,8 @@ export default function TrainerScreen() {
     try {
       const goals = await getGoals();
       const goalTitles = goals.filter((g) => !g.completed).map((g) => g.title);
-      const plan = createPlanFromAIText(planMessage.content, goalTitles);
+      // з резолвером вправи плану отримають id: картинку, заміну й калорії
+      const plan = createPlanFromAIText(planMessage.content, goalTitles, await buildResolver());
       await saveTrainingPlan(plan);
       setPlanSaved(true);
       Alert.alert(
@@ -251,10 +272,11 @@ export default function TrainerScreen() {
     if (!profile || ctxLoading) return;
     setCtxLoading(true);
     try {
+      const resolver = await buildResolver();
       const [goals, recent7, wl, nutHist, nutGoals, memEntries, allWorkouts, recs] = await Promise.all([
         getGoals(), getRecentWorkouts(7), getWeightLog(),
         getNutritionHistory(5), getNutritionGoals(),
-        getMemoryEntries(), getRecentWorkouts(100), getPersonalRecords(),
+        getMemoryEntries(), getRecentWorkouts(100), getPersonalRecords(undefined, resolver),
       ]);
       const mem = buildMemoryContext(memEntries, allWorkouts, wl, recs);
       const nutDays = nutHist.map((d) => { const t = getDailyTotals(d); return { date: d.date, ...t }; });
@@ -379,6 +401,23 @@ export default function TrainerScreen() {
             <Ionicons name="arrow-forward" size={18} color={Colors.primary} />
           </TouchableOpacity>
 
+          {/* Те саме без AI: конструктор працює без ключа й без інтернету */}
+          <TouchableOpacity
+            style={styles.planCTA}
+            onPress={() => router.push('/workout/builder')}
+          >
+            <View style={styles.planCTAIcon}>
+              <Ionicons name="construct-outline" size={24} color={Colors.success} />
+            </View>
+            <View style={styles.planCTAText}>
+              <Text style={styles.planCTATitle}>Скласти тренування без AI</Text>
+              <Text style={styles.planCTASub}>
+                Конструктор підбере вправи з бібліотеки під твоє обладнання й час
+              </Text>
+            </View>
+            <Ionicons name="arrow-forward" size={18} color={Colors.success} />
+          </TouchableOpacity>
+
           <View style={styles.quickPromptsContainer}>
             {QUICK_PROMPTS.slice(1).map((p) => (
               <TouchableOpacity
@@ -486,9 +525,18 @@ function MessageBubble({ message, isPlanMessage, planSaved, onSavePlan, savingPl
       )}
       <View style={{ maxWidth: '78%' }}>
         <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
-          <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>{message.content}</Text>
+          {isUser ? (
+            <Text style={[styles.bubbleText, styles.bubbleTextUser]}>{message.content}</Text>
+          ) : (
+            <RichText style={styles.bubbleText} boldColor={Colors.textPrimary}>
+              {stripExerciseIds(message.content)}
+            </RichText>
+          )}
           <Text style={[styles.bubbleTime, isUser && styles.bubbleTimeUser]}>{time}</Text>
         </View>
+
+        {/* Вправи, які тренер назвав: із бібліотеки, з картинкою й кнопкою «почати» */}
+        {!isUser && <AiExercises text={message.content} />}
 
         {/* Save plan button — shown below AI message if it's a plan */}
         {isPlanMessage && !isUser && (
@@ -519,6 +567,74 @@ function MessageBubble({ message, isPlanMessage, planSaved, onSavePlan, savingPl
     </View>
   );
 }
+
+/**
+ * Вправи з відповіді тренера.
+ *
+ * Модель називає їх ідентифікаторами бібліотеки, тож ми показуємо саме ті
+ * вправи, які реально є в додатку: з малюнком, карткою і кнопкою почати
+ * тренування. Вигадані ідентифікатори просто не знаходяться й не показуються.
+ */
+function AiExercises({ text }: { text: string }) {
+  const router = useRouter();
+  const found = useMemo(() => parseExerciseIds(text), [text]);
+  if (found.length === 0) return null;
+
+  async function start() {
+    const exercises: ExerciseLog[] = found.map((ex) => {
+      const p = prescribe(ex);
+      return {
+        name: ex.nameUk,
+        exerciseId: ex.id,
+        sets: p.sets,
+        reps: p.reps,
+        duration: p.seconds ? Math.round(p.seconds / 6) / 10 : undefined,
+      };
+    });
+    // той самий шлях, що в конструктора — без третього механізму передачі
+    await AsyncStorage.setItem('@alpha_trainer:builder_started', JSON.stringify({
+      workoutType: 'strength',
+      duration: 45,
+      exercises,
+    }));
+    router.push('/workout/log?fromBuilder=1');
+  }
+
+  return (
+    <View style={aiExStyles.box}>
+      {found.map((ex) => (
+        <TouchableOpacity
+          key={ex.id}
+          style={aiExStyles.row}
+          onPress={() => router.push(`/exercises/${ex.id}`)}
+        >
+          <ExerciseImage slug={ex.imageSlug} pattern={ex.pattern} size={36} />
+          <Text style={aiExStyles.name} numberOfLines={1}>{ex.nameUk}</Text>
+          <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
+        </TouchableOpacity>
+      ))}
+      <TouchableOpacity style={aiExStyles.startBtn} onPress={start}>
+        <Ionicons name="play" size={14} color={Colors.primary} />
+        <Text style={aiExStyles.startText}>Почати тренування з цих вправ</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const aiExStyles = StyleSheet.create({
+  box: { marginTop: Spacing.sm, gap: 6 },
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    padding: 6, backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
+  },
+  name: { ...Typography.bodySmall, flex: 1 },
+  startBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 8, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Colors.primary,
+  },
+  startText: { ...Typography.bodySmall, color: Colors.primary },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },

@@ -1,4 +1,5 @@
 import { UserProfile, Goal, WorkoutEntry } from '../types';
+import type { AIContextBlocks } from './aiContext';
 
 let groqApiKey: string | null = null;
 
@@ -7,6 +8,11 @@ export function initGroq(apiKey: string): void {
 }
 
 const MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+
+/** Найдешевша модель — для службових запитів (витягання фактів у пам'ять). */
+const CHEAP_MODEL = MODELS[MODELS.length - 1];
+
+export { MODELS as GROQ_MODELS };
 let activeModel = MODELS[0];
 
 async function callGroq(
@@ -111,13 +117,14 @@ function buildSystemContext(
   goals: Goal[],
   recentWorkouts: WorkoutEntry[],
   memoryBlock = '',
-  nutritionSummary = ''
+  nutritionSummary = '',
+  library?: AIContextBlocks
 ): string {
   const goalsList = goals
     .filter((g) => !g.completed)
     .map((g) => `- ${g.title}: ${g.target}`)
     .join('\n');
-  const workoutHistory = recentWorkouts
+  const workoutHistory = library?.workouts || recentWorkouts
     .slice(0, 5)
     .map((w) => {
       const rating = w.rating ? ` ⭐${w.rating}` : '';
@@ -171,7 +178,7 @@ ${workoutHistory || 'Тренувань ще немає'}
 - Пропонуй конкретні ваги/повтори на наступне тренування
 - Якщо спортсмен повторює одні й ті ж вправи — давай варіації
 - Враховуй харчування при рекомендаціях (відновлення, силові показники)
-Будь мотивуючим але реалістичним.${nutritionSummary ? `\n\nХАРЧУВАННЯ (останні 3 дні):\n${nutritionSummary}` : ''}${memoryBlock}`;
+Будь мотивуючим але реалістичним.${nutritionSummary ? `\n\nХАРЧУВАННЯ (останні 3 дні):\n${nutritionSummary}` : ''}${memoryBlock}${library?.today ?? ''}${library?.exercises ?? ''}`;
 }
 
 export async function chat(
@@ -181,9 +188,10 @@ export async function chat(
   recentWorkouts: WorkoutEntry[],
   history: { role: 'user' | 'assistant'; content: string }[],
   memoryBlock = '',
-  nutritionSummary = ''
+  nutritionSummary = '',
+  library?: AIContextBlocks
 ): Promise<string> {
-  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock, nutritionSummary);
+  const systemContext = buildSystemContext(profile, goals, recentWorkouts, memoryBlock, nutritionSummary, library);
   const messages = [
     { role: 'system', content: systemContext },
     ...history.map((m) => ({ role: m.role, content: m.content })),
@@ -200,9 +208,12 @@ export async function chatStream(
   history: { role: 'user' | 'assistant'; content: string }[],
   onChunk: (text: string) => void,
   memoryBlock = '',
-  nutritionSummary = ''
+  nutritionSummary = '',
+  library?: AIContextBlocks
 ): Promise<string> {
-  const reply = await chat(message, profile, goals, recentWorkouts, history, memoryBlock, nutritionSummary);
+  const reply = await chat(
+    message, profile, goals, recentWorkouts, history, memoryBlock, nutritionSummary, library,
+  );
   onChunk(reply);
   return reply;
 }
@@ -243,7 +254,7 @@ export async function extractMemoryNote(
 Питання: ${userMessage.slice(0, 300)}
 Відповідь AI: ${aiReply.slice(0, 500)}`,
       }],
-      'llama-3.1-8b-instant'
+      CHEAP_MODEL
     );
     return result.trim();
   } catch {

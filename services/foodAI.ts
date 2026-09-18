@@ -95,10 +95,11 @@ export function offProductToFoodItem(product: OFFProduct, grams: number): Parsed
 
 // ─── Vision — photo nutrition analysis ────────────────────────────────────────
 
+// Ті самі правила, що в services/gemini.ts: без експериментальних і без 1.5
 const GEMINI_VISION_MODELS = [
+  'gemini-2.5-flash',
   'gemini-2.0-flash',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-8b',
+  'gemini-2.0-flash-lite',
 ];
 
 // Llama 4 — мультимодальні моделі Groq з підтримкою vision
