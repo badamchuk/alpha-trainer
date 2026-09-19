@@ -21,7 +21,7 @@ import { ActiveProgram } from '../../services/programs/types';
 import { exerciseName, getExercise } from '../../services/library';
 import { getUserProfile, getWorkouts } from '../../services/storage';
 import { buildResolver } from '../../services/exerciseLinks';
-import { equipmentOf, EQUIPMENT_LABELS } from '../../services/equipment';
+import { equipmentOf, equipmentList } from '../../services/equipment';
 import { Equipment } from '../../services/library/types';
 import { useLocale } from '../../services/i18n';
 
@@ -29,7 +29,7 @@ export default function ProgramDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { lang } = useLocale();
+  const { t, lang } = useLocale();
 
   const template = id ? getProgram(id) : undefined;
   const [active, setActive] = useState<ActiveProgram | null>(null);
@@ -58,8 +58,8 @@ export default function ProgramDetailScreen() {
   if (!template) {
     return (
       <View style={styles.container}>
-        <Header title="Програма" onBack={() => router.back()} top={insets.top} />
-        <View style={styles.center}><Text style={styles.muted}>Програму не знайдено</Text></View>
+        <Header title={t('programTitle')} onBack={() => router.back()} top={insets.top} />
+        <View style={styles.center}><Text style={styles.muted}>{t('programNotFound')}</Text></View>
       </View>
     );
   }
@@ -82,19 +82,19 @@ export default function ProgramDetailScreen() {
       await startProgram(template.id, base);
       setActive(await getActiveProgram());
       Alert.alert(
-        'Програму почато',
-        'Наступне тренування зʼявиться на головному екрані.',
-        [{ text: 'Добре', onPress: () => router.push('/') }],
+        t('programStartedTitle'),
+        t('programStartedText'),
+        [{ text: t('ok'), onPress: () => router.push('/') }],
       );
     };
 
     if (active && active.templateId !== template.id) {
       Alert.alert(
-        'Замінити активну програму?',
-        'Поточний прогрес по ній буде втрачено. Дві програми одночасно проходити не вийде.',
+        t('programReplaceTitle'),
+        t('programReplaceText'),
         [
-          { text: 'Скасувати', style: 'cancel' },
-          { text: 'Замінити', style: 'destructive', onPress: async () => { await stopProgram(); await begin(); } },
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('programReplace'), style: 'destructive', onPress: async () => { await stopProgram(); await begin(); } },
         ],
       );
       return;
@@ -103,10 +103,10 @@ export default function ProgramDetailScreen() {
   }
 
   async function handleStop() {
-    Alert.alert('Зупинити програму?', 'Прогрес по ній буде стерто.', [
-      { text: 'Скасувати', style: 'cancel' },
+    Alert.alert(t('programStopTitle'), t('programStopText'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Зупинити',
+        text: t('programStopBtn'),
         style: 'destructive',
         onPress: async () => { await stopProgram(); setActive(null); },
       },
@@ -132,15 +132,14 @@ export default function ProgramDetailScreen() {
             {lang === 'en' ? template.summaryEn : template.summaryUk}
           </Text>
           <Text style={styles.meta}>
-            {template.weeks} тижнів · {template.days.length} дні на тиждень
-            {' · '}{template.weeks * template.days.length} тренувань
+            {t('programWeeks', template.weeks)} · {t('programDaysPerWeek', template.days.length)}
+            {' · '}{t('programWorkoutsTotal', template.weeks * template.days.length)}
           </Text>
           {missing.length > 0 && (
             <View style={styles.warnRow}>
               <Ionicons name="alert-circle-outline" size={15} color={Colors.warning} />
               <Text style={styles.warn}>
-                Бракує: {missing.map((e) => EQUIPMENT_LABELS[e] ?? e).join(', ')}.
-                Замінити вправу можна прямо в тренуванні.
+                {t('programMissingEquipment', equipmentList(missing, lang))}
               </Text>
             </View>
           )}
@@ -148,11 +147,8 @@ export default function ProgramDetailScreen() {
 
         {/* Робочі ваги — від них рахується вся прогресія */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Робочі ваги</Text>
-          <Text style={styles.hint}>
-            З чого починаємо. Підставили з твоєї історії — виправ, якщо не збігається.
-            Порожнє поле означає «працюю за відчуттям».
-          </Text>
+          <Text style={styles.cardTitle}>{t('programWorkingWeights')}</Text>
+          <Text style={styles.hint}>{t('programWeightsHint')}</Text>
           {mainIds.map((exId) => {
             const ex = getExercise(exId);
             if (!ex) return null;
@@ -165,7 +161,7 @@ export default function ProgramDetailScreen() {
                   value={weights[exId] ?? ''}
                   onChangeText={(v) => setWeights((p) => ({ ...p, [exId]: v }))}
                   keyboardType="numeric"
-                  placeholder="кг"
+                  placeholder={t('kgUnit')}
                   placeholderTextColor={Colors.textMuted}
                 />
               </View>
@@ -175,9 +171,9 @@ export default function ProgramDetailScreen() {
 
         {/* Прев'ю прогресії — головне, заради чого цей екран */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Як росте навантаження</Text>
+          <Text style={styles.cardTitle}>{t('programHowLoadGrows')}</Text>
           <Text style={styles.hint}>
-            {getExercise(mainIds[0]) ? exerciseName(getExercise(mainIds[0])!) : ''} по тижнях
+            {t('programByWeeks', getExercise(mainIds[0]) ? exerciseName(getExercise(mainIds[0])!) : '')}
           </Text>
           {preview.map((w) => (
             <View key={w.week} style={styles.weekRow}>
@@ -187,15 +183,17 @@ export default function ProgramDetailScreen() {
               ]}>
                 {w.week}
               </Text>
-              <Text style={styles.weekLabel}>{w.label}</Text>
-              {w.deload && <Text style={styles.deload}>розвантаження</Text>}
+              <Text style={styles.weekLabel}>
+                {w.sets}×{w.reps} · {w.weight ? t('weightKg', w.weight) : `RPE ${w.rpe}`}
+              </Text>
+              {w.deload && <Text style={styles.deload}>{t('programDeload')}</Text>}
             </View>
           ))}
         </View>
 
         {/* Тиждень у деталях */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Тиждень</Text>
+          <Text style={styles.cardTitle}>{t('programWeekSection')}</Text>
           {template.days.map((day, i) => {
             const open = openWeek === i + 1;
             return (
@@ -228,7 +226,7 @@ export default function ProgramDetailScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.slotName}>{exerciseName(ex)}</Text>
                         <Text style={styles.slotMeta}>
-                          {p.sets}×{p.reps}{p.weight ? ` · ${p.weight} кг` : ''}
+                          {p.sets}×{p.reps}{p.weight ? ` · ${t('weightKg', p.weight)}` : ''}
                         </Text>
                       </View>
                       <Ionicons name="chevron-forward" size={15} color={Colors.textMuted} />
@@ -244,16 +242,16 @@ export default function ProgramDetailScreen() {
           <View style={styles.actions}>
             <TouchableOpacity style={styles.primaryBtn} onPress={() => router.push('/')}>
               <Ionicons name="play" size={18} color="#FFF" />
-              <Text style={styles.primaryText}>До наступного тренування</Text>
+              <Text style={styles.primaryText}>{t('programNextWorkout')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.stopBtn} onPress={handleStop}>
-              <Text style={styles.stopText}>Зупинити програму</Text>
+              <Text style={styles.stopText}>{t('programStop')}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <TouchableOpacity style={styles.primaryBtn} onPress={handleStart}>
             <Ionicons name="flag-outline" size={18} color="#FFF" />
-            <Text style={styles.primaryText}>Почати програму</Text>
+            <Text style={styles.primaryText}>{t('programStart')}</Text>
           </TouchableOpacity>
         )}
       </ScrollView>

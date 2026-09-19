@@ -121,7 +121,7 @@ export default function TrainerScreen() {
               setActiveProvider(attempt.provider);
               // якщо перемкнулись — скажемо чому, інакше «Gemini» у шапці виглядає загадково
               if (attempt.switchedFrom) {
-                setProviderNote(switchNote(attempt.switchedFrom, attempt.provider));
+                setProviderNote(switchNote(attempt.switchedFrom, attempt.provider, t));
               }
               setCtxText(text);
               setCtxTs(Date.now());
@@ -146,7 +146,7 @@ export default function TrainerScreen() {
     const attempt = await askProvider(profile, { groq, gemini });
     setActiveProvider(attempt.provider);
     if (attempt.switchedFrom) {
-      setProviderNote(switchNote(attempt.switchedFrom, attempt.provider));
+      setProviderNote(switchNote(attempt.switchedFrom, attempt.provider, t));
     }
     return attempt.result;
   }
@@ -313,7 +313,7 @@ export default function TrainerScreen() {
       const text = ctxAttempt.result;
       setActiveProvider(ctxAttempt.provider);
       if (ctxAttempt.switchedFrom) {
-        setProviderNote(switchNote(ctxAttempt.switchedFrom, ctxAttempt.provider));
+        setProviderNote(switchNote(ctxAttempt.switchedFrom, ctxAttempt.provider, t));
       }
       setCtxText(text);
       setCtxTs(Date.now());

@@ -14,6 +14,7 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     stress: { knee: 1 },
     easierThan: ['back_squat', 'front_squat', 'goblet_squat'],
     cues: ['Таз відводь назад, коліна — у бік носків', 'Спина пряма, п’яти не відриваються'],
+    cuesEn: ["Sit back and down, heels stay planted", "Chest up, knees out over the toes"],
     defaultReps: 20, imageSlug: 'bodyweight-squat',
   },
   {
@@ -36,7 +37,9 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     stress: { knee: 2 },
     easierThan: ['back_squat', 'front_squat'],
     modifications: ['З гантеллю замість гирі — якщо гирі немає'],
+    modificationsEn: ["With a dumbbell instead of a kettlebell — if there is no kettlebell"],
     cues: ['Тримай вагу біля грудей, лікті всередині', 'Опускайся між колін, спина пряма'],
+    cuesEn: ["Hold the weight at chest height, elbows inside the knees", "Sit down between the hips, not back"],
     defaultReps: 12, imageSlug: 'goblet-squat',
   },
   {
@@ -48,7 +51,9 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['quads', 'glutes'], secondary: ['hamstrings', 'lower_back', 'abs'] },
     stress: { knee: 2, lower_back: 3 },
     modifications: ['У тренажері Сміта — менше навантаження на спину й рівновагу'],
+    modificationsEn: ["In a Smith machine — less load on the back and balance"],
     cues: ['Штанга лежить на трапеції, лікті під грифом', 'Вдих у живіт, напруж корпус — і вниз'],
+    cuesEn: ["Brace hard, then break at the hips and knees together", "Drive the whole foot through the floor, knees tracking over toes"],
     defaultReps: 5, imageSlug: 'squat',
   },
   {
@@ -60,7 +65,9 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['quads', 'glutes'], secondary: ['abs', 'upper_back'] },
     stress: { knee: 2, lower_back: 2, wrist: 2 },
     modifications: ['Хват навхрест — якщо не пускають зап’ястя'],
+    modificationsEn: ["Cross-arm grip — if your wrists will not allow it"],
     cues: ['Лікті високо, гриф лежить на передніх дельтах', 'Корпус вертикально, коліна вперед'],
+    cuesEn: ["Elbows high, bar resting on the shoulders", "Keep the torso upright — let the legs do the work"],
     defaultReps: 5, imageSlug: 'front-squat',
   },
   {
@@ -94,6 +101,7 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     stress: { knee: 2 },
     easierThan: ['back_squat', 'front_squat', 'hack_squat'],
     cues: ['Поперек притиснутий, не відривай таз', 'Не випрямляй коліна до замка'],
+    cuesEn: ["Feet shoulder width on the platform", "Do not lock the knees at the top"],
     defaultReps: 12, imageSlug: 'leg-press',
   },
   {
@@ -191,6 +199,7 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['quads', 'glutes'], secondary: ['hamstrings', 'abs'] },
     stress: { knee: 2 },
     cues: ['Крок довгий, коліно не завалюється всередину', 'Тримай корпус рівно, дивись перед собою'],
+    cuesEn: ["Long step, back knee close to the floor", "Torso upright, push through the front heel"],
     defaultReps: 20, imageSlug: 'walking-lunge',
   },
   {
@@ -222,6 +231,7 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['quads', 'glutes'], secondary: ['hamstrings'] },
     stress: { knee: 2 },
     cues: ['Задня нога на лаві, вага на передній', 'Опускайся вертикально вниз'],
+    cuesEn: ["Back foot on the bench, weight on the front leg", "Drop straight down, torso upright"],
     defaultReps: 10, imageSlug: 'bulgarian-split-squat',
   },
   {
@@ -266,7 +276,9 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['hamstrings', 'glutes', 'lower_back'], secondary: ['lats', 'traps', 'forearms'] },
     stress: { lower_back: 3, knee: 1, elbow: 1 },
     modifications: ['З трап-грифа — менше навантаження на поперек'],
+    modificationsEn: ["From a trap bar — less load on the lower back"],
     cues: ['Гриф впритул до гомілки', 'Спина пряма, штовхай підлогу ногами'],
+    cuesEn: ["Bar over mid-foot, shoulders just in front of it", "Push the floor away and drag the bar up the shins"],
     defaultReps: 5, imageSlug: 'deadlift',
   },
   {
@@ -288,6 +300,7 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['glutes', 'quads', 'adductors'], secondary: ['lower_back', 'traps'] },
     stress: { lower_back: 2, knee: 2 },
     cues: ['Широка постановка, носки назовні', 'Розводь коліна, таз тримай низько'],
+    cuesEn: ["Wide stance, hands inside the knees", "Open the hips and push the knees out as you stand"],
     defaultReps: 5, imageSlug: 'sumo-deadlift',
   },
   {
@@ -309,7 +322,9 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['hamstrings', 'glutes'], secondary: ['lower_back'] },
     stress: { lower_back: 3 },
     modifications: ['З гантелями — легше контролювати спину'],
+    modificationsEn: ["With dumbbells — easier to keep the back in place"],
     cues: ['Коліна трохи зігнуті й нерухомі', 'Веди гриф по стегнах, таз назад'],
+    cuesEn: ["Push the hips back, bar stays close to the legs", "Stop where the hamstrings run out — the back never rounds"],
     defaultReps: 10, imageSlug: 'romanian-deadlift',
   },
   {
@@ -343,6 +358,7 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['glutes', 'hamstrings'], secondary: ['lower_back', 'abs', 'front_delts'] },
     stress: { lower_back: 2 },
     cues: ['Гиря йде по дузі від стегон, не руками', 'Різко зводь сідниці вгорі'],
+    cuesEn: ["The hips throw the bell, the arms only guide it", "Snap the glutes at the top, bell floats to shoulder height"],
     defaultReps: 20, imageSlug: 'kettlebell-swing',
   },
   {
@@ -421,6 +437,7 @@ export const LEG_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['glutes'], secondary: ['hamstrings', 'abs'] },
     easierThan: ['hip_thrust'],
     cues: ['П’яти під колінами', 'Угорі зведи сідниці, ребра не задирай'],
+    cuesEn: ["Drive through the heels, squeeze the glutes", "Ribs down — do not arch the lower back"],
     defaultReps: 15, imageSlug: 'glute-bridge',
   },
   {

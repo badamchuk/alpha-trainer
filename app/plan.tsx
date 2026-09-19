@@ -6,7 +6,6 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { getTrainingPlan, saveTrainingPlan, getUserProfile } from '../services/storage';
 import { TrainingPlan, DayPlan, ExerciseLog } from '../types';
@@ -21,21 +20,13 @@ import { equipmentOf } from '../services/equipment';
 import SubstitutionSheet from '../components/SubstitutionSheet';
 import { prescribe } from '../services/prescriptions';
 import {
-  WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS,
+  WORKOUT_TYPE_KEYS, WORKOUT_TYPE_COLORS,
 } from '../services/planParser';
-import { useLocale } from '../services/i18n';
-
-const DAY_NAMES: Record<number, string> = {
-  0: 'Неділя', 1: 'Понеділок', 2: 'Вівторок',
-  3: 'Середа', 4: 'Четвер', 5: 'П\'ятниця', 6: 'Субота',
-};
-const DAY_SHORT: Record<number, string> = {
-  0: 'Нд', 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб',
-};
+import { dateLocale, useLocale } from '../services/i18n';
 
 export default function PlanScreen() {
   const router = useRouter();
-  const { t } = useLocale();
+  const { t, lang } = useLocale();
   const insets = useSafeAreaInsets();
   const [plan, setPlan] = useState<TrainingPlan | null>(null);
   const [expanded, setExpanded] = useState<number | null>(new Date().getDay());
@@ -127,9 +118,7 @@ export default function PlanScreen() {
         <View style={styles.empty}>
           <Ionicons name="calendar-outline" size={64} color={Colors.textMuted} />
           <Text style={styles.emptyTitle}>{t('planTitle')}</Text>
-          <Text style={styles.emptyDesc}>
-            Перейди до вкладки "Тренер", натисни{'\n'}"Розробити план тренувань"{'\n'}і збережи відповідь AI
-          </Text>
+          <Text style={styles.emptyDesc}>{t('planEmptyHint')}</Text>
           <TouchableOpacity
             style={styles.emptyBtn}
             onPress={() => { router.back(); router.push('/(tabs)/trainer'); }}
@@ -142,7 +131,7 @@ export default function PlanScreen() {
     );
   }
 
-  const createdDate = format(new Date(plan.createdAt), 'd MMMM yyyy', { locale: uk });
+  const createdDate = format(new Date(plan.createdAt), 'd MMMM yyyy', { locale: dateLocale(lang) });
 
   // Sort days Mon–Sun
   const sortedDays = [...plan.weeklySchedule].sort((a, b) => {
@@ -175,7 +164,7 @@ export default function PlanScreen() {
               <Ionicons name="sparkles" size={12} color="#4285F4" />
               <Text style={styles.aiTagText}>{aiProvider}</Text>
             </View>
-            <Text style={styles.metaDate}>Складено {createdDate}</Text>
+            <Text style={styles.metaDate}>{t('planCreatedOn', createdDate)}</Text>
           </View>
           {plan.goals.length > 0 && (
             <View style={styles.goalsRow}>
@@ -195,12 +184,12 @@ export default function PlanScreen() {
         {/* Weekly schedule */}
         {plan.weeklySchedule[0]?.dayOfWeek !== -1 && (
           <>
-            <Text style={styles.sectionTitle}>Тижневий розклад</Text>
+            <Text style={styles.sectionTitle}>{t('weeklySchedule')}</Text>
             {sortedDays.map((day) => {
               const isToday = day.dayOfWeek === today;
               const isOpen = expanded === day.dayOfWeek;
               const color = WORKOUT_TYPE_COLORS[day.workoutType] || Colors.textMuted;
-              const typeLabel = WORKOUT_TYPE_LABELS[day.workoutType] || day.workoutType;
+              const typeLabel = t(WORKOUT_TYPE_KEYS[day.workoutType] ?? day.workoutType);
 
               return (
                 <TouchableOpacity
@@ -213,15 +202,15 @@ export default function PlanScreen() {
                     <View style={styles.dayHeaderLeft}>
                       <View style={[styles.dayBadge, isToday && styles.dayBadgeToday]}>
                         <Text style={[styles.dayBadgeText, isToday && styles.dayBadgeTextToday]}>
-                          {DAY_SHORT[day.dayOfWeek]}
+                          {t('dayShort', day.dayOfWeek)}
                         </Text>
                       </View>
                       <View>
                         <View style={styles.dayTitleRow}>
-                          <Text style={styles.dayName}>{DAY_NAMES[day.dayOfWeek]}</Text>
+                          <Text style={styles.dayName}>{t('dayName', day.dayOfWeek)}</Text>
                           {isToday && (
                             <View style={styles.todayTag}>
-                              <Text style={styles.todayTagText}>сьогодні</Text>
+                              <Text style={styles.todayTagText}>{t('todayTag')}</Text>
                             </View>
                           )}
                         </View>
@@ -260,7 +249,7 @@ export default function PlanScreen() {
                                 {(ex.sets || ex.reps || ex.weight || ex.duration) && (
                                   <Text style={styles.exMeta}>
                                     {[
-                                      ex.sets && `${ex.sets} підх.`,
+                                      ex.sets && t('setsCount', ex.sets),
                                       ex.reps && `× ${ex.reps}`,
                                       ex.weight && `${ex.weight}`,
                                       ex.duration && `${ex.duration}`,
@@ -303,7 +292,7 @@ export default function PlanScreen() {
                           onPress={() => startFromPlan(day)}
                         >
                           <Ionicons name="play" size={16} color="#FFF" />
-                          <Text style={styles.logTodayBtnText}>Почати тренування за планом</Text>
+                          <Text style={styles.logTodayBtnText}>{t('startByPlan')}</Text>
                         </TouchableOpacity>
                       )}
                     </View>

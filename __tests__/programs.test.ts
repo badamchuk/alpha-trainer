@@ -86,7 +86,7 @@ describe('лінійна прогресія', () => {
     const w8 = prescriptionFor(linear, squat, 8, 100)!;
     expect(isDeloadWeek(linear, 8)).toBe(true);
     expect(w8.weight!).toBeLessThan(w7.weight!);
-    expect(w8.hint).toContain('розвантаження');
+    expect(w8.hint).toEqual({ kind: 'deload' });
   });
 
   it('розвантаження рахується від поточної ваги, а не від стартової', () => {
@@ -159,7 +159,7 @@ describe('коли не вийшло', () => {
     const after = prescriptionFor(linear, squat, 3, 100, 1).weight!;
     expect(after).toBeLessThan(normal);
     expect(after).toBeGreaterThan(normal * 0.85);
-    expect(prescriptionFor(linear, squat, 3, 100, 1).hint).toContain('відкочена');
+    expect(prescriptionFor(linear, squat, 3, 100, 1).hint).toEqual({ kind: 'backoff' });
   });
 
   it('другий відкат ще нижчий', () => {
@@ -229,7 +229,8 @@ describe('прев’ю прогресії', () => {
   it('показує всі тижні з позначкою розвантаження', () => {
     const preview = progressionPreview(linear, 100);
     expect(preview).toHaveLength(linear.weeks);
-    expect(preview[0].label).toContain('кг');
+    expect(preview[0].weight).toBeGreaterThan(0);
+    expect(preview[0].sets).toBeGreaterThan(0);
     expect(preview[linear.weeks - 1].deload).toBe(true);
   });
 

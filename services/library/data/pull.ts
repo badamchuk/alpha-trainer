@@ -12,7 +12,9 @@ export const PULL_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['lats', 'upper_back'], secondary: ['biceps', 'forearms', 'abs'] },
     stress: { shoulder: 2, elbow: 2 },
     modifications: ['Нейтральним хватом — м’якше для плеча й ліктя'],
+    modificationsEn: ["Neutral grip — gentler on the shoulder and elbow"],
     cues: ['Почни з опускання лопаток, потім тягни ліктями', 'Підборіддя вище перекладини, без ривків'],
+    cuesEn: ["Start by pulling the shoulder blades down", "Chin over the bar, no kipping unless you mean it"],
     defaultReps: 8, imageSlug: 'pull-up',
   },
   {
@@ -23,6 +25,7 @@ export const PULL_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['lats', 'biceps'], secondary: ['upper_back', 'forearms'] },
     stress: { shoulder: 1, elbow: 2 },
     cues: ['Хват на ширині плечей, долоні до себе', 'Груди веди до перекладини'],
+    cuesEn: ["Underhand grip, elbows drive down and back", "Full hang at the bottom — that is the rep"],
     defaultReps: 8, imageSlug: 'chin-up',
   },
   {
@@ -108,6 +111,7 @@ export const PULL_EXERCISES: LibraryExercise[] = [
     stress: { shoulder: 1 },
     easierThan: ['pull_up', 'chin_up', 'ring_pull_up'],
     cues: ['Груди вгору, тягни до ключиць', 'Не відкидайся назад корпусом'],
+    cuesEn: ["Pull the bar to the upper chest", "Shoulders down first, elbows drive to the ribs"],
     defaultReps: 12, imageSlug: 'lat-pulldown',
   },
   {
@@ -140,7 +144,9 @@ export const PULL_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['lats', 'upper_back'], secondary: ['biceps', 'lower_back', 'rear_delts'] },
     stress: { lower_back: 3 },
     modifications: ['З опорою грудьми на лаву — знімає навантаження з попереку'],
+    modificationsEn: ["Chest supported on a bench — takes the lower back out of it"],
     cues: ['Нахил близько 45°, спина пряма', 'Тягни до низу живота, лікті вздовж тіла'],
+    cuesEn: ["Hinge to about 45°, back flat", "Pull to the belly button, elbows past the ribs"],
     defaultReps: 10, imageSlug: 'barbell-row',
   },
   {
@@ -184,6 +190,7 @@ export const PULL_EXERCISES: LibraryExercise[] = [
     stress: { shoulder: 1 },
     easierThan: ['pull_up', 'chin_up', 'ring_pull_up'],
     cues: ['Тіло пряме, п’яти в підлогу', 'Чим горизонтальніше тіло, тим важче'],
+    cuesEn: ["Body in a straight line", "Pull the chest to the bar, shoulder blades together"],
     defaultReps: 12, imageSlug: 'inverted-row',
   },
   {
@@ -235,6 +242,7 @@ export const PULL_EXERCISES: LibraryExercise[] = [
     metrics: ['weight_reps'], equipment: ['cable'],
     muscles: { primary: ['rear_delts', 'upper_back'], secondary: ['traps'] },
     cues: ['Тягни канат до рівня очей', 'Розводь кисті, лікті високо'],
+    cuesEn: ["Pull to the forehead, elbows high", "Squeeze the rear delts at the end"],
     defaultReps: 15, imageSlug: 'face-pull',
   },
   {
@@ -276,6 +284,7 @@ export const PULL_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['biceps'], secondary: ['forearms'] },
     stress: { elbow: 1 },
     cues: ['Лікті біля тіла', 'Опускай повільно, без розгойдування'],
+    cuesEn: ["Elbows stay at the ribs", "Lower slowly — that is where the work is"],
     defaultReps: 12, imageSlug: 'bicep-curl',
   },
   {

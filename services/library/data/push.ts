@@ -13,7 +13,9 @@ export const PUSH_EXERCISES: LibraryExercise[] = [
     stress: { wrist: 2, shoulder: 1 },
     easierThan: ['bench_press', 'decline_push_up', 'diamond_push_up'],
     modifications: ['На гантелях або паралетах — якщо болять зап’ястя'],
+    modificationsEn: ["On dumbbells or parallettes — if your wrists hurt"],
     cues: ['Тіло — пряма лінія від голови до п’ят', 'Лікті під 45°, не розводь убік'],
+    cuesEn: ["Body in one line from head to heels", "Elbows about 45°, chest to the floor"],
     defaultReps: 15, imageSlug: 'push-up',
   },
   {
@@ -88,7 +90,9 @@ export const PUSH_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['chest', 'triceps'], secondary: ['front_delts'] },
     stress: { shoulder: 2, elbow: 1 },
     modifications: ['Вужчий хват — менше навантаження на плече'],
+    modificationsEn: ["Narrower grip — less load on the shoulder"],
     cues: ['Лопатки зведені, стопи в підлогу', 'Гриф опускається на низ грудей'],
+    cuesEn: ["Shoulder blades pinned back and down", "Lower to the lower chest, elbows about 45°"],
     defaultReps: 6, imageSlug: 'bench-press',
   },
   {
@@ -110,6 +114,7 @@ export const PUSH_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['chest', 'front_delts'], secondary: ['triceps'] },
     stress: { shoulder: 3 },
     cues: ['Кут лави 30°, не вище', 'Гриф опускається на ключиці'],
+    cuesEn: ["Bench at 30°, bar to the upper chest", "Keep the shoulders back, do not let them roll forward"],
     defaultReps: 8, imageSlug: 'incline-bench-press',
   },
   {
@@ -152,6 +157,7 @@ export const PUSH_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['chest', 'triceps'], secondary: ['front_delts'] },
     stress: { shoulder: 3, elbow: 2 },
     cues: ['Нахили корпус уперед', 'Опускайся до кута 90° в лікті, не глибше'],
+    cuesEn: ["Lean forward slightly for the chest", "Stop where the shoulders stay comfortable"],
     defaultReps: 10, imageSlug: 'chest-dip',
   },
   {
@@ -208,7 +214,9 @@ export const PUSH_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['front_delts', 'triceps'], secondary: ['abs', 'upper_back'] },
     stress: { shoulder: 3, lower_back: 2, wrist: 2 },
     modifications: ['Сидячи — менше навантаження на поперек'],
+    modificationsEn: ["Seated — less load on the lower back"],
     cues: ['Стисни сідниці й прес, ребра вниз', 'Гриф іде повз лоб, голова «пірнає» під нього'],
+    cuesEn: ["Squeeze the glutes — no leaning back", "Move the head out of the way, finish with the bar over the ears"],
     defaultReps: 6, imageSlug: 'overhead-press',
   },
   {
@@ -220,6 +228,7 @@ export const PUSH_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['front_delts', 'triceps', 'quads'], secondary: ['abs'] },
     stress: { shoulder: 3, lower_back: 2 },
     cues: ['Короткий підсід і різке виштовхування ногами', 'Угорі зафіксуй штангу над серединою стопи'],
+    cuesEn: ["Short dip with the legs, then drive", "Lock out overhead in one line: bar, shoulders, hips"],
     defaultReps: 5, imageSlug: 'push-press',
   },
   {
@@ -232,6 +241,7 @@ export const PUSH_EXERCISES: LibraryExercise[] = [
     stress: { shoulder: 3 },
     easierThan: ['strict_press', 'push_press'],
     cues: ['Гантелі на рівні вух, лікті трохи вперед', 'Не прогинай поперек'],
+    cuesEn: ["Press slightly in front of the head", "Ribs down, no leaning back"],
     defaultReps: 10, imageSlug: 'standing-dumbbell-press',
   },
   {
@@ -277,6 +287,7 @@ export const PUSH_EXERCISES: LibraryExercise[] = [
     stress: { shoulder: 2, wrist: 3 },
     easierThan: ['handstand_push_up'],
     cues: ['Таз високо, тіло як «дах»', 'Опускай маківку між долонь'],
+    cuesEn: ["Hips high, head between the arms", "Lower the crown of the head toward the floor"],
     defaultReps: 10, imageSlug: 'pike-push-up',
   },
   {
@@ -353,6 +364,7 @@ export const PUSH_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['triceps'], secondary: [] },
     stress: { elbow: 1 },
     cues: ['Лікті притиснуті до боків', 'Розгинай повністю, повертай повільно'],
+    cuesEn: ["Elbows pinned to the sides", "Lock out, then return under control"],
     defaultReps: 15, imageSlug: 'tricep-pushdown',
   },
   {

@@ -1,3 +1,4 @@
+import { tFor } from '../services/i18n';
 /**
  * Аналітика з резолвером: різні написання однієї вправи зливаються,
  * а кросфіт-об'єм більше не роздуває тижневі підходи (ТЗ F7.3).
@@ -154,12 +155,14 @@ describe('підказка «минулого разу»', () => {
     expect(last.date).toBe('2026-09-05');
   });
 
-  it('читається людиною', () => {
-    expect(formatLastResult({ weight: 80, reps: 5, date: '2026-09-01' }))
+  it('читається людиною — обома мовами', () => {
+    expect(formatLastResult({ weight: 80, reps: 5, date: '2026-09-01' }, tFor('uk')))
       .toBe('минулого разу 80 кг × 5');
-    expect(formatLastResult({ reps: 12, date: '2026-09-01' }))
+    expect(formatLastResult({ reps: 12, date: '2026-09-01' }, tFor('uk')))
       .toBe('минулого разу 12 повт.');
-    expect(formatLastResult(undefined)).toBeNull();
+    expect(formatLastResult({ weight: 80, reps: 5, date: '2026-09-01' }, tFor('en')))
+      .toBe('last time 80 kg × 5');
+    expect(formatLastResult(undefined, tFor('uk'))).toBeNull();
   });
 
   it('вправи без результатів не потрапляють у підказки', () => {

@@ -6,11 +6,12 @@
  * саме не повернулось: інша частина тіла, недоступне обладнання, рух, який
  * б'є по зоні, яку просили берегти.
  */
+import { tFor } from '../services/i18n';
 import {
   applySubstitution, familiarityFrom, findSubstitutions, substitutionsFor,
 } from '../services/substitutions';
 import {
-  convertCardio, formatPrescription, needsNewScheme, prescribe,
+  cardioAmountText, convertCardio, formatPrescription, needsNewScheme, prescribe,
 } from '../services/prescriptions';
 import { getExercise, muscleGroupOf } from '../services/library';
 
@@ -71,11 +72,11 @@ describe('заміни: обмеження', () => {
   it('помірне навантаження лишається, але з позначкою й нижче в списку', () => {
     const r = findSubstitutions({ exercise: ex('back_squat'), protectZones: ['knee'] });
     const all = [...r.easier, ...r.variations];
-    const cautioned = all.filter((o) => o.caution);
+    const cautioned = all.filter((o) => o.cautionCode);
     for (const o of cautioned) expect(o.exercise.stress?.knee).toBe(2);
     // з позначкою — не перший у своєму блоці, якщо є чистіші варіанти
-    if (r.easier.length > 1 && r.easier.some((o) => !o.caution)) {
-      expect(r.easier[0].caution).toBeUndefined();
+    if (r.easier.length > 1 && r.easier.some((o) => !o.cautionCode)) {
+      expect(r.easier[0].cautionCode).toBeUndefined();
     }
   });
 
@@ -158,8 +159,10 @@ describe('приписи', () => {
   });
 
   it('підпис читається людиною', () => {
-    expect(formatPrescription(prescribe(ex('back_squat'), 'strength', 'main')))
+    expect(formatPrescription(prescribe(ex('back_squat'), 'strength', 'main'), tFor('uk')))
       .toBe('5×3–5, відпочинок 2:30');
+    expect(formatPrescription(prescribe(ex('back_squat'), 'strength', 'main'), tFor('en')))
+      .toBe('5×3–5, rest 2:30');
   });
 });
 
@@ -179,9 +182,10 @@ describe('конверсія кардіо (F4.8)', () => {
     expect(c.reps).toBe(200);
   });
 
-  it('підпис чесно каже, що це орієнтир', () => {
+  it('підпис чесно каже, що це орієнтир — обома мовами', () => {
     const c = convertCardio(ex('run'), ex('row_erg'), { distanceKm: 0.8 })!;
-    expect(c.label).toContain('орієнтовно');
+    expect(cardioAmountText(c.amount, tFor('uk'))).toContain('орієнтовно');
+    expect(cardioAmountText(c.amount, tFor('en'))).toContain('rough guide');
   });
 
   it('для силової вправи конверсії немає', () => {

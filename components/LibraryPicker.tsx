@@ -13,13 +13,14 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import ExerciseImage from './ExerciseImage';
 import { exerciseName, getExercise, searchLibrary } from '../services/library';
+import { useLocale } from '../services/i18n';
 import {
   Equipment, LibraryExercise, MUSCLE_GROUP_LABELS, MuscleGroup,
 } from '../services/library/types';
 
 const GROUPS = Object.keys(MUSCLE_GROUP_LABELS) as MuscleGroup[];
 
-const LEVEL_LABEL: Record<number, string> = { 1: 'просто', 2: 'середньо', 3: 'складно' };
+const LEVEL_KEY: Record<number, string> = { 1: 'levelEasy', 2: 'levelMediumShort', 3: 'levelHard' };
 
 interface Props {
   visible: boolean;
@@ -35,9 +36,10 @@ interface Props {
 }
 
 export default function LibraryPicker({
-  visible, title = 'Обрати вправу', recentIds, availableEquipment, onClose, onSelect, footerAction,
+  visible, title, recentIds, availableEquipment, onClose, onSelect, footerAction,
 }: Props) {
   const router = useRouter();
+  const { t, lang } = useLocale();
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState<MuscleGroup | null>(null);
   const [onlyMine, setOnlyMine] = useState(false);
@@ -74,7 +76,7 @@ export default function LibraryPicker({
           <TouchableOpacity onPress={close} hitSlop={10}>
             <Ionicons name="close" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{title}</Text>
+          <Text style={styles.headerTitle}>{title ?? t('chooseExercise')}</Text>
           <View style={{ width: 24 }} />
         </View>
 
@@ -84,7 +86,7 @@ export default function LibraryPicker({
             style={styles.search}
             value={query}
             onChangeText={setQuery}
-            placeholder="Назва вправи"
+            placeholder={t('exerciseNameSearch')}
             placeholderTextColor={Colors.textMuted}
             autoCorrect={false}
           />
@@ -104,7 +106,7 @@ export default function LibraryPicker({
             >
               <Ionicons name="barbell-outline" size={14}
                 color={onlyMine ? Colors.primary : Colors.textMuted} />
-              <Text style={[styles.chipText, onlyMine && styles.chipTextActive]}>Моє обладнання</Text>
+              <Text style={[styles.chipText, onlyMine && styles.chipTextActive]}>{t('myEquipment')}</Text>
             </TouchableOpacity>
           )}
           {GROUPS.map((g) => (
@@ -125,7 +127,7 @@ export default function LibraryPicker({
           keyExtractor={(e) => e.id}
           ListHeaderComponent={recent.length > 0 ? (
             <View style={styles.recentBox}>
-              <Text style={styles.recentTitle}>Нещодавні</Text>
+              <Text style={styles.recentTitle}>{t('recentExercises')}</Text>
               {recent.map((item) => (
                 <TouchableOpacity
                   key={`recent-${item.id}`}
@@ -137,7 +139,7 @@ export default function LibraryPicker({
                   <Ionicons name="time-outline" size={16} color={Colors.textMuted} />
                 </TouchableOpacity>
               ))}
-              <Text style={styles.recentTitle}>Уся бібліотека</Text>
+              <Text style={styles.recentTitle}>{t('wholeLibrary')}</Text>
             </View>
           ) : null}
           keyboardShouldPersistTaps="handled"
@@ -148,10 +150,10 @@ export default function LibraryPicker({
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowName}>{exerciseName(item)}</Text>
                 <Text style={styles.rowMeta}>
-                  {MUSCLE_GROUP_LABELS[item.displayGroup ?? 'fullbody'].uk}
-                  {' · '}{LEVEL_LABEL[item.level]}
-                  {item.equipment.length === 0 ? ' · власна вага' : ''}
-                  {item.custom ? ' · моя вправа' : ''}
+                  {MUSCLE_GROUP_LABELS[item.displayGroup ?? 'fullbody'][lang]}
+                  {' · '}{t(LEVEL_KEY[item.level])}
+                  {item.equipment.length === 0 ? ` · ${t('bodyweightLabel')}` : ''}
+                  {item.custom ? ` · ${t('myExerciseTag')}` : ''}
                 </Text>
               </View>
               <TouchableOpacity
@@ -164,7 +166,7 @@ export default function LibraryPicker({
           )}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>Нічого не знайшли</Text>
+              <Text style={styles.emptyText}>{t('nothingFound')}</Text>
             </View>
           }
         />

@@ -14,20 +14,20 @@ import { PROGRAMS } from '../../services/programs/data';
 import { getActiveProgram } from '../../services/programs/storage';
 import { ActiveProgram } from '../../services/programs/types';
 import { getUserProfile } from '../../services/storage';
-import { EQUIPMENT_LABELS, equipmentOf } from '../../services/equipment';
+import { equipmentList, equipmentOf } from '../../services/equipment';
 import { Equipment } from '../../services/library/types';
 import { useLocale } from '../../services/i18n';
 
-const FOCUS_LABEL: Record<string, string> = {
-  strength: 'сила',
-  hypertrophy: 'маса',
-  endurance: 'витривалість',
+const FOCUS_KEY: Record<string, string> = {
+  strength: 'programFocusStrength',
+  hypertrophy: 'programFocusMass',
+  endurance: 'programFocusEndurance',
 };
 
 export default function ProgramsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { lang } = useLocale();
+  const { t, lang } = useLocale();
   const [equipment, setEquipment] = useState<Equipment[] | undefined>(undefined);
   const [active, setActive] = useState<ActiveProgram | null>(null);
 
@@ -51,15 +51,12 @@ export default function ProgramsScreen() {
         <TouchableOpacity onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Програми</Text>
+        <Text style={styles.headerTitle}>{t('programs')}</Text>
         <View style={{ width: 24 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
-        <Text style={styles.intro}>
-          Програма веде тижнями й сама піднімає навантаження. Обери одну — і на
-          головному екрані щоразу буде видно, що робити сьогодні.
-        </Text>
+        <Text style={styles.intro}>{t('programsIntro')}</Text>
 
         {PROGRAMS.map((p) => {
           const missing = missingFor(p.equipment);
@@ -74,13 +71,14 @@ export default function ProgramsScreen() {
                 <Text style={styles.cardTitle}>{lang === 'en' ? p.nameEn : p.nameUk}</Text>
                 {isActive && (
                   <View style={styles.badge}>
-                    <Text style={styles.badgeText}>активна</Text>
+                    <Text style={styles.badgeText}>{t('programActive')}</Text>
                   </View>
                 )}
               </View>
 
               <Text style={styles.meta}>
-                {p.weeks} тижнів · {p.days.length} дні на тиждень · {FOCUS_LABEL[p.focus]}
+                {t('programWeeks', p.weeks)} · {t('programDaysPerWeek', p.days.length)}
+                {' · '}{t(FOCUS_KEY[p.focus] ?? p.focus)}
               </Text>
               <Text style={styles.summary} numberOfLines={3}>
                 {lang === 'en' ? p.summaryEn : p.summaryUk}
@@ -89,18 +87,18 @@ export default function ProgramsScreen() {
               {p.equipment.length === 0 ? (
                 <View style={styles.equipRow}>
                   <Ionicons name="checkmark-circle-outline" size={14} color={Colors.success} />
-                  <Text style={styles.equipOk}>без інвентарю</Text>
+                  <Text style={styles.equipOk}>{t('programNoEquipment')}</Text>
                 </View>
               ) : missing.length === 0 ? (
                 <View style={styles.equipRow}>
                   <Ionicons name="checkmark-circle-outline" size={14} color={Colors.success} />
-                  <Text style={styles.equipOk}>обладнання є</Text>
+                  <Text style={styles.equipOk}>{t('programEquipmentOk')}</Text>
                 </View>
               ) : (
                 <View style={styles.equipRow}>
                   <Ionicons name="alert-circle-outline" size={14} color={Colors.warning} />
                   <Text style={styles.equipMiss}>
-                    бракує: {missing.map((e) => EQUIPMENT_LABELS[e] ?? e).join(', ')} — підберемо заміну
+                    {t('programEquipmentMissing', equipmentList(missing, lang))}
                   </Text>
                 </View>
               )}

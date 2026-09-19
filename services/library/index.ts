@@ -106,6 +106,18 @@ export function exerciseName(ex: LibraryExercise, lang?: Lang): string {
   return (lang ?? getCurrentExerciseLang()) === 'en' ? ex.nameEn : ex.nameUk;
 }
 
+/**
+ * Підказки техніки мовою користувача.
+ *
+ * Якщо англійського перекладу для вправи ще немає — віддаємо український:
+ * половина підказок англійською й половина українською читається дивно, але
+ * значно корисніше за порожній блок «як робити».
+ */
+export function cuesOf(ex: LibraryExercise, lang?: Lang): string[] {
+  const wanted = lang ?? getCurrentExerciseLang();
+  return wanted === 'en' && ex.cuesEn?.length ? ex.cuesEn : ex.cues;
+}
+
 export function allExercises(): LibraryExercise[] {
   return all();
 }
@@ -199,3 +211,15 @@ export function imageCoverage(): { withImage: number; total: number; ratio: numb
 
 export * from './types';
 export { normalizeName, looseKey, looksLikeHeading } from './normalize';
+
+/**
+ * Варіанти виконання мовою інтерфейсу.
+ *
+ * Українського тексту в English-режимі не показуємо: краще один рядок техніки,
+ * ніж підказка мовою, якої людина не читає.
+ */
+export function modificationsOf(ex: LibraryExercise, lang?: Lang): string[] {
+  const wanted = lang ?? getCurrentExerciseLang();
+  if (wanted === 'en') return ex.modificationsEn ?? [];
+  return ex.modifications ?? [];
+}

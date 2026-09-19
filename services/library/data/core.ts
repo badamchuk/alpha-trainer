@@ -11,6 +11,7 @@ export const CORE_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['abs'], secondary: ['obliques', 'glutes', 'front_delts'] },
     stress: { lower_back: 1, shoulder: 1 },
     cues: ['Лікті під плечима, таз не провисає', 'Стисни сідниці й прес, дихай рівно'],
+    cuesEn: ["Squeeze the glutes, ribs down", "Hips level with the shoulders, not sagging"],
     defaultSeconds: 45, imageSlug: 'plank',
   },
   {
@@ -72,6 +73,7 @@ export const CORE_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['abs'], secondary: ['hip_flexors'] },
     stress: { lower_back: 2 },
     cues: ['Поперек притиснутий, лопатки відірвані', 'Чим нижче руки й ноги, тим важче'],
+    cuesEn: ["Lower back pressed into the floor", "Ribs down, legs straight and low"],
     defaultSeconds: 30, imageSlug: 'hollow-body-hold',
   },
   {
@@ -82,6 +84,7 @@ export const CORE_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['abs'], secondary: ['hip_flexors', 'obliques'] },
     stress: { spine_flexion: 2, lower_back: 2 },
     cues: ['Стопи разом, коліна в сторони («метелик»)', 'Торкнись руками підлоги за головою і попереду'],
+    cuesEn: ["Curl the spine up, do not yank the neck", "Lower under control, one vertebra at a time"],
     defaultReps: 20,
   },
   {
@@ -113,6 +116,7 @@ export const CORE_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['obliques', 'abs'], secondary: ['hip_flexors'] },
     stress: { spine_flexion: 1 },
     cues: ['Лікоть до протилежного коліна', 'Повільно, без ривків шиєю'],
+    cuesEn: ["Opposite elbow to opposite knee", "Slow and controlled beats fast and sloppy"],
     defaultReps: 20, imageSlug: 'bicycle-crunch',
   },
   {
@@ -144,6 +148,7 @@ export const CORE_EXERCISES: LibraryExercise[] = [
     stress: { shoulder: 1, spine_flexion: 1 },
     easierThan: ['hanging_leg_raise', 'toes_to_bar', 'knees_to_bar'],
     cues: ['Не розгойдуйся', 'Піднімай коліна вище таза, скручуючи таз'],
+    cuesEn: ["Lift with the abs, not with the hips swinging", "Pause at the top, lower slowly"],
     defaultReps: 15, imageSlug: 'hanging-knee-raise',
   },
   {
@@ -204,6 +209,7 @@ export const CORE_EXERCISES: LibraryExercise[] = [
     muscles: { primary: ['lower_back'], secondary: ['glutes', 'rear_delts'] },
     stress: { spine_extension: 2 },
     cues: ['Піднімай руки й ноги одночасно', 'Шия — продовження спини'],
+    cuesEn: ["Lift chest and thighs together", "Look at the floor — the neck stays neutral"],
     defaultReps: 15, imageSlug: 'superman',
   },
 ];

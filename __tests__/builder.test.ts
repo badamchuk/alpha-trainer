@@ -6,9 +6,11 @@
  * наміру вправи, і все вкладається в обраний час.
  */
 import {
-  BuilderInput, WorkoutDraft, draftToExercises, estimateMinutes, generateWorkout, recentMainIds,
-  replaceInDraft,
+  BuilderInput, StoredDraft, WorkoutDraft, blockTitleText, draftFromStored, draftToExercises,
+  estimateMinutes, generateWorkout, recentMainIds, replaceInDraft,
 } from '../services/builder';
+import { tFor } from '../services/i18n';
+import { formatPrescription } from '../services/prescriptions';
 import { getExercise } from '../services/library';
 import { CROSSFIT_PRESET, GYM_PRESET } from '../services/equipment';
 import { WorkoutEntry } from '../types';
@@ -18,7 +20,7 @@ const gym = (over: Partial<BuilderInput> = {}): BuilderInput => ({
 });
 
 const ids = (d: WorkoutDraft) => d.blocks.flatMap((b) => b.exercises.map((e) => e.exercise.id));
-const block = (d: WorkoutDraft, title: string) => d.blocks.find((b) => b.title.startsWith(title));
+const block = (d: WorkoutDraft, kind: string) => d.blocks.find((b) => b.title.kind === kind);
 
 describe('структура', () => {
   it('фулбоді 60 має розминку, дві основні, суперсет, кор і заминку', () => {
@@ -76,21 +78,21 @@ describe('осмисленість вибору', () => {
 
   it('у залі основним стає рух зі штангою, а не відтискання', () => {
     const d = generateWorkout(gym());
-    const main = block(d, 'B. Основна')!.exercises[0].exercise;
+    const main = block(d, 'mainUpper')!.exercises[0].exercise;
     expect(main.equipment.length).toBeGreaterThan(0);
   });
 
   it('верх і низ не дублюються: A — ноги, B — верх', () => {
     const d = generateWorkout(gym());
-    const a = block(d, 'A. Основна')!.exercises[0].exercise;
-    const b = block(d, 'B. Основна')!.exercises[0].exercise;
+    const a = block(d, 'mainLegs')!.exercises[0].exercise;
+    const b = block(d, 'mainUpper')!.exercises[0].exercise;
     expect(['squat', 'hinge']).toContain(a.pattern);
     expect(['push_horizontal', 'pull_vertical']).toContain(b.pattern);
   });
 
   it('схема відповідає фокусу', () => {
     const strength = generateWorkout(gym({ focus: 'strength' }));
-    const p = block(strength, 'A. Основна')!.exercises[0].prescription;
+    const p = block(strength, 'mainLegs')!.exercises[0].prescription;
     expect(p.repsLabel).toBe('3–5');
     expect(p.restSec).toBeGreaterThanOrEqual(150);
   });
@@ -140,9 +142,9 @@ describe('обмеження користувача', () => {
 
   it('вправи з минулих тренувань не повторюються', () => {
     const plain = generateWorkout(gym());
-    const repeated = block(plain, 'A. Основна')!.exercises[0].exercise.id;
+    const repeated = block(plain, 'mainLegs')!.exercises[0].exercise.id;
     const avoided = generateWorkout(gym({ recentIds: [repeated] }));
-    expect(block(avoided, 'A. Основна')!.exercises[0].exercise.id).not.toBe(repeated);
+    expect(block(avoided, 'mainLegs')!.exercises[0].exercise.id).not.toBe(repeated);
   });
 });
 
@@ -200,7 +202,7 @@ describe('детермінованість і перенесення', () => {
 
 describe('заміна вправи в чернетці', () => {
   const draft = () => generateWorkout(gym({ durationMin: 60 }));
-  const mainIdx = (d: WorkoutDraft) => d.blocks.findIndex((b) => b.title.startsWith('A. Основна'));
+  const mainIdx = (d: WorkoutDraft) => d.blocks.findIndex((b) => b.title.kind === 'mainLegs');
 
   it('нова вправа стає на місце старої', () => {
     const d = draft();
@@ -279,5 +281,71 @@ describe('здоровий глузд (знайдено на телефоні)',
         }
       }
     }
+  });
+});
+
+describe('сумісність зі старими чернетками', () => {
+  // до 1.5.0 назва блоку зберігалась готовим рядком; оновлення не має
+  // викидати чернетку, над якою людина вже посиділа
+  const legacy = {
+    workoutType: 'strength',
+    format: 'fullbody',
+    durationMin: 60,
+    seed: 1,
+    attempt: 0,
+    blocks: [
+      {
+        role: 'strength',
+        title: 'A. Основна — ноги',
+        note: 'AMRAP 12 хв',
+        exercises: [{ id: 'back_squat', prescription: { sets: 5, reps: 5, restSec: 150 } }],
+      },
+      {
+        role: 'core',
+        title: 'Кор',
+        emptyReason: 'Немає підхожої вправи під твоє обладнання',
+        exercises: [],
+      },
+    ],
+  } as unknown as StoredDraft;
+
+  it('назва-рядок стає текстовим кодом і показується як була', () => {
+    const d = draftFromStored(legacy);
+    expect(d.blocks[0].title).toEqual({ kind: 'text', text: 'A. Основна — ноги' });
+    expect(blockTitleText(d.blocks[0].title, tFor('en'))).toBe('A. Основна — ноги');
+    expect(d.blocks[0].exercises).toHaveLength(1);
+  });
+
+  it('примітка й причина порожнечі теж не ламаються', () => {
+    const d = draftFromStored(legacy);
+    expect(d.blocks[0].note).toEqual({ kind: 'text', text: 'AMRAP 12 хв' });
+    expect(d.blocks[1].emptyReason?.kind).toBe('text');
+    expect(d.estimatedMinutes).toBeGreaterThan(0);
+  });
+});
+
+describe('кардіо в метоконі', () => {
+  const uk = tFor('uk');
+
+  it('схема показує метри, а не «1×120 с»', () => {
+    expect(formatPrescription({ sets: 1, seconds: 120, restSec: 0, distanceM: 500 }, uk))
+      .toBe('500 м');
+    expect(formatPrescription({ sets: 3, seconds: 120, restSec: 0, calories: 20 }, uk))
+      .toBe('3×20 ккал');
+  });
+
+  it('у чернетці кардіо несе відстань у вправу форми', () => {
+    // шукаємо метокон із кардіо серед кількох сідів — вони різні за складом
+    let found = false;
+    for (let seed = 1; seed <= 12 && !found; seed++) {
+      const d = generateWorkout({ format: 'crossfit', durationMin: 60 }, seed);
+      const metcon = d.blocks.find((b) => b.role === 'metcon');
+      const cardio = metcon?.exercises.find((e) => e.prescription.distanceM);
+      if (!cardio) continue;
+      found = true;
+      const log = draftToExercises(d).find((l) => l.exerciseId === cardio.exercise.id)!;
+      expect(log.distance).toBeCloseTo(cardio.prescription.distanceM! / 1000, 3);
+    }
+    expect(found).toBe(true);
   });
 });

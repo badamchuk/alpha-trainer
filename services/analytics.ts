@@ -3,6 +3,7 @@ import { getLocalDateString } from './storage';
 import { EXERCISES, MuscleGroup } from './exercises';
 import { LibraryExercise, exerciseName, getExercise, muscleGroupOf } from './library';
 import type { ExerciseResolver } from './exerciseMatch';
+import type { TFn } from './i18n';
 
 // ─── Вправа з бібліотеки, якщо запис вдалося впізнати ────────────────────────
 //
@@ -1141,10 +1142,10 @@ export function lastResults(
 }
 
 /** Короткий підпис: «минулого разу 80 кг × 5». */
-export function formatLastResult(r: LastResult | undefined): string | null {
+export function formatLastResult(r: LastResult | undefined, t: TFn): string | null {
   if (!r) return null;
-  if (r.weight && r.reps) return `минулого разу ${r.weight} кг × ${r.reps}`;
-  if (r.weight) return `минулого разу ${r.weight} кг`;
-  if (r.reps) return `минулого разу ${r.reps} повт.`;
+  if (r.weight && r.reps) return t('lastTime', t('weightByReps', r.weight, r.reps));
+  if (r.weight) return t('lastTime', t('weightKg', r.weight));
+  if (r.reps) return t('lastTime', t('repsShort', r.reps));
   return null;
 }

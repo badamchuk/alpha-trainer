@@ -13,6 +13,7 @@ import {
 import { allExercises, exerciseName, getExercise, isAvailable } from './library';
 import { Focus, Prescription, needsNewScheme, prescribe } from './prescriptions';
 import { ExerciseLog, WorkoutEntry } from '../types';
+import type { TFn } from './i18n';
 
 export type BuilderFormat = 'fullbody' | 'crossfit';
 export type BuilderDuration = 30 | 45 | 60;
@@ -41,16 +42,84 @@ export interface BuilderExercise {
   supersetId?: string;
 }
 
+/**
+ * Назва блоку — кодом, а не готовим рядком.
+ *
+ * Конструктор нічого не пише словами: текст збирає екран через t(). Інакше
+ * тренування, складене українською, лишалося б українським і в English-режимі.
+ */
+export type BlockTitleCode =
+  | { kind: 'warmup' }
+  | { kind: 'mobility' }
+  | { kind: 'cooldown' }
+  | { kind: 'mainLegs' }
+  | { kind: 'mainUpper' }
+  | { kind: 'supersetPullPush' }
+  | { kind: 'supersetLegs' }
+  | { kind: 'superset' }
+  | { kind: 'core' }
+  | { kind: 'strengthPart'; minutes?: number }
+  | { kind: 'metcon' }
+  /** Чернетка, збережена старішою версією: назва вже готовим текстом. */
+  | { kind: 'text'; text: string };
+
+/** «AMRAP 12 хв», «5 раундів» — як виконувати блок. */
+export type BlockNoteCode =
+  | { kind: 'amrap'; minutes: number }
+  | { kind: 'emom'; minutes: number }
+  | { kind: 'scheme219' }
+  | { kind: 'roundsForTime'; rounds: number }
+  | { kind: 'text'; text: string };
+
+/** Чому блок порожній (F5.7). */
+export type BlockEmptyCode =
+  | { kind: 'noEquipmentMatch' }
+  | { kind: 'noMetconMatch' }
+  | { kind: 'text'; text: string };
+
 export interface BuilderBlock {
   role: BlockRole;
-  title: string;
-  /** «AMRAP 12 хв», «5 раундів» — як виконувати блок. */
-  note?: string;
+  title: BlockTitleCode;
+  note?: BlockNoteCode;
   exercises: BuilderExercise[];
   /** Скільки хвилин відведено блоку (метокон іде на час, а не на підходи). */
   minutes?: number;
-  /** Чому блок порожній (F5.7). */
-  emptyReason?: string;
+  emptyReason?: BlockEmptyCode;
+}
+
+function isSupersetTitle(c: BlockTitleCode): boolean {
+  return c.kind === 'supersetPullPush' || c.kind === 'supersetLegs' || c.kind === 'superset';
+}
+
+const TITLE_KEY: Record<string, string> = {
+  warmup: 'blockWarmup', mobility: 'blockMobility', cooldown: 'blockCooldown',
+  mainLegs: 'blockMainLegs', mainUpper: 'blockMainUpper',
+  supersetPullPush: 'blockSupersetPullPush', supersetLegs: 'blockSupersetLegs',
+  superset: 'blockSuperset', core: 'blockCore', metcon: 'blockMetcon',
+};
+
+/** Назва блоку словами — викликає екран, бо тільки він знає мову. */
+export function blockTitleText(c: BlockTitleCode, t: TFn): string {
+  if (c.kind === 'text') return c.text;
+  if (c.kind === 'strengthPart') {
+    return c.minutes ? t('blockStrengthMin', c.minutes) : t('blockStrength');
+  }
+  return t(TITLE_KEY[c.kind] ?? c.kind);
+}
+
+export function blockNoteText(n: BlockNoteCode, t: TFn): string {
+  switch (n.kind) {
+    case 'text': return n.text;
+    case 'amrap': return t('noteAmrap', n.minutes);
+    case 'emom': return t('noteEmom', n.minutes);
+    case 'scheme219': return t('noteScheme219');
+    case 'roundsForTime': return t('noteRoundsForTime', n.rounds);
+  }
+}
+
+export function blockEmptyText(e: BlockEmptyCode, t: TFn): string {
+  if (e.kind === 'text') return e.text;
+  return t(e.kind === 'noMetconMatch' ? 'blockEmptyMetcon' : 'blockEmptyEquipment');
 }
 
 export interface WorkoutDraft {
@@ -64,7 +133,7 @@ export interface WorkoutDraft {
 
 interface Slot {
   role: BlockRole;
-  title: string;
+  title: BlockTitleCode;
   /** Будь-який із патернів підходить. */
   patterns: MovementPattern[];
   /**
@@ -77,21 +146,21 @@ interface Slot {
   /** Виключити ці сімейства (щоб не ставити двічі те саме). */
   avoidFamilies?: string[];
   prescriptionRole?: 'main' | 'accessory';
-  note?: string;
+  note?: BlockNoteCode;
 }
 
 // ─── Структура тренування (F5.2) ─────────────────────────────────────────────
 
 const WARMUP: Slot[] = [
-  { role: 'warmup', title: 'Розігрів', patterns: ['monostructural'], intents: ['conditioning'],
+  { role: 'warmup', title: { kind: 'warmup' }, patterns: ['monostructural'], intents: ['conditioning'],
     // спринт і плавання — не розігрів перед штангою
     excludeMetKinds: ['sprint', 'explosive', 'swim'] },
-  { role: 'warmup', title: 'Мобільність', patterns: ['mobility'], intents: ['mobility'] },
-  { role: 'warmup', title: 'Мобільність', patterns: ['mobility'], intents: ['mobility'] },
+  { role: 'warmup', title: { kind: 'mobility' }, patterns: ['mobility'], intents: ['mobility'] },
+  { role: 'warmup', title: { kind: 'mobility' }, patterns: ['mobility'], intents: ['mobility'] },
 ];
 
 const COOLDOWN: Slot[] = [
-  { role: 'cooldown', title: 'Заминка', patterns: ['mobility'], intents: ['mobility'] },
+  { role: 'cooldown', title: { kind: 'cooldown' }, patterns: ['mobility'], intents: ['mobility'] },
 ];
 
 /** Що вважається силовою роботою: решту в основні слоти не пускаємо. */
@@ -99,11 +168,11 @@ const STRENGTH_INTENTS: Intent[] = ['max_strength', 'hypertrophy'];
 const CORE_INTENTS: Intent[] = ['hypertrophy', 'isometric', 'conditioning'];
 
 function fullbodySlots(duration: BuilderDuration): Slot[] {
-  const a: Slot = { role: 'strength', title: 'A. Основна — ноги', patterns: ['squat', 'hinge'], intents: STRENGTH_INTENTS, prescriptionRole: 'main' };
-  const b: Slot = { role: 'strength', title: 'B. Основна — верх', patterns: ['push_horizontal', 'pull_vertical'], intents: STRENGTH_INTENTS, prescriptionRole: 'main' };
-  const c1: Slot = { role: 'accessory', title: 'C. Суперсет — тяга/жим', patterns: ['pull_horizontal', 'push_vertical'], intents: STRENGTH_INTENTS, prescriptionRole: 'accessory' };
-  const c2: Slot = { role: 'accessory', title: 'C. Суперсет — ноги', patterns: ['lunge', 'hip_thrust'], intents: STRENGTH_INTENTS, prescriptionRole: 'accessory' };
-  const core: Slot = { role: 'core', title: 'Кор', patterns: ['core_flexion', 'core_stability', 'core_rotation'], intents: CORE_INTENTS, prescriptionRole: 'accessory' };
+  const a: Slot = { role: 'strength', title: { kind: 'mainLegs' }, patterns: ['squat', 'hinge'], intents: STRENGTH_INTENTS, prescriptionRole: 'main' };
+  const b: Slot = { role: 'strength', title: { kind: 'mainUpper' }, patterns: ['push_horizontal', 'pull_vertical'], intents: STRENGTH_INTENTS, prescriptionRole: 'main' };
+  const c1: Slot = { role: 'accessory', title: { kind: 'supersetPullPush' }, patterns: ['pull_horizontal', 'push_vertical'], intents: STRENGTH_INTENTS, prescriptionRole: 'accessory' };
+  const c2: Slot = { role: 'accessory', title: { kind: 'supersetLegs' }, patterns: ['lunge', 'hip_thrust'], intents: STRENGTH_INTENTS, prescriptionRole: 'accessory' };
+  const core: Slot = { role: 'core', title: { kind: 'core' }, patterns: ['core_flexion', 'core_stability', 'core_rotation'], intents: CORE_INTENTS, prescriptionRole: 'accessory' };
 
   if (duration === 30) return [...WARMUP.slice(0, 2), a, b, core, ...COOLDOWN];
   if (duration === 45) return [...WARMUP, a, b, c1, c2, core, ...COOLDOWN];
@@ -112,23 +181,24 @@ function fullbodySlots(duration: BuilderDuration): Slot[] {
 
 /** Схеми метокону: назва + скільки рухів + скільки хвилин. */
 const METCON_SCHEMES: {
-  note: string; movements: number; rounds: number; repsLabel?: string; repsPerRound?: number;
+  note: (minutes: number) => BlockNoteCode;
+  movements: number; rounds: number; repsLabel?: string; repsPerRound?: number;
 }[] = [
-  { note: 'AMRAP {min} хв — максимум раундів', movements: 3, rounds: 1, repsPerRound: 12 },
-  { note: '21-15-9 на час', movements: 2, rounds: 3, repsLabel: '21-15-9', repsPerRound: 15 },
-  { note: '5 раундів на час', movements: 3, rounds: 5, repsPerRound: 10 },
-  { note: 'EMOM {min} хв — по черзі щохвилини', movements: 2, rounds: 1, repsPerRound: 10 },
+  { note: (m) => ({ kind: 'amrap', minutes: m }), movements: 3, rounds: 1, repsPerRound: 12 },
+  { note: () => ({ kind: 'scheme219' }), movements: 2, rounds: 3, repsLabel: '21-15-9', repsPerRound: 15 },
+  { note: () => ({ kind: 'roundsForTime', rounds: 5 }), movements: 3, rounds: 5, repsPerRound: 10 },
+  { note: (m) => ({ kind: 'emom', minutes: m }), movements: 2, rounds: 1, repsPerRound: 10 },
 ];
 
 function crossfitSlots(duration: BuilderDuration): Slot[] {
   const strength: Slot = {
     role: 'strength',
-    title: duration === 30 ? 'Силова частина' : `Силова частина — ${duration === 45 ? 12 : 15} хв`,
+    title: { kind: 'strengthPart', minutes: duration === 30 ? undefined : duration === 45 ? 12 : 15 },
     patterns: ['squat', 'hinge', 'olympic', 'push_vertical'],
     intents: ['max_strength', 'hypertrophy', 'power'],
     prescriptionRole: 'main',
   };
-  const core: Slot = { role: 'core', title: 'Кор', patterns: ['core_flexion', 'core_stability'], intents: CORE_INTENTS, prescriptionRole: 'accessory' };
+  const core: Slot = { role: 'core', title: { kind: 'core' }, patterns: ['core_flexion', 'core_stability'], intents: CORE_INTENTS, prescriptionRole: 'accessory' };
   const warm = WARMUP.slice(0, duration === 30 ? 2 : 3);
   return duration === 30
     ? [...warm, core, ...COOLDOWN]
@@ -217,7 +287,7 @@ function buildMetcon(minutes: number, ctx: PickContext): BuilderBlock {
 
   for (const pattern of patternOrder) {
     if (chosen.length >= scheme.movements) break;
-    const slot: Slot = { role: 'metcon', title: 'Метокон', patterns: [pattern] };
+    const slot: Slot = { role: 'metcon', title: { kind: 'metcon' }, patterns: [pattern] };
     const ex = pick(slot, ctx);
     if (!ex) continue;
     // у метоконі не місце важким силовим схемам
@@ -233,13 +303,11 @@ function buildMetcon(minutes: number, ctx: PickContext): BuilderBlock {
 
   return {
     role: 'metcon',
-    title: 'Метокон',
-    note: scheme.note.replace('{min}', String(minutes)),
+    title: { kind: 'metcon' },
+    note: scheme.note(minutes),
     minutes,
     exercises: chosen,
-    emptyReason: chosen.length === 0
-      ? 'Немає підхожих рухів під твоє обладнання — прибери обмеження або додай інвентар у профілі.'
-      : undefined,
+    emptyReason: chosen.length === 0 ? { kind: 'noMetconMatch' } : undefined,
   };
 }
 
@@ -255,7 +323,8 @@ function metconPrescription(
       reps: per2.reps,
       seconds: per2.reps ? undefined : 120,
       restSec: 0,
-      note: per2.distanceM ? `${per2.distanceM} м` : per2.calories ? `${per2.calories} ккал` : undefined,
+      distanceM: per2.distanceM,
+      calories: per2.distanceM ? undefined : per2.calories,
     };
   }
   const weighted = ex.equipment.length > 0;
@@ -289,7 +358,7 @@ export function generateWorkout(input: BuilderInput, seed = 1, attempt = 0): Wor
         role: slot.role,
         title: slot.title,
         exercises: [],
-        emptyReason: 'Немає підхожої вправи під твоє обладнання',
+        emptyReason: { kind: 'noEquipmentMatch' },
       });
       continue;
     }
@@ -297,11 +366,11 @@ export function generateWorkout(input: BuilderInput, seed = 1, attempt = 0): Wor
     ctx.usedFamilies.add(ex.family);
 
     // блок «C. Суперсет» — дві вправи поспіль в одному блоці
-    const isSuperset = slot.title.startsWith('C.');
+    const isSuperset = isSupersetTitle(slot.title);
     const prev = blocks[blocks.length - 1];
     // Розігрів — це 3 хвилини легкого кардіо, а не 3 підходи з відпочинком
     let prescription = slot.role === 'warmup' && ex.cardio
-      ? { sets: 1, seconds: 180, restSec: 0, note: 'легко, щоб зігрітись' }
+      ? { sets: 1, seconds: 180, restSec: 0 }
       : prescribe(ex, focus, slot.prescriptionRole ?? 'accessory');
 
     // Стретчинг «за замовчуванням» триває 5 хвилин — це окреме заняття, а не
@@ -324,10 +393,10 @@ export function generateWorkout(input: BuilderInput, seed = 1, attempt = 0): Wor
       supersetId: isSuperset ? `builder_ss_${seed}_${supersetCounter}` : undefined,
     };
 
-    if (isSuperset && prev && prev.title.startsWith('C.')) {
+    if (isSuperset && prev && isSupersetTitle(prev.title)) {
       entry.supersetId = prev.exercises[0]?.supersetId ?? entry.supersetId;
       prev.exercises.push(entry);
-      prev.title = 'C. Суперсет';
+      prev.title = { kind: 'superset' };
       continue;
     }
     if (isSuperset) supersetCounter++;
@@ -373,7 +442,9 @@ function fitToDuration(blocks: BuilderBlock[], durationMin: number): void {
   for (let guard = 0; guard < 8 && metcon && estimateMinutes(blocks) < low; guard++) {
     if ((metcon.minutes ?? 0) >= 20) break;
     metcon.minutes = (metcon.minutes ?? 10) + 1;
-    metcon.note = metcon.note?.replace(/\d+ хв/, `${metcon.minutes} хв`);
+    if (metcon.note && (metcon.note.kind === 'amrap' || metcon.note.kind === 'emom')) {
+      metcon.note = { ...metcon.note, minutes: metcon.minutes };
+    }
   }
 
   for (let guard = 0; guard < 6 && estimateMinutes(blocks) < low; guard++) {
@@ -422,7 +493,14 @@ export function estimateMinutes(blocks: BuilderBlock[]): number {
 }
 
 /** Чернетка у вправи для форми запису (F5.7). */
-export function draftToExercises(draft: WorkoutDraft): ExerciseLog[] {
+export function draftToExercises(
+  draft: WorkoutDraft,
+  /**
+   * Як записати примітку блоку словами. Нотатка лягає в історію назавжди, тож
+   * її збирає екран — мовою, якою людина зараз користується.
+   */
+  noteText?: (n: BlockNoteCode) => string,
+): ExerciseLog[] {
   const out: ExerciseLog[] = [];
   for (const block of draft.blocks) {
     for (const e of block.exercises) {
@@ -434,8 +512,11 @@ export function draftToExercises(draft: WorkoutDraft): ExerciseLog[] {
         reps: p.reps,
         // форма показує хвилини: 40 секунд — це 0.7 хв, а не 0.6666666666666666
         duration: p.seconds ? Math.round(p.seconds / 6) / 10 : undefined,
+        // метри й калорії кардіо теж переносимо: форма підставить їх у поля
+        distance: p.distanceM ? p.distanceM / 1000 : undefined,
+        calories: p.calories,
         supersetId: e.supersetId,
-        notes: block.note,
+        notes: block.note && noteText ? noteText(block.note) : undefined,
       });
     }
   }
@@ -475,11 +556,12 @@ export interface StoredDraft {
   seed: number;
   attempt: number;
   blocks: {
+    // Чернетки, збережені до 1.5.0, тримали назву готовим рядком — читаємо й такі.
     role: BlockRole;
-    title: string;
-    note?: string;
+    title: BlockTitleCode | string;
+    note?: BlockNoteCode | string;
     minutes?: number;
-    emptyReason?: string;
+    emptyReason?: BlockEmptyCode | string;
     exercises: { id: string; prescription: Prescription; supersetId?: string }[];
   }[];
 }
@@ -507,13 +589,18 @@ export function draftToStored(draft: WorkoutDraft, seed: number, attempt: number
   };
 }
 
+function asCode<T extends { kind: string }>(v: T | string | undefined): T | undefined {
+  if (v === undefined) return undefined;
+  return typeof v === 'string' ? ({ kind: 'text', text: v } as unknown as T) : v;
+}
+
 export function draftFromStored(stored: StoredDraft): WorkoutDraft {
   const blocks: BuilderBlock[] = stored.blocks.map((b) => ({
     role: b.role,
-    title: b.title,
-    note: b.note,
+    title: asCode<BlockTitleCode>(b.title) ?? { kind: 'text', text: '' },
+    note: asCode<BlockNoteCode>(b.note),
     minutes: b.minutes,
-    emptyReason: b.emptyReason,
+    emptyReason: asCode<BlockEmptyCode>(b.emptyReason),
     exercises: b.exercises.flatMap((e): BuilderExercise[] => {
       const exercise = getExercise(e.id);
       return exercise ? [{ exercise, prescription: e.prescription, supersetId: e.supersetId }] : [];

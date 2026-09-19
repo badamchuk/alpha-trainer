@@ -1,8 +1,10 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
+import { useLocale } from '../../services/i18n';
 
 export default function TabLayout() {
+  const { t } = useLocale();
   return (
     <Tabs
       screenOptions={{
@@ -26,7 +28,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Сьогодні',
+          title: t('tabToday'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="today-outline" size={size} color={color} />
           ),
@@ -35,7 +37,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="journal"
         options={{
-          title: 'Журнал',
+          title: t('tabJournal'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="journal-outline" size={size} color={color} />
           ),
@@ -44,7 +46,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="progress"
         options={{
-          title: 'Прогрес',
+          title: t('tabProgress'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="stats-chart-outline" size={size} color={color} />
           ),
@@ -53,7 +55,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="trainer"
         options={{
-          title: 'Тренер',
+          title: t('tabTrainer'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbubble-ellipses-outline" size={size} color={color} />
           ),
@@ -62,7 +64,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="nutrition"
         options={{
-          title: 'Харчування',
+          title: t('tabNutrition'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="nutrition-outline" size={size} color={color} />
           ),
@@ -71,7 +73,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="goals"
         options={{
-          title: 'Цілі',
+          title: t('tabGoals'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="flag-outline" size={size} color={color} />
           ),

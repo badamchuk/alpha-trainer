@@ -35,6 +35,28 @@ export const EQUIPMENT_LABELS: Record<Equipment, string> = {
   pool: 'Басейн',
 };
 
+/** Ті самі назви англійською: екран профілю й картка вправи мають обидві мови. */
+export const EQUIPMENT_LABELS_EN: Record<Equipment, string> = {
+  barbell: 'Barbell', dumbbell: 'Dumbbells', kettlebell: 'Kettlebells', ez_bar: 'EZ bar',
+  trap_bar: 'Trap bar', plate: 'Plates', cable: 'Cable', machine: 'Machines',
+  smith: 'Smith machine', bench: 'Bench', box: 'Box', wall: 'Wall',
+  pullup_bar: 'Pull-up bar', dip_bars: 'Dip bars', rings: 'Rings', band: 'Band',
+  ab_wheel: 'Ab wheel', medicine_ball: 'Medicine ball', wall_ball: 'Wall ball',
+  rower: 'Rower', bike: 'Bike', air_bike: 'Air bike', ski_erg: 'SkiErg',
+  treadmill: 'Treadmill', jump_rope: 'Jump rope', sled: 'Sled', stick: 'Stick',
+  pool: 'Pool',
+};
+
+/** Назва снаряда мовою інтерфейсу. */
+export function equipmentLabel(e: Equipment, lang: 'uk' | 'en' = 'uk'): string {
+  return (lang === 'en' ? EQUIPMENT_LABELS_EN[e] : EQUIPMENT_LABELS[e]) ?? e;
+}
+
+/** Перелік через кому — «штанга, лава» під карткою вправи. */
+export function equipmentList(list: Equipment[], lang: 'uk' | 'en' = 'uk'): string {
+  return list.map((e) => equipmentLabel(e, lang)).join(', ');
+}
+
 /** Групи для екрана профілю. */
 export const EQUIPMENT_GROUPS: { title: string; items: Equipment[] }[] = [
   { title: 'Вільна вага', items: ['barbell', 'dumbbell', 'kettlebell', 'ez_bar', 'trap_bar', 'plate', 'bench'] },

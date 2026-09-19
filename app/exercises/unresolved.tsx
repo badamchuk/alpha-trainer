@@ -20,7 +20,8 @@ import {
   linkName, loadCustomExercises, unlinkName,
 } from '../../services/exerciseLinks';
 import { MatchResult, matchName } from '../../services/exerciseMatch';
-import { LibraryExercise, getExercise } from '../../services/library';
+import { LibraryExercise, exerciseName, getExercise } from '../../services/library';
+import { useLocale } from '../../services/i18n';
 
 interface Row extends UnresolvedName {
   key: string;
@@ -28,16 +29,19 @@ interface Row extends UnresolvedName {
   suggestion?: LibraryExercise;
 }
 
-const CONFIDENCE_HINT: Record<string, string> = {
-  ambiguous: 'кілька варіантів',
-  fuzzy: 'схоже на',
-  none: 'не впізнали',
+const CONFIDENCE_KEY: Record<string, string> = {
+  ambiguous: 'confidenceAmbiguous',
+  fuzzy: 'confidenceFuzzy',
+  none: 'confidenceNone',
 };
 
 export default function UnresolvedScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
+  const { t } = useLocale();
+  /** «3 записи» — множина різна в мовах, тому лежить у словнику. */
+  const records = (n: number) => `${n} ${t('recordsPlural', n)}`;
   const [rows, setRows] = useState<Row[]>([]);
   const [links, setLinks] = useState<Record<string, string>>({});
   const [counts, setCounts] = useState<Map<string, UnresolvedName>>(new Map());
@@ -85,13 +89,12 @@ export default function UnresolvedScreen() {
     setBackupOffered(true);
     await new Promise<void>((resolve) => {
       Alert.alert(
-        'Спершу резервна копія?',
-        'Прив’язка змінює те, як рахується прогрес і калорії по всій історії. '
-        + 'Записи лишаються цілі, але копію краще мати.',
+        t('backupFirstTitle'),
+        t('backupFirstText'),
         [
-          { text: 'Пропустити', style: 'cancel', onPress: () => resolve() },
+          { text: t('skipBtn'), style: 'cancel', onPress: () => resolve() },
           {
-            text: 'Зберегти копію',
+            text: t('saveBackupBtn'),
             onPress: async () => {
               try { await exportBackup(); } catch { /* користувач скасував — не заважаємо */ }
               resolve();
@@ -105,13 +108,12 @@ export default function UnresolvedScreen() {
   async function apply(row: Row, ex: LibraryExercise) {
     await offerBackupOnce();
     Alert.alert(
-      'Прив’язати назву?',
-      `«${row.name}» → ${ex.nameUk}\n\nВплине на ${row.records} ${plural(row.records)}. `
-      + 'Назву в записах не змінюємо — це можна відв’язати будь-коли.',
+      t('linkNameTitle'),
+      t('linkNameText', row.name, exerciseName(ex), records(row.records)),
       [
-        { text: 'Скасувати', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Прив’язати',
+          text: t('linkBtn'),
           onPress: async () => {
             await linkName(row.key, ex.id);
             await load();
@@ -124,12 +126,12 @@ export default function UnresolvedScreen() {
   async function createCustom(row: Row, query: string) {
     const name = (query || row.name).trim();
     Alert.alert(
-      'Моя власна вправа',
-      `Створити «${name}» як власну вправу й прив’язати до неї ${row.records} ${plural(row.records)}?`,
+      t('myOwnExercise'),
+      t('createCustomText', name, records(row.records)),
       [
-        { text: 'Скасувати', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Створити',
+          text: t('createBtn'),
           onPress: async () => {
             await offerBackupOnce();
             const custom = await addCustomExercise(name);
@@ -142,10 +144,10 @@ export default function UnresolvedScreen() {
   }
 
   async function removeLink(key: string, name: string) {
-    Alert.alert('Відв’язати?', `«${name}» знову стане нерозпізнаною назвою.`, [
-      { text: 'Скасувати', style: 'cancel' },
+    Alert.alert(t('unlinkTitle'), t('unlinkText', name), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Відв’язати',
+        text: t('unlinkBtn'),
         style: 'destructive',
         onPress: async () => { await unlinkName(key); await load(); },
       },
@@ -161,7 +163,7 @@ export default function UnresolvedScreen() {
         <TouchableOpacity onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Розпізнавання вправ</Text>
+        <Text style={styles.headerTitle}>{t('unresolvedTitle')}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -171,7 +173,7 @@ export default function UnresolvedScreen() {
           onPress={() => setTab('todo')}
         >
           <Text style={[styles.tabText, tab === 'todo' && styles.tabTextActive]}>
-            Нерозпізнані {rows.length > 0 ? `(${rows.length})` : ''}
+            {t('unresolvedTab')} {rows.length > 0 ? `(${rows.length})` : ''}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -179,7 +181,7 @@ export default function UnresolvedScreen() {
           onPress={() => setTab('links')}
         >
           <Text style={[styles.tabText, tab === 'links' && styles.tabTextActive]}>
-            Зв’язки {linkRows.length > 0 ? `(${linkRows.length})` : ''}
+            {t('linksTab')} {linkRows.length > 0 ? `(${linkRows.length})` : ''}
           </Text>
         </TouchableOpacity>
       </View>
@@ -193,8 +195,8 @@ export default function UnresolvedScreen() {
               <View style={styles.summary}>
                 <Text style={styles.summaryValue}>{pct}%</Text>
                 <Text style={styles.summaryText}>
-                  назв впізнано автоматично ({resolvedCount} з {total}).
-                  {rows.length > 0 ? ' Решту підкажи сам — це разова робота.' : ' Усе розібрано.'}
+                  {t('recognizedSummary', resolvedCount, total)}
+                  {t(rows.length > 0 ? 'recognizedRest' : 'recognizedAllDone')}
                 </Text>
               </View>
 
@@ -202,11 +204,11 @@ export default function UnresolvedScreen() {
                 <View key={row.key} style={styles.card}>
                   <View style={styles.cardHead}>
                     <Text style={styles.cardName}>{row.name}</Text>
-                    <Text style={styles.cardCount}>{row.records} {plural(row.records)}</Text>
+                    <Text style={styles.cardCount}>{records(row.records)}</Text>
                   </View>
                   <Text style={styles.cardHint}>
-                    {CONFIDENCE_HINT[row.match.confidence] ?? row.match.confidence}
-                    {row.suggestion ? `: ${row.suggestion.nameUk}` : ''}
+                    {t(CONFIDENCE_KEY[row.match.confidence] ?? row.match.confidence)}
+                    {row.suggestion ? `: ${exerciseName(row.suggestion)}` : ''}
                   </Text>
 
                   {row.match.confidence === 'ambiguous' ? (
@@ -216,7 +218,7 @@ export default function UnresolvedScreen() {
                         if (!ex) return null;
                         return (
                           <TouchableOpacity key={id} style={styles.choice} onPress={() => apply(row, ex)}>
-                            <Text style={styles.choiceText}>{ex.nameUk}</Text>
+                            <Text style={styles.choiceText}>{exerciseName(ex)}</Text>
                           </TouchableOpacity>
                         );
                       })}
@@ -228,14 +230,14 @@ export default function UnresolvedScreen() {
                     >
                       <Ionicons name="checkmark" size={16} color={Colors.primary} />
                       <Text style={[styles.choiceText, styles.choiceTextPrimary]}>
-                        Це воно: {row.suggestion.nameUk}
+                        {t('thatsIt', exerciseName(row.suggestion))}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
 
                   <TouchableOpacity style={styles.secondary} onPress={() => setPicking(row)}>
                     <Ionicons name="search" size={15} color={Colors.textSecondary} />
-                    <Text style={styles.secondaryText}>Обрати іншу</Text>
+                    <Text style={styles.secondaryText}>{t('pickAnother')}</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -243,7 +245,7 @@ export default function UnresolvedScreen() {
               {rows.length === 0 && (
                 <View style={styles.empty}>
                   <Ionicons name="checkmark-circle-outline" size={48} color={Colors.success} />
-                  <Text style={styles.emptyText}>Усі назви розпізнано</Text>
+                  <Text style={styles.emptyText}>{t('allNamesResolved')}</Text>
                 </View>
               )}
             </>
@@ -255,21 +257,21 @@ export default function UnresolvedScreen() {
                 <View key={l.key} style={styles.card}>
                   <View style={styles.cardHead}>
                     <Text style={styles.cardName}>{l.name}</Text>
-                    <Text style={styles.cardCount}>{l.records} {plural(l.records)}</Text>
+                    <Text style={styles.cardCount}>{records(l.records)}</Text>
                   </View>
                   <Text style={[styles.cardHint, l.orphan && { color: Colors.warning }]}>
-                    {l.orphan ? 'вправи більше немає — зв’язок не діє' : `→ ${l.target?.nameUk}`}
+                    {l.orphan ? t('linkOrphan') : `→ ${l.target ? exerciseName(l.target) : ''}`}
                   </Text>
                   <TouchableOpacity style={styles.secondary} onPress={() => removeLink(l.key, l.name)}>
                     <Ionicons name="unlink-outline" size={15} color={Colors.textSecondary} />
-                    <Text style={styles.secondaryText}>Відв’язати</Text>
+                    <Text style={styles.secondaryText}>{t('unlinkBtn')}</Text>
                   </TouchableOpacity>
                 </View>
               ))}
               {linkRows.length === 0 && (
                 <View style={styles.empty}>
                   <Ionicons name="link-outline" size={48} color={Colors.textMuted} />
-                  <Text style={styles.emptyText}>Ще нічого не прив’язано</Text>
+                  <Text style={styles.emptyText}>{t('nothingLinkedYet')}</Text>
                 </View>
               )}
             </>
@@ -279,11 +281,11 @@ export default function UnresolvedScreen() {
 
       <LibraryPicker
         visible={picking !== null}
-        title={picking ? `«${picking.name}» — це…` : ''}
+        title={picking ? t('whatIsThis', picking.name) : ''}
         onClose={() => setPicking(null)}
         onSelect={(ex) => { const row = picking; setPicking(null); if (row) apply(row, ex); }}
         footerAction={{
-          label: 'Моя власна вправа',
+          label: t('myOwnExercise'),
           onPress: (query) => { const row = picking; setPicking(null); if (row) createCustom(row, query); },
         }}
       />
@@ -291,13 +293,7 @@ export default function UnresolvedScreen() {
   );
 }
 
-function plural(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'запис';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'записи';
-  return 'записів';
-}
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },

@@ -3,8 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { format, parseISO } from 'date-fns';
-import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
+import { dateLocale, useLocale } from '../services/i18n';
 
 interface Props {
   label: string;
@@ -15,12 +15,13 @@ interface Props {
 }
 
 export default function DatePickerField({ label, value, onChange, minimumDate, maximumDate }: Props) {
+  const { t, lang } = useLocale();
   const [show, setShow] = useState(false);
 
   const date = value ? parseISO(value) : new Date();
   const displayDate = value
-    ? format(parseISO(value), 'd MMMM yyyy', { locale: uk })
-    : 'Вибрати дату';
+    ? format(parseISO(value), 'd MMMM yyyy', { locale: dateLocale(lang) })
+    : t('pickDate');
 
   function handleChange(_: DateTimePickerEvent, selected?: Date) {
     setShow(Platform.OS === 'ios');

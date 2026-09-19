@@ -11,8 +11,9 @@
 import {
   Equipment, JointZone, LibraryExercise, Level, MovementPattern, MUSCLE_GROUP_LABELS,
 } from './library/types';
-import { allExercises, getExercise, isAvailable, muscleGroupOf } from './library';
+import { allExercises, exerciseName, getExercise, isAvailable, muscleGroupOf } from './library';
 import { EQUIPMENT_LABELS, equipmentOf } from './equipment';
+import { Lang, getCurrentExerciseLang, getCurrentLang } from './i18n';
 import { UserProfile, WorkoutEntry } from '../types';
 import type { ExerciseResolver } from './exerciseMatch';
 
@@ -130,7 +131,9 @@ export function buildExerciseContext(input: ExerciseContextInput): string {
   const groups = [...byPattern.entries()].map(([pattern, items]) => {
     const title = PATTERN_TITLES[pattern] ?? pattern;
     const rows = items
-      .map((ex) => `  ${ex.id} — ${ex.nameUk} (${MUSCLE_GROUP_LABELS[muscleGroupOf(ex)].uk}, ${LEVEL_WORD[ex.level]})`)
+      // назва — мовою вправ користувача: модель має писати так, як він читає
+      .map((ex) => `  ${ex.id} — ${exerciseName(ex)} (${
+        MUSCLE_GROUP_LABELS[muscleGroupOf(ex)][getCurrentExerciseLang()]}, ${LEVEL_WORD[ex.level]})`)
       .join('\n');
     return `${title}:\n${rows}`;
   });
@@ -159,7 +162,7 @@ export function describeWorkout(w: WorkoutEntry, resolver?: ExerciseResolver): s
   for (const e of w.exercises ?? []) {
     const id = resolver ? resolver(e) : null;
     const lib = id ? getExercise(id) : undefined;
-    const name = lib ? `${lib.nameUk} [${lib.id}]` : e.name;
+    const name = lib ? `${exerciseName(lib)} [${lib.id}]` : e.name;
     const parts: string[] = [];
     if (e.sets && e.reps && e.weight) parts.push(`${e.sets}×${e.reps} @ ${e.weight}кг`);
     else if (e.sets && e.reps) parts.push(`${e.sets}×${e.reps}`);
@@ -244,4 +247,17 @@ export function buildAIContext(
     workouts,
     today: describeToday(input.profile),
   };
+}
+
+/**
+ * Якою мовою AI має відповідати.
+ *
+ * Сама інструкція лишається українською — це текст для моделі, не для людини.
+ * Важливо інше: у English-інтерфейсі відповідь теж має бути англійською, бо
+ * інакше половина екрана однією мовою, а половина іншою.
+ */
+export function answerLanguageRule(lang: Lang = getCurrentLang()): string {
+  return lang === 'en'
+    ? 'Reply in English. The user interface is in English, so answer in English even though these instructions are in Ukrainian.'
+    : 'Відповідай українською мовою.';
 }

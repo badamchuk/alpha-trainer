@@ -8,6 +8,7 @@
 // відпочинком, маса 6–12, витривалість 12–20; кор і мобільність рахуються часом.
 
 import { Intent, LibraryExercise, Metric } from './library/types';
+import type { TFn } from './i18n';
 
 export type Focus = 'strength' | 'hypertrophy' | 'endurance';
 
@@ -20,8 +21,18 @@ export interface Prescription {
   restSec: number;
   /** Цільове зусилля, коли ваги з історії ще немає. */
   rpe?: number;
-  /** Чому саме так — для підпису під схемою. */
-  note?: string;
+  /** Чому саме так — кодом, бо підпис малює екран потрібною мовою. */
+  note?: PrescriptionNote;
+  /** Метри для кардіо в метоконі (гребля, біг). */
+  distanceM?: number;
+  /** Калорії для кардіо в метоконі (велотренажер, еліпс). */
+  calories?: number;
+}
+
+export type PrescriptionNote = { kind: 'powerFresh' };
+
+export function prescriptionNoteText(n: PrescriptionNote, t: TFn): string {
+  return t('notePowerFresh');
 }
 
 const FOCUS_MAIN: Record<Focus, Prescription> = {
@@ -37,7 +48,7 @@ const CORE: Prescription = { sets: 3, reps: 15, repsLabel: '12–20', restSec: 4
 const CORE_TIMED: Prescription = { sets: 3, seconds: 40, restSec: 45 };
 const MOBILITY: Prescription = { sets: 1, seconds: 40, restSec: 0 };
 const POWER: Prescription = { sets: 5, reps: 3, repsLabel: '3', restSec: 90, rpe: 7,
-  note: 'вибухові рухи роблять свіжими — мало повторів, повний відпочинок' };
+  note: { kind: 'powerFresh' } };
 const CONDITIONING: Prescription = { sets: 3, reps: 12, repsLabel: '10–15', restSec: 60 };
 
 function isTimed(ex: LibraryExercise): boolean {
@@ -96,13 +107,18 @@ export function prescribe(
 }
 
 /** Коротко для UI: «5×3–5, відпочинок 2:30» або «3×40 с». */
-export function formatPrescription(p: Prescription): string {
-  const amount = p.repsLabel ?? (p.reps !== undefined ? String(p.reps) : `${p.seconds} с`);
+export function formatPrescription(p: Prescription, t: TFn): string {
+  // Для кардіо в метоконі робота задана метрами чи калоріями — «1×120 с» на
+  // гребному нічого не каже, а «500 м» каже все.
+  const amount = p.repsLabel
+    ?? (p.distanceM ? `${p.distanceM} ${t('unitMeters')}` : undefined)
+    ?? (p.calories ? `${p.calories} ${t('unitKcal')}` : undefined)
+    ?? (p.reps !== undefined ? String(p.reps) : t('secondsShort', p.seconds));
   const rest = p.restSec >= 60
     ? `${Math.floor(p.restSec / 60)}:${String(p.restSec % 60).padStart(2, '0')}`
-    : `${p.restSec} с`;
+    : t('secondsShort', p.restSec);
   const main = p.sets > 1 ? `${p.sets}×${amount}` : amount;
-  return p.restSec > 0 ? `${main}, відпочинок ${rest}` : main;
+  return p.restSec > 0 ? `${main}, ${t('restLabel', rest)}` : main;
 }
 
 /**
@@ -143,7 +159,14 @@ export interface CardioConversion {
   distanceKm?: number;
   calories?: number;
   reps?: number;
-  label: string;
+  /** Скільки й чого вийшло — підпис збирає екран (одиниці різні в мовах). */
+  amount: { value: number; unit: 'm' | 'kcal' | 'reps' };
+}
+
+/** «600 м (орієнтовно, для чоловіка ~80 кг)» — числа з сервісу, слова з i18n. */
+export function cardioAmountText(a: CardioConversion['amount'], t: TFn): string {
+  const unit = t(a.unit === 'm' ? 'unitMeters' : a.unit === 'kcal' ? 'unitKcal' : 'unitReps');
+  return t('cardioApprox', a.value, unit);
 }
 
 /**
@@ -169,18 +192,15 @@ export function convertCardio(
 
   if (b.distanceM) {
     const meters = roundTo(blocks * b.distanceM, b.distanceM >= 500 ? 100 : 50);
-    return {
-      distanceKm: meters / 1000,
-      label: `${meters} м (орієнтовно, для чоловіка ~80 кг)`,
-    };
+    return { distanceKm: meters / 1000, amount: { value: meters, unit: 'm' } };
   }
   if (b.calories) {
     const cal = roundTo(blocks * b.calories, 5);
-    return { calories: cal, label: `${cal} ккал (орієнтовно, для чоловіка ~80 кг)` };
+    return { calories: cal, amount: { value: cal, unit: 'kcal' } };
   }
   if (b.reps) {
     const reps = roundTo(blocks * b.reps, 10);
-    return { reps, label: `${reps} повторів (орієнтовно, для чоловіка ~80 кг)` };
+    return { reps, amount: { value: reps, unit: 'reps' } };
   }
   return null;
 }

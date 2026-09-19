@@ -566,7 +566,7 @@ export default function LogWorkoutScreen() {
     setSubsExercise(null);
 
     if (needsNewScheme(subsExercise, next)) {
-      Alert.alert('Схему підходів оновлено', `${exerciseName(next)}: ${formatPrescription(prescribe(next))}`);
+      Alert.alert('Схему підходів оновлено', `${exerciseName(next)}: ${formatPrescription(prescribe(next), t)}`);
     }
   }
 

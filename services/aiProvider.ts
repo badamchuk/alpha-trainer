@@ -10,6 +10,7 @@
 // відновиться, і він знову знадобиться.
 
 import { UserProfile } from '../types';
+import type { TFn } from './i18n';
 
 export type ProviderId = 'groq' | 'gemini';
 
@@ -50,10 +51,9 @@ export interface ProviderAttempt<T> {
 
 const LABEL: Record<ProviderId, string> = { groq: 'Groq', gemini: 'Gemini' };
 
-export function switchNote(from: ProviderId, to: ProviderId): string {
-  return from === 'groq'
-    ? `${LABEL.groq} не відповідає з твоєї мережі — питаю ${LABEL[to]}`
-    : `${LABEL[from]} не відповідає — питаю ${LABEL[to]}`;
+export function switchNote(from: ProviderId, to: ProviderId, t: TFn): string {
+  // Groq блокує цілі країни — це не збій ключа, і сказати про це варто прямо.
+  return t(from === 'groq' ? 'providerSwitchGeo' : 'providerSwitch', LABEL[from], LABEL[to]);
 }
 
 /**

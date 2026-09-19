@@ -8,10 +8,9 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, isToday, startOfWeek, addDays } from 'date-fns';
-import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getUserProfile, getGoals, getRecentWorkouts, getStats, getWorkoutsForDate, getTrainingPlan, getCachedDailyAdvice, saveDailyAdviceCache, getLocalDateString, getWorkouts } from '../../services/storage';
-import { useLocale } from '../../services/i18n';
+import { dateLocale, useLocale } from '../../services/i18n';
 import { getDailyAdvice as geminiDailyAdvice, initGemini } from '../../services/gemini';
 import { getDailyAdvice as groqDailyAdvice, initGroq } from '../../services/groq';
 import { askProvider, isProviderDead } from '../../services/aiProvider';
@@ -20,7 +19,7 @@ import { backoffsFor, programDayToExercises } from '../../services/programs/engi
 import { findSubstitutions } from '../../services/substitutions';
 import { equipmentOf } from '../../services/equipment';
 import { LibraryExercise } from '../../services/library/types';
-import { getTodayPlan, WORKOUT_TYPE_LABELS, WORKOUT_TYPE_COLORS } from '../../services/planParser';
+import { getTodayPlan, WORKOUT_TYPE_KEYS, WORKOUT_TYPE_COLORS } from '../../services/planParser';
 import { UserProfile, WorkoutEntry, TrainingPlan, DayPlan } from '../../types';
 import { getWaterData, addGlass, removeGlass, setWaterGoal, computeWaterGoal } from '../../services/water';
 import { getRecoveryScore, RecoveryScoreResult, WellbeingSnapshot } from '../../services/analytics';
@@ -30,7 +29,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function TodayScreen() {
   const router = useRouter();
-  const { t } = useLocale();
+  const { t, lang } = useLocale();
   const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [todayWorkouts, setTodayWorkouts] = useState<WorkoutEntry[]>([]);
@@ -57,7 +56,7 @@ export default function TodayScreen() {
   const [wbStress, setWbStress] = useState<1|2|3|4|5>(3);
 
   const today = getLocalDateString(new Date());
-  const todayFormatted = format(new Date(), 'EEEE, d MMMM', { locale: uk });
+  const todayFormatted = format(new Date(), 'EEEE, d MMMM', { locale: dateLocale(lang) });
   const lastLoadRef = useRef<number>(0);
   const lastDateRef = useRef<string>('');
 
@@ -159,7 +158,7 @@ export default function TodayScreen() {
     }));
 
     if (swapped.length > 0) {
-      Alert.alert('Замінили вправи під твоє обладнання', swapped.join('\n'));
+      Alert.alert(t('swappedForEquipment'), swapped.join('\n'));
     }
     router.push('/workout/log?fromBuilder=1');
   }
@@ -226,8 +225,8 @@ export default function TodayScreen() {
       const granted = await requestPermissions();
       if (!granted) {
         Alert.alert(
-          'Дозвіл відхилено',
-          'Дозволь сповіщення в налаштуваннях телефону щоб отримувати нагадування про воду.'
+          t('permissionDenied'),
+          t('permissionWaterText')
         );
         return;
       }
@@ -282,11 +281,10 @@ export default function TodayScreen() {
   // Find next workout day
   const nextWorkoutDayName = (() => {
     if (!profile?.availableDays?.length || isWorkoutDay) return null;
-    const dayNames: Record<number, string> = { 0: 'неділя', 1: 'понеділок', 2: 'вівторок', 3: 'середа', 4: 'четвер', 5: 'п\'ятниця', 6: 'субота' };
     for (let i = 1; i <= 7; i++) {
       const next = (dayOfWeek + i) % 7;
       if (profile.availableDays.includes(next)) {
-        return i === 1 ? 'завтра' : `через ${i} дні — ${dayNames[next]}`;
+        return i === 1 ? t('tomorrow') : t('inDaysOn', i, t('dayName', next).toLowerCase());
       }
     }
     return null;
@@ -301,7 +299,7 @@ export default function TodayScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Привіт, {profile?.name || 'Спортсмен'} 👋</Text>
+          <Text style={styles.greeting}>{t('greetingHi', profile?.name || t('athleteFallback'))}</Text>
           <Text style={styles.date}>{todayFormatted}</Text>
         </View>
         <TouchableOpacity
@@ -330,7 +328,7 @@ export default function TodayScreen() {
                 : isWorkoutDay
                 ? t('workoutNotLogged')
                 : nextWorkoutDayName
-                ? `Наступне тренування: ${nextWorkoutDayName}`
+                ? t('nextWorkoutOn', nextWorkoutDayName)
                 : t('relax')}
             </Text>
           </View>
@@ -351,7 +349,7 @@ export default function TodayScreen() {
             onPress={() => router.push('/workout/builder')}
           >
             <Ionicons name="sparkles-outline" size={15} color={Colors.primary} />
-            <Text style={styles.buildBtnText}>Скласти</Text>
+            <Text style={styles.buildBtnText}>{t('buildShort')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -448,7 +446,7 @@ export default function TodayScreen() {
               <View style={styles.planCardHeader}>
                 <View style={[styles.planTypePill, { backgroundColor: (WORKOUT_TYPE_COLORS[todayPlan.workoutType] || Colors.primary) + '20' }]}>
                   <Text style={[styles.planTypeText, { color: WORKOUT_TYPE_COLORS[todayPlan.workoutType] || Colors.primary }]}>
-                    {WORKOUT_TYPE_LABELS[todayPlan.workoutType] || todayPlan.workoutType}
+                    {t(WORKOUT_TYPE_KEYS[todayPlan.workoutType] ?? todayPlan.workoutType)}
                   </Text>
                 </View>
                 {todayPlan.estimatedDuration > 0 && (
@@ -484,14 +482,15 @@ export default function TodayScreen() {
           <View style={styles.programHead}>
             <Ionicons name="flag" size={16} color={Colors.primary} />
             <Text style={styles.programName}>
-              {program.template.nameUk}
+              {lang === 'en' ? program.template.nameEn : program.template.nameUk}
             </Text>
             <Text style={styles.programProgress}>
               {program.doneCount}/{program.totalDays}
             </Text>
           </View>
           <Text style={styles.programDay}>
-            Тиждень {program.week} · {program.programDay.titleUk}
+            {t('programCardDay', program.week,
+              lang === 'en' ? program.programDay.titleEn : program.programDay.titleUk)}
           </Text>
           <View style={styles.programActions}>
             <TouchableOpacity
@@ -499,13 +498,13 @@ export default function TodayScreen() {
               onPress={startProgramDay}
             >
               <Ionicons name="play" size={15} color="#FFF" />
-              <Text style={styles.programStartText}>Почати тренування</Text>
+              <Text style={styles.programStartText}>{t('startWorkout')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.programMore}
               onPress={() => router.push(`/programs/${program.template.id}`)}
             >
-              <Text style={styles.programMoreText}>Програма</Text>
+              <Text style={styles.programMoreText}>{t('programTitle')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -515,9 +514,11 @@ export default function TodayScreen() {
         <TouchableOpacity style={styles.programCard} onPress={() => router.push('/programs')}>
           <View style={styles.programHead}>
             <Ionicons name="trophy" size={16} color={Colors.success} />
-            <Text style={styles.programName}>{program.template.nameUk} пройдено</Text>
+            <Text style={styles.programName}>
+              {t('programFinished', lang === 'en' ? program.template.nameEn : program.template.nameUk)}
+            </Text>
           </View>
-          <Text style={styles.programDay}>Обери наступну програму →</Text>
+          <Text style={styles.programDay}>{t('programPickNext')}</Text>
         </TouchableOpacity>
       )}
 
@@ -528,26 +529,26 @@ export default function TodayScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.noPlanTitle}>{t('noPlanTitle')}</Text>
             <Text style={styles.noPlanSub}>
-              Попроси AI скласти програму — або склади тренування сам, без інтернету
+              {t('noPlanHint')}
             </Text>
             <View style={styles.noPlanActions}>
               <TouchableOpacity
                 style={styles.noPlanBtn}
                 onPress={() => router.push('/(tabs)/trainer')}
               >
-                <Text style={styles.noPlanBtnText}>AI-програма</Text>
+                <Text style={styles.noPlanBtnText}>{t('aiProgramBtn')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.noPlanBtn, styles.noPlanBtnPrimary]}
                 onPress={() => router.push('/workout/builder')}
               >
-                <Text style={[styles.noPlanBtnText, { color: Colors.primary }]}>Скласти сам</Text>
+                <Text style={[styles.noPlanBtnText, { color: Colors.primary }]}>{t('buildMyself')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.noPlanBtn, styles.noPlanBtnPrimary]}
                 onPress={() => router.push('/programs')}
               >
-                <Text style={[styles.noPlanBtnText, { color: Colors.primary }]}>Програма</Text>
+                <Text style={[styles.noPlanBtnText, { color: Colors.primary }]}>{t('programTitle')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -567,7 +568,7 @@ export default function TodayScreen() {
               <View style={styles.workoutItemLeft}>
                 <View style={[styles.workoutDot, { backgroundColor: Colors.success }]} />
                 <View>
-                  <Text style={styles.workoutItemTitle}>{WORKOUT_TYPE_LABELS[w.workoutType] || w.workoutType}</Text>
+                  <Text style={styles.workoutItemTitle}>{t(WORKOUT_TYPE_KEYS[w.workoutType] ?? w.workoutType)}</Text>
                   <Text style={styles.workoutItemSub}>{w.duration} хв • {w.exercises.length} вправ</Text>
                 </View>
               </View>
@@ -629,13 +630,13 @@ export default function TodayScreen() {
         <View style={styles.wbOverlay}>
           <View style={styles.wbCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
-              <Text style={styles.wbTitle}>Час нагадувань</Text>
+              <Text style={styles.wbTitle}>{t('reminderTime')}</Text>
               <TouchableOpacity onPress={() => setReminderSettingsVisible(false)}>
                 <Ionicons name="close" size={22} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.wbLabel}>Початок</Text>
+            <Text style={styles.wbLabel}>{t('startLabel')}</Text>
             <View style={styles.hourRow}>
               <TouchableOpacity style={styles.hourBtn} onPress={() => setEditStart(Math.max(0, editStart - 1))}>
                 <Ionicons name="remove" size={20} color={Colors.textPrimary} />
@@ -646,7 +647,7 @@ export default function TodayScreen() {
               </TouchableOpacity>
             </View>
 
-            <Text style={[styles.wbLabel, { marginTop: Spacing.md }]}>Кінець</Text>
+            <Text style={[styles.wbLabel, { marginTop: Spacing.md }]}>{t('endLabel')}</Text>
             <View style={styles.hourRow}>
               <TouchableOpacity style={styles.hourBtn} onPress={() => setEditEnd(Math.max(editStart + 1, editEnd - 1))}>
                 <Ionicons name="remove" size={20} color={Colors.textPrimary} />
@@ -658,11 +659,11 @@ export default function TodayScreen() {
             </View>
 
             <Text style={styles.hourHint}>
-              Нагадування розподіляться рівномірно між {String(editStart).padStart(2, '0')}:00 і {String(editEnd).padStart(2, '0')}:00
+              {t('remindersSpread', String(editStart).padStart(2, '0'), String(editEnd).padStart(2, '0'))}
             </Text>
 
             <TouchableOpacity style={styles.wbSaveBtn} onPress={() => saveReminderRange(editStart, editEnd)}>
-              <Text style={styles.wbSaveBtnText}>Зберегти</Text>
+              <Text style={styles.wbSaveBtnText}>{t('save')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -673,13 +674,13 @@ export default function TodayScreen() {
         <KeyboardAvoidingView style={styles.wbOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.wbCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
-              <Text style={styles.wbTitle}>Як ти себе почуваєш?</Text>
+              <Text style={styles.wbTitle}>{t('howDoYouFeel')}</Text>
               <TouchableOpacity onPress={() => setWellbeingModalVisible(false)}>
                 <Ionicons name="close" size={22} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.wbLabel}>Настрій</Text>
+            <Text style={styles.wbLabel}>{t('moodLabel')}</Text>
             <View style={styles.wbRow}>
               {(['😞','😕','😐','🙂','😄'] as const).map((emoji, i) => {
                 const val = (i + 1) as 1|2|3|4|5;
@@ -695,7 +696,7 @@ export default function TodayScreen() {
               })}
             </View>
 
-            <Text style={[styles.wbLabel, { marginTop: Spacing.sm }]}>Сон (годин)</Text>
+            <Text style={[styles.wbLabel, { marginTop: Spacing.sm }]}>{t('sleepHoursLabel')}</Text>
             <TextInput
               style={styles.wbInput}
               value={wbSleep}
@@ -705,9 +706,9 @@ export default function TodayScreen() {
               placeholderTextColor={Colors.textMuted}
             />
 
-            <Text style={[styles.wbLabel, { marginTop: Spacing.sm }]}>Стрес</Text>
+            <Text style={[styles.wbLabel, { marginTop: Spacing.sm }]}>{t('stressLabel')}</Text>
             <View style={styles.wbRow}>
-              {(['Немає','Мало','Середній','Багато','Дуже'] as const).map((label, i) => {
+              {STRESS_KEYS.map((key, i) => {
                 const val = (i + 1) as 1|2|3|4|5;
                 const color = ['#2ECC71','#A3D977','#F4A261','#E67E22','#E63946'][i];
                 return (
@@ -716,14 +717,14 @@ export default function TodayScreen() {
                     style={[styles.wbStressBtn, wbStress === val && { backgroundColor: color, borderColor: color }]}
                     onPress={() => setWbStress(val)}
                   >
-                    <Text style={[styles.wbStressBtnText, wbStress === val && { color: '#FFF' }]}>{label}</Text>
+                    <Text style={[styles.wbStressBtnText, wbStress === val && { color: '#FFF' }]}>{t(key)}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
 
             <TouchableOpacity style={styles.wbSaveBtn} onPress={handleSaveWellbeing}>
-              <Text style={styles.wbSaveBtnText}>Зберегти</Text>
+              <Text style={styles.wbSaveBtnText}>{t('save')}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -734,27 +735,22 @@ export default function TodayScreen() {
 
 // ─── Recovery Widget ──────────────────────────────────────────────────────────
 
-const RECOVERY_LEVEL_LABELS: Record<string, string> = {
-  rest: 'Відпочинок', easy: 'Легке', moderate: 'Помірне', hard: 'Важке', peak: 'Пік',
-};
-const RECOVERY_LEVEL_SUBLABELS: Record<string, string> = {
-  rest: 'Тілу потрібен відпочинок',
-  easy: 'Підійде легке кардіо або йога',
-  moderate: 'Можна тренуватись помірно',
-  hard: 'Готовий до важкого тренування',
-  peak: 'Відмінна форма — максимум!',
+const RECOVERY_KEY: Record<string, string> = {
+  rest: 'recoveryRest', easy: 'recoveryEasy', moderate: 'recoveryModerate',
+  hard: 'recoveryHard', peak: 'recoveryPeak',
 };
 
 function RecoveryWidget({ recovery }: { recovery: RecoveryScoreResult }) {
+  const { t } = useLocale();
   const pct = recovery.score;
   return (
     <View style={styles.recoveryCard}>
       <View style={styles.recoveryLeft}>
-        <Text style={styles.recoveryTitle}>Готовність</Text>
+        <Text style={styles.recoveryTitle}>{t('readinessTitle')}</Text>
         <Text style={[styles.recoveryLevel, { color: recovery.color }]}>
-          {RECOVERY_LEVEL_LABELS[recovery.level]}
+          {t(RECOVERY_KEY[recovery.level] ?? recovery.level)}
         </Text>
-        <Text style={styles.recoverySub}>{RECOVERY_LEVEL_SUBLABELS[recovery.level]}</Text>
+        <Text style={styles.recoverySub}>{t(`${RECOVERY_KEY[recovery.level] ?? recovery.level}Sub`)}</Text>
       </View>
       <View style={styles.recoveryRight}>
         <Text style={[styles.recoveryScore, { color: recovery.color }]}>{pct}</Text>
@@ -770,19 +766,22 @@ function RecoveryWidget({ recovery }: { recovery: RecoveryScoreResult }) {
 // ─── Wellbeing Card ───────────────────────────────────────────────────────────
 
 const MOOD_EMOJIS = ['😞','😕','😐','🙂','😄'];
-const STRESS_LABELS = ['', 'Немає', 'Мало', 'Середній', 'Багато', 'Дуже'];
+/** Шкала стресу 1–5: підписи живуть у словнику, бо їх видно на екрані. */
+const STRESS_KEYS = ['stressNone', 'stressLow', 'stressMid', 'stressHigh', 'stressMax'];
 
 function WellbeingCard({ wellbeing, onOpen }: { wellbeing: WellbeingEntry | null; onOpen: () => void }) {
+  const { t } = useLocale();
   return (
     <TouchableOpacity style={styles.wbSummaryCard} onPress={onOpen} activeOpacity={0.8}>
       <View style={{ flex: 1 }}>
-        <Text style={styles.wbSummaryTitle}>Самопочуття сьогодні</Text>
+        <Text style={styles.wbSummaryTitle}>{t('wellbeingToday')}</Text>
         {wellbeing ? (
           <Text style={styles.wbSummaryText}>
-            {MOOD_EMOJIS[wellbeing.mood - 1]}  Сон: {wellbeing.sleep}г  ·  Стрес: {STRESS_LABELS[wellbeing.stress]}
+            {t('wellbeingSummary', MOOD_EMOJIS[wellbeing.mood - 1], wellbeing.sleep,
+              t(STRESS_KEYS[wellbeing.stress - 1] ?? 'stressMid'))}
           </Text>
         ) : (
-          <Text style={styles.wbSummaryHint}>Як спалось? Як самопочуття? — впливає на готовність</Text>
+          <Text style={styles.wbSummaryHint}>{t('wellbeingHint')}</Text>
         )}
       </View>
       <Ionicons name={wellbeing ? 'create-outline' : 'add-circle-outline'} size={20} color={Colors.primary} />
@@ -790,7 +789,8 @@ function WellbeingCard({ wellbeing, onOpen }: { wellbeing: WellbeingEntry | null
   );
 }
 
-const DAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+/** Понеділок-перший порядок для трекера тижня (Date.getDay: 1…6, 0). */
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 // availableDays uses 0=Sun,1=Mon,...,6=Sat — convert to Mon-first index
 const JS_TO_MON_FIRST: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 0: 6 };
 
@@ -806,19 +806,19 @@ function WeeklyTracker({ availableDays, workoutDates }: {
     <View style={styles.weekCard}>
       <Text style={styles.weekTitle}>{t('thisWeekTracker')}</Text>
       <View style={styles.weekDays}>
-        {DAY_LABELS.map((label, idx) => {
+        {WEEK_ORDER.map((jsDay, idx) => {
           const dayDate = addDays(weekStart, idx);
           const dateStr = getLocalDateString(dayDate);
           const isToday = dateStr === todayStr;
           const isFuture = dateStr > todayStr;
           const isDone = workoutDates.has(dateStr);
-          // idx 0=Mon,1=Tue,...,6=Sun → js day: Mon=1,Tue=2,...,Sun=0
-          const jsDay = idx === 6 ? 0 : idx + 1;
           const isPlanned = availableDays.includes(jsDay);
 
           return (
             <View key={idx} style={styles.weekDay}>
-              <Text style={[styles.weekDayLabel, isToday && styles.weekDayLabelToday]}>{label}</Text>
+              <Text style={[styles.weekDayLabel, isToday && styles.weekDayLabelToday]}>
+                {t('dayShort', jsDay)}
+              </Text>
               <View style={[
                 styles.weekDayDot,
                 isDone && styles.weekDayDotDone,

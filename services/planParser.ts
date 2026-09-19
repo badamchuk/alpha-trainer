@@ -203,6 +203,13 @@ export const WORKOUT_TYPE_LABELS: Record<string, string> = {
   run: 'Біг', cycling: 'Велосипед', swimming: 'Плавання', custom: 'За планом',
 };
 
+/** Ті самі типи ключами i18n — для екранів, переведених на дві мови. */
+export const WORKOUT_TYPE_KEYS: Record<string, string> = {
+  strength: 'wtStrength', cardio: 'wtCardio', crossfit: 'wtCrossfit',
+  hiit: 'wtHiit', yoga: 'wtYoga', recovery: 'wtRecovery',
+  run: 'wtRun', cycling: 'wtCycling', swimming: 'wtSwimming', custom: 'wtCustom',
+};
+
 export const WORKOUT_TYPE_COLORS: Record<string, string> = {
   strength: '#E63946', cardio: '#2EC4B6', crossfit: '#F4A261',
   hiit: '#FF6B6B', yoga: '#9B59B6', recovery: '#3498DB',

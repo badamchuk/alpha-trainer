@@ -13,16 +13,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import ExerciseImage from './ExerciseImage';
 import { openVideo } from './ExerciseHowTo';
-import { findSubstitutions, SubstitutionOption } from '../services/substitutions';
+import {
+  cautionText, findSubstitutions, reasonText, subsEmptyText, SubstitutionOption,
+} from '../services/substitutions';
+import { useLocale } from '../services/i18n';
+import { EQUIPMENT_LABELS } from '../services/equipment';
 import { Equipment, JointZone, LibraryExercise } from '../services/library/types';
 
-const ZONES: { id: JointZone; label: string }[] = [
-  { id: 'shoulder', label: 'Плече' },
-  { id: 'lower_back', label: 'Поперек' },
-  { id: 'knee', label: 'Коліно' },
-  { id: 'wrist', label: 'Зап’ястя' },
-  { id: 'elbow', label: 'Лікоть' },
-  { id: 'impact', label: 'Без стрибків' },
+/** Зони підписуємо через i18n: ці слова бачить користувач. */
+const ZONE_KEYS: { id: JointZone; key: string }[] = [
+  { id: 'shoulder', key: 'zoneShoulder' },
+  { id: 'lower_back', key: 'zoneLowerBack' },
+  { id: 'knee', key: 'zoneKnee' },
+  { id: 'wrist', key: 'zoneWrist' },
+  { id: 'elbow', key: 'zoneElbow' },
+  { id: 'impact', key: 'zoneImpact' },
 ];
 
 interface Props {
@@ -37,10 +42,13 @@ interface Props {
   onPick: (ex: LibraryExercise) => void;
 }
 
+/** Код причини → фраза мовою інтерфейсу. */
+
 export default function SubstitutionSheet({
   visible, exercise, equipment, protectZones = [], familiarity, onClose, onPick,
 }: Props) {
   const router = useRouter();
+  const { t } = useLocale();
   const [noEquipment, setNoEquipment] = useState(false);
   const [zones, setZones] = useState<JointZone[]>(protectZones);
 
@@ -77,7 +85,7 @@ export default function SubstitutionSheet({
           <TouchableOpacity onPress={close} hitSlop={10}>
             <Ionicons name="close" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Замінити вправу</Text>
+          <Text style={styles.headerTitle}>{t('substituteTitle')}</Text>
           <View style={{ width: 24 }} />
         </View>
 
@@ -86,7 +94,7 @@ export default function SubstitutionSheet({
             <ExerciseImage slug={exercise.imageSlug} pattern={exercise.pattern} size={56} />
             <View style={{ flex: 1 }}>
               <Text style={styles.originName}>{exerciseName(exercise)}</Text>
-              <Text style={styles.originMeta}>замість чого шукаємо</Text>
+              <Text style={styles.originMeta}>{t('substituteFor')}</Text>
             </View>
           </View>
         )}
@@ -97,29 +105,29 @@ export default function SubstitutionSheet({
             style={[styles.chip, noEquipment && styles.chipActive]}
             onPress={() => setNoEquipment((v) => !v)}
           >
-            <Text style={[styles.chipText, noEquipment && styles.chipTextActive]}>Немає обладнання</Text>
+            <Text style={[styles.chipText, noEquipment && styles.chipTextActive]}>
+              {t('noEquipmentChip')}
+            </Text>
           </TouchableOpacity>
-          {ZONES.map((z) => (
+          {ZONE_KEYS.map((z) => (
             <TouchableOpacity
               key={z.id}
               style={[styles.chip, zones.includes(z.id) && styles.chipActive]}
               onPress={() => toggleZone(z.id)}
             >
               <Text style={[styles.chipText, zones.includes(z.id) && styles.chipTextActive]}>
-                {z.label}
+                {t(z.key)}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        <Text style={styles.disclaimer}>
-          Гострий або тривалий біль — привід до лікаря, а не до заміни вправи.
-        </Text>
+        <Text style={styles.disclaimer}>{t('painDisclaimer')}</Text>
 
         <ScrollView contentContainerStyle={styles.list}>
           {result?.modifications && result.modifications.length > 0 && (
             <View style={styles.block}>
-              <Text style={styles.blockTitle}>Те саме, але…</Text>
+              <Text style={styles.blockTitle}>{t('sameButBlock')}</Text>
               {result.modifications.map((m) => (
                 <View key={m} style={styles.modRow}>
                   <Ionicons name="bulb-outline" size={15} color={Colors.accent} />
@@ -131,7 +139,7 @@ export default function SubstitutionSheet({
 
           {result && result.easier.length > 0 && (
             <View style={styles.block}>
-              <Text style={styles.blockTitle}>Простіше</Text>
+              <Text style={styles.blockTitle}>{t('easierBlock')}</Text>
               {result.easier.map((o) => (
                 <OptionRow key={o.exercise.id} option={o}
                   onPick={() => { onPick(o.exercise); close(); }}
@@ -142,7 +150,7 @@ export default function SubstitutionSheet({
 
           {result && result.variations.length > 0 && (
             <View style={styles.block}>
-              <Text style={styles.blockTitle}>Варіації</Text>
+              <Text style={styles.blockTitle}>{t('variationsBlock')}</Text>
               {result.variations.map((o) => (
                 <OptionRow key={o.exercise.id} option={o}
                   onPick={() => { onPick(o.exercise); close(); }}
@@ -154,7 +162,7 @@ export default function SubstitutionSheet({
           {result?.emptyReason && (
             <View style={styles.empty}>
               <Ionicons name="alert-circle-outline" size={40} color={Colors.textMuted} />
-              <Text style={styles.emptyText}>{result.emptyReason}</Text>
+              <Text style={styles.emptyText}>{subsEmptyText(result.emptyReason, t)}</Text>
             </View>
           )}
         </ScrollView>
@@ -166,7 +174,11 @@ export default function SubstitutionSheet({
 function OptionRow(
   { option, onPick, onInfo }: { option: SubstitutionOption; onPick: () => void; onInfo: () => void },
 ) {
-  const { exercise, reason, caution } = option;
+  const { exercise, reasonCode, cautionCode } = option;
+  const { t } = useLocale();
+  // текст збирається тут: сервіс віддає лише код причини
+  const reason = reasonText(reasonCode, t);
+  const caution = cautionCode ? cautionText(cautionCode, t) : undefined;
   return (
     <TouchableOpacity style={styles.row} onPress={onPick}>
       <ExerciseImage slug={exercise.imageSlug} pattern={exercise.pattern} size={48} />
@@ -186,7 +198,7 @@ function OptionRow(
           hitSlop={6}
         >
           <Ionicons name="logo-youtube" size={13} color={Colors.primary} />
-          <Text style={styles.videoText}>Відео</Text>
+          <Text style={styles.videoText}>{t('video')}</Text>
         </TouchableOpacity>
       </View>
       <TouchableOpacity hitSlop={8} onPress={onInfo}>

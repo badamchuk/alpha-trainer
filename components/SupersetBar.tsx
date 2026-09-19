@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
+import { useLocale } from '../services/i18n';
 
 /**
  * Панель вибору вправ для суперсету, закріплена внизу екрана.
@@ -10,29 +11,30 @@ import { Colors, Spacing, BorderRadius } from '../constants/theme';
  * відмічаєш нижні, кнопка виїжджала за верх екрана — вибір робився, а
  * застосувати його було нічим.
  */
-export default function SupersetBar({ count, onCancel, onApply, cancelLabel = 'Скасувати' }: {
+export default function SupersetBar({ count, onCancel, onApply, cancelLabel }: {
   count: number;
   onCancel: () => void;
   onApply: () => void;
   cancelLabel?: string;
 }) {
+  const { t } = useLocale();
   const insets = useSafeAreaInsets();
   const ready = count >= 2;
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
       <Ionicons name="link-outline" size={16} color={Colors.primary} />
       <Text style={styles.hint} numberOfLines={1}>
-        {ready ? `Вибрано: ${count}` : 'Познач 2+ вправи'}
+        {ready ? t('selectedCount', count) : t('markTwoExercises')}
       </Text>
       <TouchableOpacity onPress={onCancel} style={styles.cancelBtn} hitSlop={6}>
-        <Text style={styles.cancelText}>{cancelLabel}</Text>
+        <Text style={styles.cancelText}>{cancelLabel ?? t('cancel')}</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onApply}
         disabled={!ready}
         style={[styles.applyBtn, !ready && { opacity: 0.4 }]}
       >
-        <Text style={styles.applyText}>Об'єднати</Text>
+        <Text style={styles.applyText}>{t('mergeSuperset')}</Text>
       </TouchableOpacity>
     </View>
   );

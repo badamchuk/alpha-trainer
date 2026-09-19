@@ -13,24 +13,25 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import ExerciseImage from '../../components/ExerciseImage';
-import { exerciseName, getExercise, muscleGroupOf } from '../../services/library';
+import { cuesOf, exerciseName, getExercise, modificationsOf, muscleGroupOf } from '../../services/library';
 import { LibraryExercise, MUSCLE_GROUP_LABELS } from '../../services/library/types';
-import { EQUIPMENT_LABELS, equipmentOf } from '../../services/equipment';
+import { equipmentList, equipmentOf } from '../../services/equipment';
+import { useLocale } from '../../services/i18n';
 import { formatPrescription, prescribe } from '../../services/prescriptions';
-import { findSubstitutions, SubstitutionOption } from '../../services/substitutions';
+import { findSubstitutions, reasonText, SubstitutionOption } from '../../services/substitutions';
 import { buildResolver } from '../../services/exerciseLinks';
 import { getUserProfile, getWorkouts } from '../../services/storage';
 import { ExerciseProgressPoint, getExerciseProgress } from '../../services/analytics';
 
-const LEVEL_LABEL: Record<number, string> = { 1: 'просто', 2: 'середній рівень', 3: 'складно' };
+const LEVEL_KEY: Record<number, string> = { 1: 'levelEasy', 2: 'levelMedium', 3: 'levelHard' };
 
-const INTENT_LABEL: Record<string, string> = {
-  max_strength: 'на силу',
-  hypertrophy: 'на м’язи',
-  power: 'на потужність',
-  conditioning: 'на кондицію',
-  isometric: 'утримання',
-  mobility: 'мобільність',
+const INTENT_KEY: Record<string, string> = {
+  max_strength: 'intentMaxStrength',
+  hypertrophy: 'intentHypertrophy',
+  power: 'intentPower',
+  conditioning: 'intentConditioning',
+  isometric: 'intentIsometric',
+  mobility: 'intentMobility',
 };
 
 export default function ExerciseCardScreen() {
@@ -45,6 +46,7 @@ export default function ExerciseCardScreen() {
   );
   const [harder, setHarder] = useState<LibraryExercise[]>([]);
   const [loading, setLoading] = useState(true);
+  const { t, lang } = useLocale();
 
   useEffect(() => {
     async function load() {
@@ -86,9 +88,9 @@ export default function ExerciseCardScreen() {
   if (!exercise) {
     return (
       <View style={styles.container}>
-        <Header title="Вправа" onBack={() => router.back()} top={insets.top} />
+        <Header title={t('exerciseTitle')} onBack={() => router.back()} top={insets.top} />
         <View style={styles.center}>
-          <Text style={styles.muted}>Такої вправи немає в бібліотеці</Text>
+          <Text style={styles.muted}>{t('exerciseNotFound')}</Text>
         </View>
       </View>
     );
@@ -110,20 +112,20 @@ export default function ExerciseCardScreen() {
           />
           <Text style={styles.nameEn}>{exercise.nameEn}</Text>
           <Text style={styles.meta}>
-            {MUSCLE_GROUP_LABELS[muscleGroupOf(exercise)].uk}
-            {' · '}{LEVEL_LABEL[exercise.level]}
-            {' · '}{INTENT_LABEL[exercise.intent] ?? exercise.intent}
+            {MUSCLE_GROUP_LABELS[muscleGroupOf(exercise)][lang]}
+            {' · '}{t(LEVEL_KEY[exercise.level])}
+            {' · '}{t(INTENT_KEY[exercise.intent] ?? exercise.intent)}
           </Text>
           <Text style={styles.meta}>
             {exercise.equipment.length === 0
-              ? 'власна вага'
-              : exercise.equipment.map((e) => EQUIPMENT_LABELS[e] ?? e).join(', ')}
+              ? t('bodyweightLabel')
+              : equipmentList(exercise.equipment, lang)}
           </Text>
-          <Text style={styles.scheme}>Схема: {formatPrescription(prescribe(exercise))}</Text>
+          <Text style={styles.scheme}>{t('schemeLabel', formatPrescription(prescribe(exercise), t))}</Text>
         </View>
 
-        <Section title="Техніка">
-          {exercise.cues.map((c) => (
+        <Section title={t('techniqueTitle')}>
+          {cuesOf(exercise).map((c) => (
             <View key={c} style={styles.bullet}>
               <Ionicons name="ellipse" size={6} color={Colors.primary} style={{ marginTop: 7 }} />
               <Text style={styles.text}>{c}</Text>
@@ -136,13 +138,13 @@ export default function ExerciseCardScreen() {
             )}
           >
             <Ionicons name="logo-youtube" size={16} color={Colors.primary} />
-            <Text style={styles.videoText}>Подивитись відео</Text>
+            <Text style={styles.videoText}>{t('watchVideo')}</Text>
           </TouchableOpacity>
         </Section>
 
-        {exercise.modifications && exercise.modifications.length > 0 && (
-          <Section title="Те саме, але…">
-            {exercise.modifications.map((m) => (
+        {modificationsOf(exercise).length > 0 && (
+          <Section title={t('sameButTitle')}>
+            {modificationsOf(exercise).map((m) => (
               <View key={m} style={styles.bullet}>
                 <Ionicons name="bulb-outline" size={14} color={Colors.accent} style={{ marginTop: 3 }} />
                 <Text style={styles.text}>{m}</Text>
@@ -152,39 +154,39 @@ export default function ExerciseCardScreen() {
         )}
 
         {history.length > 0 && (
-          <Section title="Моя історія">
+          <Section title={t('myHistoryTitle')}>
             {history.map((p) => (
               <View key={p.date} style={styles.historyRow}>
                 <Text style={styles.text}>{p.date}</Text>
                 <Text style={styles.muted}>
-                  {p.weight ? `${p.weight} кг × ${p.reps}` : `${p.sets} підх. × ${p.reps}`}
+                  {p.weight ? t('weightByReps', p.weight, p.reps) : t('setsShort', p.sets, p.reps)}
                 </Text>
               </View>
             ))}
-            {best > 0 && <Text style={styles.muted}>Найкращий розрахунковий максимум: {Math.round(best)} кг</Text>}
+            {best > 0 && <Text style={styles.muted}>{t('bestE1rm', Math.round(best))}</Text>}
           </Section>
         )}
 
         {subs.easier.length > 0 && (
-          <Section title="Простіше">
+          <Section title={t('easierBlock')}>
             {subs.easier.map((o) => (
-              <Related key={o.exercise.id} ex={o.exercise} note={o.reason} onPress={() => router.push(`/exercises/${o.exercise.id}`)} />
+              <Related key={o.exercise.id} ex={o.exercise} note={reasonText(o.reasonCode, t)} onPress={() => router.push(`/exercises/${o.exercise.id}`)} />
             ))}
           </Section>
         )}
 
         {subs.variations.length > 0 && (
-          <Section title="Варіації">
+          <Section title={t('variationsBlock')}>
             {subs.variations.map((o) => (
-              <Related key={o.exercise.id} ex={o.exercise} note={o.reason} onPress={() => router.push(`/exercises/${o.exercise.id}`)} />
+              <Related key={o.exercise.id} ex={o.exercise} note={reasonText(o.reasonCode, t)} onPress={() => router.push(`/exercises/${o.exercise.id}`)} />
             ))}
           </Section>
         )}
 
         {harder.length > 0 && (
-          <Section title="Складніше">
+          <Section title={t('harderBlock')}>
             {harder.map((ex) => (
-              <Related key={ex.id} ex={ex} note="наступний крок" onPress={() => router.push(`/exercises/${ex.id}`)} />
+              <Related key={ex.id} ex={ex} note={t('nextStepNote')} onPress={() => router.push(`/exercises/${ex.id}`)} />
             ))}
           </Section>
         )}

@@ -1,5 +1,6 @@
 import { UserProfile, Goal, WorkoutEntry } from '../types';
 import type { AIContextBlocks } from './aiContext';
+import { answerLanguageRule } from './aiContext';
 
 let groqApiKey: string | null = null;
 
@@ -89,7 +90,7 @@ function buildNutritionistContext(
     ? `Ціль: ${nutritionGoals.calories} ккал (режим: ${nutritionGoals.mode === 'cut' ? 'схуднення' : nutritionGoals.mode === 'bulk' ? 'набір маси' : 'підтримка'}) | Б:${nutritionGoals.protein}г В:${nutritionGoals.carbs}г Ж:${nutritionGoals.fat}г`
     : 'Цілі харчування не встановлено';
 
-  return `Ти персональний AI-нутріціолог в додатку «Гарт». Відповідай українською мовою. Спілкуйся як досвідчений дієтолог та нутріціолог — фахово, але доступно.
+  return `Ти персональний AI-нутріціолог в додатку «Гарт». ${answerLanguageRule()} Спілкуйся як досвідчений дієтолог та нутріціолог — фахово, але доступно.
 
 ПРОФІЛЬ:
 - Ім'я: ${profile.name}, ${genderLabel}, ${profile.age} років
@@ -156,7 +157,7 @@ function buildSystemContext(
       ? 'середній'
       : 'просунутий';
 
-  return `Ти персональний AI-тренер в додатку «Гарт». Відповідай українською мовою.
+  return `Ти персональний AI-тренер в додатку «Гарт». ${answerLanguageRule()}
 
 ПРОФІЛЬ СПОРТСМЕНА:
 - Ім'я: ${profile.name}
@@ -287,7 +288,7 @@ export async function generateTrainingPlan(
 - Доступні дні: ${availDays}
 - Цілі: ${goalsList || 'загальна фізична підготовка'}
 
-Формат відповіді: план по кожному дню тижня (Понеділок, Вівторок, і т.д.) з конкретними вправами, підходами, повторами та відпочинком. Включи дні відновлення. Відповідай українською.`;
+Формат відповіді: план по кожному дню тижня (Понеділок, Вівторок, і т.д.) з конкретними вправами, підходами, повторами та відпочинком. Включи дні відновлення. ${answerLanguageRule()}`;
 
   return callWithFallback([{ role: 'user', content: prompt }]);
 }

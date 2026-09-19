@@ -8,7 +8,7 @@
 // перевірити тестами на всі тижні наперед.
 
 import { LibraryExercise } from '../library/types';
-import { getExercise } from '../library';
+import { exerciseName, getExercise } from '../library';
 import { Prescription } from '../prescriptions';
 import { ActiveProgram, ProgramDay, ProgramSlot, ProgramTemplate, dayKey } from './types';
 import { ExerciseLog } from '../../types';
@@ -78,11 +78,13 @@ function loadFor(
   return { factor: (slot.intensity ?? wave) * backoff, addKg: 0 };
 }
 
+/** Чому тиждень саме такий — підпис збирає екран потрібною мовою. */
+export type ProgramHint = { kind: 'deload' } | { kind: 'backoff' };
+
 export interface SlotPrescription extends Prescription {
   /** Кілограми, якщо вправа з обтяженням і відома робоча вага. */
   weight?: number;
-  /** Чому саме стільки — для підпису під схемою. */
-  hint?: string;
+  hint?: ProgramHint;
 }
 
 /**
@@ -121,8 +123,8 @@ export function prescriptionFor(
     out.rpe = deload ? 6 : 8;
   }
 
-  if (deload) out.hint = 'тиждень розвантаження — легше навмисно';
-  else if (backoffs > 0) out.hint = 'вага відкочена після невдалого тижня';
+  if (deload) out.hint = { kind: 'deload' };
+  else if (backoffs > 0) out.hint = { kind: 'backoff' };
 
   return out;
 }
@@ -155,7 +157,7 @@ export function programDayToExercises(
     const base = ex.id === original.id ? baseWeights[original.id] : undefined;
     const p = prescriptionFor(template, slot, week, base, backoffs);
     out.push({
-      name: ex.nameUk,
+      name: exerciseName(ex),
       exerciseId: ex.id,
       sets: p.sets,
       reps: p.reps,
@@ -202,20 +204,29 @@ export function nextDay(template: ProgramTemplate, active: ActiveProgram): NextD
   return null;   // програму пройдено
 }
 
+export interface PreviewWeek {
+  week: number;
+  sets: number;
+  reps: number;
+  /** Кілограми, якщо робоча вага відома; інакше працюємо за RPE. */
+  weight?: number;
+  rpe?: number;
+  deload: boolean;
+}
+
 /** Прев'ю прогресії для картки програми: як росте головна вправа. */
 export function progressionPreview(
   template: ProgramTemplate,
   baseWeight = 100,
-): { week: number; label: string; deload: boolean }[] {
+): PreviewWeek[] {
   const mainSlot = template.days[0]?.slots.find((s) => s.role === 'main');
   if (!mainSlot) return [];
   return Array.from({ length: template.weeks }, (_, i) => {
     const week = i + 1;
     const p = prescriptionFor(template, mainSlot, week, baseWeight);
-    const amount = p.weight ? `${p.weight} кг` : `RPE ${p.rpe ?? 8}`;
     return {
-      week,
-      label: `${p.sets}×${p.reps} · ${amount}`,
+      week, sets: p.sets, reps: p.reps ?? 0,
+      weight: p.weight, rpe: p.weight ? undefined : p.rpe ?? 8,
       deload: isDeloadWeek(template, week),
     };
   });

@@ -18,9 +18,11 @@ import ExerciseHowTo from '../../components/ExerciseHowTo';
 import SubstitutionSheet from '../../components/SubstitutionSheet';
 import LibraryPicker from '../../components/LibraryPicker';
 import {
-  BuilderDuration, BuilderFormat, WorkoutDraft, draftFromStored, draftToExercises,
-  draftToStored, estimateMinutes, generateWorkout, recentMainIds, replaceInDraft,
+  BuilderDuration, BuilderFormat, WorkoutDraft, blockEmptyText, blockNoteText,
+  blockTitleText, draftFromStored, draftToExercises, draftToStored, estimateMinutes,
+  generateWorkout, recentMainIds, replaceInDraft,
 } from '../../services/builder';
+import { useLocale } from '../../services/i18n';
 import { Focus, formatPrescription, prescribe } from '../../services/prescriptions';
 import { familiarityFrom } from '../../services/substitutions';
 import { equipmentOf } from '../../services/equipment';
@@ -36,15 +38,15 @@ import { Equipment, JointZone, Level } from '../../services/library/types';
 
 const DRAFT_KEY = '@alpha_trainer:builder_draft';
 
-const FORMATS: { id: BuilderFormat; label: string; hint: string }[] = [
-  { id: 'fullbody', label: 'Фулбоді', hint: 'штанга, гантелі, все тіло' },
-  { id: 'crossfit', label: 'Кросфіт', hint: 'силова частина + метокон' },
+const FORMATS: { id: BuilderFormat; key: string; hintKey: string }[] = [
+  { id: 'fullbody', key: 'formatFullbody', hintKey: 'formatFullbodyHint' },
+  { id: 'crossfit', key: 'formatCrossfit', hintKey: 'formatCrossfitHint' },
 ];
 const DURATIONS: BuilderDuration[] = [30, 45, 60];
-const FOCUSES: { id: Focus; label: string }[] = [
-  { id: 'strength', label: 'Сила' },
-  { id: 'hypertrophy', label: 'Маса' },
-  { id: 'endurance', label: 'Витривалість' },
+const FOCUSES: { id: Focus; key: string }[] = [
+  { id: 'strength', key: 'focusStrength' },
+  { id: 'hypertrophy', key: 'focusMass' },
+  { id: 'endurance', key: 'focusEndurance' },
 ];
 
 const LEVEL_BY_FITNESS: Record<string, Level> = {
@@ -62,6 +64,7 @@ export default function BuilderScreen() {
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1000));
   const [attempt, setAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
+  const { t } = useLocale();
 
   const [equipment, setEquipment] = useState<Equipment[] | undefined>(undefined);
   const [protectZones, setProtectZones] = useState<JointZone[]>([]);
@@ -173,7 +176,7 @@ export default function BuilderScreen() {
     await AsyncStorage.setItem('@alpha_trainer:builder_started', JSON.stringify({
       workoutType: draft.workoutType,
       duration: draft.estimatedMinutes,
-      exercises: draftToExercises(draft),
+      exercises: draftToExercises(draft, (n) => blockNoteText(n, t)),
     }));
     await AsyncStorage.removeItem(DRAFT_KEY);
     router.push('/workout/log?fromBuilder=1');
@@ -181,17 +184,19 @@ export default function BuilderScreen() {
 
   async function handleSaveTemplate() {
     if (!draft) return;
+    const minutes = t('minutesShort', draft.durationMin);
+    const focusLabel = FOCUSES.find((f) => f.id === draft.focus)?.key;
     const name = draft.format === 'crossfit'
-      ? `Кросфіт ${draft.durationMin} хв`
-      : `Фулбоді ${draft.durationMin} хв · ${FOCUSES.find((f) => f.id === draft.focus)?.label}`;
+      ? `${t('formatCrossfit')} ${minutes}`
+      : `${t('formatFullbody')} ${minutes}${focusLabel ? ` · ${t(focusLabel)}` : ''}`;
     await saveTemplate({
       id: `builder_${Date.now()}`,
       name,
       workoutType: draft.workoutType,
-      exercises: draftToExercises(draft),
+      exercises: draftToExercises(draft, (n) => blockNoteText(n, t)),
       createdAt: new Date().toISOString(),
     });
-    Alert.alert('Збережено як шаблон', name);
+    Alert.alert(t('savedAsTemplate'), name);
   }
 
   return (
@@ -200,7 +205,7 @@ export default function BuilderScreen() {
         <TouchableOpacity onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Скласти тренування</Text>
+        <Text style={styles.headerTitle}>{t('buildWorkout')}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -209,7 +214,7 @@ export default function BuilderScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.card}>
-            <Text style={styles.label}>Формат</Text>
+            <Text style={styles.label}>{t('formatLabel')}</Text>
             <View style={styles.row}>
               {FORMATS.map((f) => (
                 <TouchableOpacity
@@ -217,13 +222,13 @@ export default function BuilderScreen() {
                   style={[styles.option, format === f.id && styles.optionActive]}
                   onPress={() => setFormat(f.id)}
                 >
-                  <Text style={[styles.optionText, format === f.id && styles.optionTextActive]}>{f.label}</Text>
-                  <Text style={styles.optionHint}>{f.hint}</Text>
+                  <Text style={[styles.optionText, format === f.id && styles.optionTextActive]}>{t(f.key)}</Text>
+                  <Text style={styles.optionHint}>{t(f.hintKey)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.label}>Скільки часу</Text>
+            <Text style={styles.label}>{t('builderDurationLabel')}</Text>
             <View style={styles.row}>
               {DURATIONS.map((d) => (
                 <TouchableOpacity
@@ -231,14 +236,14 @@ export default function BuilderScreen() {
                   style={[styles.pill, duration === d && styles.pillActive]}
                   onPress={() => setDuration(d)}
                 >
-                  <Text style={[styles.pillText, duration === d && styles.pillTextActive]}>{d} хв</Text>
+                  <Text style={[styles.pillText, duration === d && styles.pillTextActive]}>{t('minutesShort', d)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
             {format === 'fullbody' && (
               <>
-                <Text style={styles.label}>Фокус</Text>
+                <Text style={styles.label}>{t('focusLabel')}</Text>
                 <View style={styles.row}>
                   {FOCUSES.map((f) => (
                     <TouchableOpacity
@@ -246,7 +251,7 @@ export default function BuilderScreen() {
                       style={[styles.pill, focus === f.id && styles.pillActive]}
                       onPress={() => setFocus(f.id)}
                     >
-                      <Text style={[styles.pillText, focus === f.id && styles.pillTextActive]}>{f.label}</Text>
+                      <Text style={[styles.pillText, focus === f.id && styles.pillTextActive]}>{t(f.key)}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -255,7 +260,7 @@ export default function BuilderScreen() {
 
             <TouchableOpacity style={styles.generateBtn} onPress={handleGenerate}>
               <Ionicons name="sparkles-outline" size={18} color="#FFF" />
-              <Text style={styles.generateText}>{draft ? 'Скласти заново' : 'Скласти тренування'}</Text>
+              <Text style={styles.generateText}>{t(draft ? 'buildAgain' : 'buildWorkout')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -263,19 +268,21 @@ export default function BuilderScreen() {
             <>
               <View style={styles.summary}>
                 <Text style={styles.summaryText}>
-                  Орієнтовно {draft.estimatedMinutes} хв
+                  {t('approxMinutes', draft.estimatedMinutes)}
                 </Text>
                 <TouchableOpacity onPress={() => build(attempt + 1)} hitSlop={8} style={styles.reroll}>
                   <Ionicons name="refresh" size={16} color={Colors.primary} />
-                  <Text style={styles.rerollText}>Інший набір</Text>
+                  <Text style={styles.rerollText}>{t('anotherSet')}</Text>
                 </TouchableOpacity>
               </View>
 
               {draft.blocks.map((block, blockIdx) => (
-                <View key={`${block.title}-${blockIdx}`} style={styles.block}>
+                <View key={`${block.title.kind}-${blockIdx}`} style={styles.block}>
                   <View style={styles.blockHead}>
-                    <Text style={styles.blockTitle}>{block.title}</Text>
-                    {block.note && <Text style={styles.blockNote}>{block.note}</Text>}
+                    <Text style={styles.blockTitle}>{blockTitleText(block.title, t)}</Text>
+                    {block.note && (
+                      <Text style={styles.blockNote}>{blockNoteText(block.note, t)}</Text>
+                    )}
                   </View>
 
                   {block.exercises.map((e, exIdx) => (
@@ -284,9 +291,9 @@ export default function BuilderScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.exName}>{exerciseName(e.exercise)}</Text>
                         <Text style={styles.exScheme}>
-                          {formatPrescription(e.prescription)}
-                          {formatLastResult(last.get(e.exercise.id))
-                            ? ` · ${formatLastResult(last.get(e.exercise.id))}`
+                          {formatPrescription(e.prescription, t)}
+                          {formatLastResult(last.get(e.exercise.id), t)
+                            ? ` · ${formatLastResult(last.get(e.exercise.id), t)}`
                             : ''}
                         </Text>
                         {/* техніка й відео просто тут: у залі ніхто не шукатиме окремо */}
@@ -309,12 +316,12 @@ export default function BuilderScreen() {
                   ))}
 
                   {block.emptyReason && (
-                    <Text style={styles.emptyReason}>{block.emptyReason}</Text>
+                    <Text style={styles.emptyReason}>{blockEmptyText(block.emptyReason, t)}</Text>
                   )}
 
                   <TouchableOpacity style={styles.addBtn} onPress={() => setAddTo(blockIdx)}>
                     <Ionicons name="add" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.addText}>Додати вправу</Text>
+                    <Text style={styles.addText}>{t('addExerciseToBlock')}</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -322,11 +329,11 @@ export default function BuilderScreen() {
               <View style={styles.actions}>
                 <TouchableOpacity style={styles.secondaryBtn} onPress={handleSaveTemplate}>
                   <Ionicons name="bookmark-outline" size={18} color={Colors.textSecondary} />
-                  <Text style={styles.secondaryText}>Зберегти як шаблон</Text>
+                  <Text style={styles.secondaryText}>{t('saveAsTemplate')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.primaryBtn} onPress={startWorkout}>
                   <Ionicons name="play" size={18} color="#FFF" />
-                  <Text style={styles.primaryText}>Почати тренування</Text>
+                  <Text style={styles.primaryText}>{t('startWorkout')}</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -349,7 +356,7 @@ export default function BuilderScreen() {
 
       <LibraryPicker
         visible={addTo !== null}
-        title="Додати вправу"
+        title={t('addExerciseToBlock')}
         recentIds={pickerRecent}
         availableEquipment={equipment}
         onClose={() => setAddTo(null)}

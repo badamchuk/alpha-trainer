@@ -9,6 +9,8 @@ import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native'
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { LibraryExercise } from '../services/library/types';
+import { useLocale } from '../services/i18n';
+import { cuesOf, modificationsOf } from '../services/library';
 
 /**
  * Пошук на YouTube англійською назвою: технічних відео нею на порядок більше,
@@ -31,6 +33,7 @@ interface Props {
 }
 
 export default function ExerciseHowTo({ exercise, open = false, onOpenCard }: Props) {
+  const { t } = useLocale();
   const [expanded, setExpanded] = useState(open);
 
   return (
@@ -46,24 +49,24 @@ export default function ExerciseHowTo({ exercise, open = false, onOpenCard }: Pr
             size={14}
             color={Colors.textMuted}
           />
-          <Text style={styles.toggleText}>{expanded ? 'Згорнути' : 'Як робити'}</Text>
+          <Text style={styles.toggleText}>{t(expanded ? 'howToCollapse' : 'howTo')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.toggle} onPress={() => openVideo(exercise)} hitSlop={6}>
           <Ionicons name="logo-youtube" size={14} color={Colors.primary} />
-          <Text style={[styles.toggleText, { color: Colors.primary }]}>Відео</Text>
+          <Text style={[styles.toggleText, { color: Colors.primary }]}>{t('video')}</Text>
         </TouchableOpacity>
       </View>
 
       {expanded && (
         <View style={styles.body}>
-          {exercise.cues.map((c) => (
+          {cuesOf(exercise).map((c) => (
             <View key={c} style={styles.cue}>
               <Text style={styles.dot}>•</Text>
               <Text style={styles.cueText}>{c}</Text>
             </View>
           ))}
-          {exercise.modifications?.slice(0, 1).map((m) => (
+          {modificationsOf(exercise).slice(0, 1).map((m) => (
             <View key={m} style={styles.cue}>
               <Ionicons name="bulb-outline" size={13} color={Colors.accent} style={{ marginTop: 2 }} />
               <Text style={styles.cueText}>{m}</Text>
@@ -71,7 +74,7 @@ export default function ExerciseHowTo({ exercise, open = false, onOpenCard }: Pr
           ))}
           {onOpenCard && (
             <TouchableOpacity style={styles.more} onPress={onOpenCard}>
-              <Text style={styles.moreText}>Докладніше про вправу</Text>
+              <Text style={styles.moreText}>{t('moreAboutExercise')}</Text>
               <Ionicons name="chevron-forward" size={13} color={Colors.textSecondary} />
             </TouchableOpacity>
           )}

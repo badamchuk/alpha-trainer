@@ -1,3 +1,4 @@
+import { tFor } from '../services/i18n';
 /**
  * Перемикання між Groq і Gemini.
  *
@@ -106,12 +107,22 @@ describe('класифікація помилок', () => {
 });
 
 describe('пояснення користувачу', () => {
+  const uk = tFor('uk');
+  const en = tFor('en');
+
   it('про Groq каже саме про мережу', () => {
-    expect(switchNote('groq', 'gemini')).toContain('мережі');
-    expect(switchNote('groq', 'gemini')).toContain('Gemini');
+    expect(switchNote('groq', 'gemini', uk)).toContain('мережі');
+    expect(switchNote('groq', 'gemini', uk)).toContain('Gemini');
   });
 
   it('про Gemini — без вигадок про мережу', () => {
-    expect(switchNote('gemini', 'groq')).not.toContain('мережі');
+    expect(switchNote('gemini', 'groq', uk)).not.toContain('мережі');
+  });
+
+  it('англійською — без кирилиці, з тими самими іменами', () => {
+    const note = switchNote('groq', 'gemini', en);
+    expect(note).not.toMatch(/[А-Яа-яЇїІіЄєҐґ]/);
+    expect(note).toContain('Groq');
+    expect(note).toContain('Gemini');
   });
 });
