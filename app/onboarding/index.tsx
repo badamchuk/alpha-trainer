@@ -21,6 +21,7 @@ import { equipmentOf } from '../../services/equipment';
 import { loadLanguage, setLanguage, setExerciseLanguage, useLocale, Lang } from '../../services/i18n';
 import {
   AutoBackupState, autoBackup, exportBackup, getAutoBackupState, importBackup, shareAutoBackup,
+  backupErrorText,
 } from '../../services/backup';
 import Constants from 'expo-constants';
 import { checkForUpdate, openUpdate, showUpdateAlert, UpdateInfo } from '../../services/updates';
@@ -28,36 +29,36 @@ import { checkForUpdate, openUpdate, showUpdateAlert, UpdateInfo } from '../../s
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const FITNESS_LEVELS = [
-  { id: 'beginner', label: 'Початківець', desc: 'Менше 6 місяців', icon: 'walk-outline' },
-  { id: 'intermediate', label: 'Середній', desc: '6–24 місяці', icon: 'bicycle-outline' },
-  { id: 'advanced', label: 'Просунутий', desc: 'Більше 2 років', icon: 'barbell-outline' },
+  { id: 'beginner', key: 'levelBeginner', descKey: 'levelBeginnerDesc', icon: 'walk-outline' },
+  { id: 'intermediate', key: 'levelIntermediate', descKey: 'levelIntermediateDesc', icon: 'bicycle-outline' },
+  { id: 'advanced', key: 'levelAdvanced', descKey: 'levelAdvancedDesc', icon: 'barbell-outline' },
 ];
 
-const WEEK_DAYS = [
-  { id: 1, label: 'Пн' }, { id: 2, label: 'Вт' }, { id: 3, label: 'Ср' },
-  { id: 4, label: 'Чт' }, { id: 5, label: 'Пт' }, { id: 6, label: 'Сб' }, { id: 0, label: 'Нд' },
-];
+/** Порядок як у трекері тижня: понеділок перший, значення — як у Date.getDay. */
+const WEEK_DAYS = [1, 2, 3, 4, 5, 6, 0];
 
+// id — те, що роками лежить у профілі користувача, тож він лишається
+// українським рядком; перекладається лише підпис на екрані.
 const EQUIPMENT_OPTIONS = [
-  { id: 'Штанга', icon: 'barbell-outline' },
-  { id: 'Гантелі', icon: 'fitness-outline' },
-  { id: 'Турнік', icon: 'hand-right-outline' },
-  { id: 'Брусся', icon: 'git-branch-outline' },
-  { id: 'Гирі', icon: 'golf-outline' },
-  { id: 'Еспандер', icon: 'infinite-outline' },
-  { id: 'Тренажерний зал', icon: 'business-outline' },
-  { id: 'Бігова доріжка', icon: 'walk-outline' },
-  { id: 'Скакалка', icon: 'swap-vertical-outline' },
-  { id: 'Лише власна вага', icon: 'body-outline' },
+  { id: 'Штанга', key: 'equipBarbell', icon: 'barbell-outline' },
+  { id: 'Гантелі', key: 'equipDumbbells', icon: 'fitness-outline' },
+  { id: 'Турнік', key: 'equipPullupBar', icon: 'hand-right-outline' },
+  { id: 'Брусся', key: 'equipDipBars', icon: 'git-branch-outline' },
+  { id: 'Гирі', key: 'equipKettlebells', icon: 'golf-outline' },
+  { id: 'Еспандер', key: 'equipBand', icon: 'infinite-outline' },
+  { id: 'Тренажерний зал', key: 'equipGym', icon: 'business-outline' },
+  { id: 'Бігова доріжка', key: 'equipTreadmill', icon: 'walk-outline' },
+  { id: 'Скакалка', key: 'equipJumpRope', icon: 'swap-vertical-outline' },
+  { id: 'Лише власна вага', key: 'equipBodyweightOnly', icon: 'body-outline' },
 ];
 
-const PROTECT_ZONES: { id: JointZone; label: string }[] = [
-  { id: 'shoulder', label: 'Плече' },
-  { id: 'lower_back', label: 'Поперек' },
-  { id: 'knee', label: 'Коліно' },
-  { id: 'wrist', label: 'Зап’ястя' },
-  { id: 'elbow', label: 'Лікоть' },
-  { id: 'impact', label: 'Стрибки' },
+const PROTECT_ZONES: { id: JointZone; key: string }[] = [
+  { id: 'shoulder', key: 'zoneShoulder' },
+  { id: 'lower_back', key: 'zoneLowerBack' },
+  { id: 'knee', key: 'zoneKnee' },
+  { id: 'wrist', key: 'zoneWrist' },
+  { id: 'elbow', key: 'zoneElbow' },
+  { id: 'impact', key: 'zoneJumps' },
 ];
 
 const TOTAL_STEPS = 7;
@@ -137,14 +138,14 @@ export default function OnboardingScreen() {
   function validateStep(): string | null {
     switch (step) {
       case 0: return null; // welcome
-      case 1: return !name.trim() ? "Введи своє ім'я" : null;
+      case 1: return !name.trim() ? t('enterYourName') : null;
       case 2:
-        if (!birthDate) return 'Вкажи дату народження';
-        if (!weight || isNaN(Number(weight)) || Number(weight) < 30) return 'Введи коректну вагу';
-        if (!height || isNaN(Number(height)) || Number(height) < 100) return 'Введи коректний зріст';
+        if (!birthDate) return t('enterBirthDate');
+        if (!weight || isNaN(Number(weight)) || Number(weight) < 30) return t('enterValidWeightShort');
+        if (!height || isNaN(Number(height)) || Number(height) < 100) return t('enterValidHeight');
         return null;
       case 3: return null; // fitness level — always valid
-      case 4: return availableDays.length === 0 ? 'Вибери хоча б один день' : null;
+      case 4: return availableDays.length === 0 ? t('pickAtLeastOneDay') : null;
       case 5: return null; // equipment — optional
       case 6: return null; // key is optional — can be added later in profile
       default: return null;
@@ -167,32 +168,32 @@ export default function OnboardingScreen() {
   }
 
   async function verifyKey() {
-    if (!geminiKey.trim()) { Alert.alert('', 'Вставте ключ'); return; }
+    if (!geminiKey.trim()) { Alert.alert('', t('pasteKey')); return; }
     const result = await verifyApiKey(geminiKey.trim());
     if (result.ok) {
       initGemini(geminiKey.trim());
       setKeyVerified(true);
       if (result.error === 'quota_warning') {
-        Alert.alert('✓ Ключ дійсний', 'Ліміт моделей вичерпано, але ключ правильний.');
+        Alert.alert(t('keyValidTitle'), t('keyValidText'));
       } else {
-        Alert.alert('✓ Ключ працює!', `Модель: ${result.model}\nAI-тренер готовий до роботи`);
+        Alert.alert(t('keyWorksTitle'), t('keyWorksGemini', result.model));
       }
     } else {
       setKeyVerified(false);
-      Alert.alert('Помилка перевірки', result.error || 'Не вдалося перевірити ключ');
+      Alert.alert(t('keyCheckError'), result.error || t('keyCheckFailed'));
     }
   }
 
   async function verifyGroqKey() {
-    if (!groqKey.trim()) { Alert.alert('', 'Вставте ключ'); return; }
+    if (!groqKey.trim()) { Alert.alert('', t('pasteKey')); return; }
     const result = await verifyGroqApiKey(groqKey.trim());
     if (result.ok) {
       initGroq(groqKey.trim());
       setGroqKeyVerified(true);
-      Alert.alert('✓ Ключ працює!', `Модель: ${result.model}\nGroq AI-тренер готовий!`);
+      Alert.alert(t('keyWorksTitle'), t('keyWorksGroq', result.model));
     } else {
       setGroqKeyVerified(false);
-      Alert.alert('Помилка перевірки', result.error || 'Не вдалося перевірити ключ');
+      Alert.alert(t('keyCheckError'), result.error || t('keyCheckFailed'));
     }
   }
 
@@ -243,11 +244,11 @@ export default function OnboardingScreen() {
   }
 
   async function handleSaveEditing() {
-    if (!name.trim()) { Alert.alert('', "Введи своє ім'я"); return; }
-    if (!birthDate) { Alert.alert('', 'Вкажи дату народження'); return; }
-    if (!weight || isNaN(Number(weight)) || Number(weight) < 30) { Alert.alert('', 'Некоректна вага'); return; }
-    if (!height || isNaN(Number(height)) || Number(height) < 100) { Alert.alert('', 'Некоректний зріст'); return; }
-    if (availableDays.length === 0) { Alert.alert('', 'Вибери хоча б один день тренувань'); return; }
+    if (!name.trim()) { Alert.alert('', t('enterYourName')); return; }
+    if (!birthDate) { Alert.alert('', t('enterBirthDate')); return; }
+    if (!weight || isNaN(Number(weight)) || Number(weight) < 30) { Alert.alert('', t('invalidWeight')); return; }
+    if (!height || isNaN(Number(height)) || Number(height) < 100) { Alert.alert('', t('invalidHeight')); return; }
+    if (availableDays.length === 0) { Alert.alert('', t('pickAtLeastOneTrainingDay')); return; }
 
     const profile: UserProfile = {
       name: name.trim(),
@@ -274,15 +275,15 @@ export default function OnboardingScreen() {
     const remindersFlag = await AsyncStorage.getItem('@alpha_trainer:water_reminders');
     if (remindersFlag === 'true') await scheduleWaterReminders(waterGoal);
 
-    Alert.alert('Збережено', 'Профіль оновлено', [{ text: 'OK', onPress: () => router.back() }]);
+    Alert.alert(t('savedTitle'), t('profileUpdated'), [{ text: t('ok'), onPress: () => router.back() }]);
   }
 
   async function handleExportBackup() {
     setBackupLoading(true);
     try {
       const result = await exportBackup();
-      if (!result.success && result.error !== 'Скасовано') {
-        Alert.alert('Помилка експорту', result.error);
+      if (!result.success && result.errorCode !== 'cancelled') {
+        Alert.alert(t('exportError'), backupErrorText(result, t));
       }
     } finally {
       setBackupLoading(false);
@@ -291,23 +292,20 @@ export default function OnboardingScreen() {
 
   async function handleImportBackup() {
     Alert.alert(
-      'Відновити дані?',
-      'Поточні дані будуть замінені даними з файлу. Продовжити?',
+      t('restoreDataQuestion'),
+      t('restoreDataText'),
       [
-        { text: 'Скасувати', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Відновити', style: 'destructive',
+          text: t('restoreBtn'), style: 'destructive',
           onPress: async () => {
             setBackupLoading(true);
             try {
               const result = await importBackup();
               if (result.success) {
-                Alert.alert(
-                  'Дані відновлено',
-                  `Відновлено ${result.itemCount} об'єктів.\nПерезапусти додаток.`
-                );
-              } else if (result.error !== 'Скасовано') {
-                Alert.alert('Помилка імпорту', result.error);
+                Alert.alert(t('dataRestored'), t('restoredItems', result.itemCount));
+              } else if (result.errorCode !== 'cancelled') {
+                Alert.alert(t('importError'), backupErrorText(result, t));
               }
             } finally {
               setBackupLoading(false);
@@ -333,9 +331,9 @@ export default function OnboardingScreen() {
   // ─── EDITING MODE: 3-tab profile settings ──────────────────────────────────
   if (isEditing) {
     const TABS = [
-      { id: 'personal' as const, label: 'Особисті дані', icon: 'person-outline' as const },
-      { id: 'training' as const, label: 'Тренування', icon: 'barbell-outline' as const },
-      { id: 'ai' as const, label: 'AI-моделі', icon: 'sparkles-outline' as const },
+      { id: 'personal' as const, label: t('tabPersonal'), icon: 'person-outline' as const },
+      { id: 'training' as const, label: t('tabTraining'), icon: 'barbell-outline' as const },
+      { id: 'ai' as const, label: t('tabAiModels'), icon: 'sparkles-outline' as const },
     ];
 
     return (
@@ -346,7 +344,7 @@ export default function OnboardingScreen() {
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
               <Ionicons name="arrow-back" size={22} color={Colors.textSecondary} />
             </TouchableOpacity>
-            <Text style={[styles.stepTitle, { fontSize: 20 }]}>Профіль</Text>
+            <Text style={[styles.stepTitle, { fontSize: 20 }]}>{t('profileTitle')}</Text>
             <View style={{ width: 40 }} />
           </View>
 
@@ -382,23 +380,23 @@ export default function OnboardingScreen() {
               <>
                 {/* Language */}
                 <View style={settingsStyles.section}>
-                  <Text style={settingsStyles.sectionTitle}>Мова</Text>
-                  <Text style={styles.langSectionLabel}>{lang === 'uk' ? 'Мова додатку' : 'App language'}</Text>
+                  <Text style={settingsStyles.sectionTitle}>{t('language')}</Text>
+                  <Text style={styles.langSectionLabel}>{t('appLanguage')}</Text>
                   <View style={styles.langPicker}>
                     {(['uk', 'en'] as Lang[]).map((l) => (
                       <TouchableOpacity key={l} style={[styles.langBtn, lang === l && styles.langBtnActive]} onPress={() => changeLang(l)}>
                         <Text style={[styles.langBtnText, lang === l && styles.langBtnTextActive]}>
-                          {l === 'uk' ? '🇺🇦 Українська' : '🇬🇧 English'}
+                          {l === 'uk' ? `🇺🇦 ${t('ukrainian')}` : `🇬🇧 ${t('english')}`}
                         </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
-                  <Text style={styles.langSectionLabel}>{lang === 'uk' ? 'Мова вправ' : 'Exercise names'}</Text>
+                  <Text style={styles.langSectionLabel}>{t('exerciseNamesLanguage')}</Text>
                   <View style={styles.langPicker}>
                     {(['uk', 'en'] as Lang[]).map((l) => (
                       <TouchableOpacity key={l} style={[styles.langBtn, exerciseLang === l && styles.langBtnActive]} onPress={() => changeExerciseLang(l)}>
                         <Text style={[styles.langBtnText, exerciseLang === l && styles.langBtnTextActive]}>
-                          {l === 'uk' ? '🇺🇦 Українська' : '🇬🇧 English'}
+                          {l === 'uk' ? `🇺🇦 ${t('ukrainian')}` : `🇬🇧 ${t('english')}`}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -407,10 +405,10 @@ export default function OnboardingScreen() {
 
                 {/* Name */}
                 <View style={settingsStyles.section}>
-                  <Text style={settingsStyles.sectionTitle}>Ім'я</Text>
+                  <Text style={settingsStyles.sectionTitle}>{t('nameLabel')}</Text>
                   <TextInput
                     style={styles.bigInput}
-                    placeholder="Твоє ім'я"
+                    placeholder={t('yourNamePlaceholder')}
                     placeholderTextColor={Colors.textMuted}
                     value={name}
                     onChangeText={setName}
@@ -420,7 +418,7 @@ export default function OnboardingScreen() {
 
                 {/* Gender */}
                 <View style={settingsStyles.section}>
-                  <Text style={settingsStyles.sectionTitle}>Стать</Text>
+                  <Text style={settingsStyles.sectionTitle}>{t('genderLabel')}</Text>
                   <View style={{ flexDirection: 'row', gap: 12 }}>
                     {(['male', 'female'] as const).map((g) => (
                       <TouchableOpacity
@@ -430,7 +428,7 @@ export default function OnboardingScreen() {
                       >
                         <Text style={{ fontSize: 28 }}>{g === 'male' ? '👨' : '👩'}</Text>
                         <Text style={[styles.genderBtnText, gender === g && { color: Colors.primary, fontWeight: '700' }]}>
-                          {g === 'male' ? 'Чоловік' : 'Жінка'}
+                          {t(g === 'male' ? 'male' : 'female')}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -439,12 +437,12 @@ export default function OnboardingScreen() {
 
                 {/* Body params */}
                 <View style={settingsStyles.section}>
-                  <Text style={settingsStyles.sectionTitle}>Параметри тіла</Text>
-                  <Text style={settingsStyles.sectionHint}>Впливають на розрахунок TDEE та норм харчування</Text>
+                  <Text style={settingsStyles.sectionTitle}>{t('bodyParams')}</Text>
+                  <Text style={settingsStyles.sectionHint}>{t('bodyParamsHint')}</Text>
                   <View style={styles.metricsGrid}>
                     {/* Date of birth */}
                     <TouchableOpacity style={[styles.metricCard, { flex: 1.3 }]} onPress={() => setShowDatePicker(true)}>
-                      <Text style={styles.metricLabel}>Дата народж.</Text>
+                      <Text style={styles.metricLabel}>{t('birthDateShort')}</Text>
                       {birthDate ? (
                         <>
                           <Text style={[styles.metricInput, { fontSize: 15 }]}>
@@ -456,8 +454,8 @@ export default function OnboardingScreen() {
                         <Ionicons name="calendar-outline" size={28} color={Colors.primary} style={{ marginVertical: 4 }} />
                       )}
                     </TouchableOpacity>
-                    <MetricInput label="Вага" unit="кг" value={weight} onChange={setWeight} placeholder="75" />
-                    <MetricInput label="Зріст" unit="см" value={height} onChange={setHeight} placeholder="175" />
+                    <MetricInput label={t('weightLabel')} unit={t('kgUnit')} value={weight} onChange={setWeight} placeholder="75" />
+                    <MetricInput label={t('heightLabel')} unit={t('cmUnit')} value={height} onChange={setHeight} placeholder="175" />
                   </View>
                 </View>
               </>
@@ -468,7 +466,7 @@ export default function OnboardingScreen() {
               <>
                 {/* Fitness level */}
                 <View style={settingsStyles.section}>
-                  <Text style={settingsStyles.sectionTitle}>Рівень підготовки</Text>
+                  <Text style={settingsStyles.sectionTitle}>{t('fitnessLevelTitle')}</Text>
                   {FITNESS_LEVELS.map((l) => (
                     <TouchableOpacity
                       key={l.id}
@@ -479,8 +477,8 @@ export default function OnboardingScreen() {
                         <Ionicons name={l.icon as any} size={22} color={fitnessLevel === l.id ? Colors.primary : Colors.textMuted} />
                       </View>
                       <View style={styles.levelText}>
-                        <Text style={[styles.levelTitle, fitnessLevel === l.id && { color: Colors.primary }]}>{l.label}</Text>
-                        <Text style={styles.levelDesc}>{l.desc}</Text>
+                        <Text style={[styles.levelTitle, fitnessLevel === l.id && { color: Colors.primary }]}>{t(l.key)}</Text>
+                        <Text style={styles.levelDesc}>{t(l.descKey)}</Text>
                       </View>
                       {fitnessLevel === l.id && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
                     </TouchableOpacity>
@@ -489,16 +487,16 @@ export default function OnboardingScreen() {
 
                 {/* Days */}
                 <View style={settingsStyles.section}>
-                  <Text style={settingsStyles.sectionTitle}>Дні тренувань</Text>
+                  <Text style={settingsStyles.sectionTitle}>{t('trainingDaysTitle')}</Text>
                   <View style={styles.daysGrid}>
                     {WEEK_DAYS.map((d) => (
                       <TouchableOpacity
-                        key={d.id}
-                        style={[styles.dayCard, availableDays.includes(d.id) && styles.dayCardActive]}
-                        onPress={() => toggleDay(d.id)}
+                        key={d}
+                        style={[styles.dayCard, availableDays.includes(d) && styles.dayCardActive]}
+                        onPress={() => toggleDay(d)}
                       >
-                        <Text style={[styles.dayLabel, availableDays.includes(d.id) && styles.dayLabelActive]}>{d.label}</Text>
-                        {availableDays.includes(d.id) && (
+                        <Text style={[styles.dayLabel, availableDays.includes(d) && styles.dayLabelActive]}>{t('dayShort', d)}</Text>
+                        {availableDays.includes(d) && (
                           <View style={styles.dayCheck}><Ionicons name="checkmark" size={10} color="#FFF" /></View>
                         )}
                       </TouchableOpacity>
@@ -506,8 +504,9 @@ export default function OnboardingScreen() {
                   </View>
                   <Text style={styles.daysCount}>
                     {availableDays.length > 0
-                      ? `Вибрано ${availableDays.length} ${availableDays.length === 1 ? 'день' : availableDays.length < 5 ? 'дні' : 'днів'} на тиждень`
-                      : 'Вибери хоча б один день'}
+                      ? t('daysChosen', availableDays.length,
+                          t(availableDays.length === 1 ? 'dayWord' : availableDays.length < 5 ? 'daysWordFew' : 'daysWordMany'))
+                      : t('pickAtLeastOneDay')}
                   </Text>
                 </View>
 
@@ -518,9 +517,9 @@ export default function OnboardingScreen() {
                 >
                   <Ionicons name="flag-outline" size={20} color={Colors.textSecondary} />
                   <View style={{ flex: 1 }}>
-                    <Text style={linkRowStyles.title}>Програми тренувань</Text>
+                    <Text style={linkRowStyles.title}>{t('programsLink')}</Text>
                     <Text style={linkRowStyles.hint}>
-                      Багатотижневі цикли, які самі піднімають навантаження
+                      {t('programsLinkHint')}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
@@ -533,9 +532,9 @@ export default function OnboardingScreen() {
                 >
                   <Ionicons name="pricetags-outline" size={20} color={Colors.textSecondary} />
                   <View style={{ flex: 1 }}>
-                    <Text style={linkRowStyles.title}>Розпізнавання вправ</Text>
+                    <Text style={linkRowStyles.title}>{t('recognitionLink')}</Text>
                     <Text style={linkRowStyles.hint}>
-                      Підкажи, що означають твої назви, — прогрес і калорії рахуватимуться точніше
+                      {t('recognitionLinkHint')}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
@@ -543,7 +542,7 @@ export default function OnboardingScreen() {
 
                 {/* Equipment */}
                 <View style={settingsStyles.section}>
-                  <Text style={settingsStyles.sectionTitle}>Обладнання</Text>
+                  <Text style={settingsStyles.sectionTitle}>{t('equipmentTitle')}</Text>
                   <View style={styles.equipGrid}>
                     {EQUIPMENT_OPTIONS.map((e) => (
                       <TouchableOpacity
@@ -552,7 +551,7 @@ export default function OnboardingScreen() {
                         onPress={() => toggleEquipment(e.id)}
                       >
                         <Ionicons name={e.icon as any} size={20} color={equipment.includes(e.id) ? Colors.primary : Colors.textMuted} />
-                        <Text style={[styles.equipLabel, equipment.includes(e.id) && { color: Colors.primary }]}>{e.id}</Text>
+                        <Text style={[styles.equipLabel, equipment.includes(e.id) && { color: Colors.primary }]}>{t(e.key)}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -560,7 +559,7 @@ export default function OnboardingScreen() {
 
                 {/* Зони, які берегти (ТЗ F8.4) */}
                 <View style={settingsStyles.section}>
-                  <Text style={settingsStyles.sectionTitle}>Що берегти</Text>
+                  <Text style={settingsStyles.sectionTitle}>{t('protectTitle')}</Text>
                   <Text style={linkRowStyles.hint}>
                     Вправи з сильним навантаженням на ці зони не пропонуватимуться в замінах
                     і в конструкторі. Порожньо — обмежень немає.
@@ -577,7 +576,7 @@ export default function OnboardingScreen() {
                           ))}
                         >
                           <Text style={[zoneStyles.chipText, on && zoneStyles.chipTextActive]}>
-                            {z.label}
+                            {t(z.key)}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -589,7 +588,7 @@ export default function OnboardingScreen() {
                 <View style={styles.notifSection}>
                   <View style={styles.notifRow}>
                     <Ionicons name="notifications-outline" size={20} color={Colors.textSecondary} />
-                    <Text style={styles.notifLabel}>Нагадування про тренування</Text>
+                    <Text style={styles.notifLabel}>{t('workoutReminders')}</Text>
                     <Switch
                       value={enableNotifications}
                       onValueChange={setEnableNotifications}
@@ -599,7 +598,7 @@ export default function OnboardingScreen() {
                   </View>
                   {enableNotifications && (
                     <View style={styles.timeRow}>
-                      <Text style={styles.timeLabel}>Час нагадування:</Text>
+                      <Text style={styles.timeLabel}>{t('reminderTimeLabel')}</Text>
                       <TextInput style={styles.timeInput} value={reminderHour} onChangeText={setReminderHour} keyboardType="numeric" maxLength={2} />
                       <Text style={styles.timeSep}>:</Text>
                       <TextInput style={styles.timeInput} value={reminderMinute} onChangeText={setReminderMinute} keyboardType="numeric" maxLength={2} />
@@ -631,9 +630,9 @@ export default function OnboardingScreen() {
                 >
                   <Ionicons name="image-outline" size={20} color={Colors.textSecondary} />
                   <View style={{ flex: 1 }}>
-                    <Text style={linkRowStyles.title}>Джерела й умови</Text>
+                    <Text style={linkRowStyles.title}>{t('sourcesLink')}</Text>
                     <Text style={linkRowStyles.hint}>
-                      Автори ілюстрацій, дані про продукти, застереження про здоров'я
+                      {t('sourcesLinkHint')}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
@@ -647,7 +646,7 @@ export default function OnboardingScreen() {
           <View style={styles.footer}>
             <TouchableOpacity style={styles.nextBtn} onPress={handleSaveEditing}>
               <Ionicons name="checkmark-circle-outline" size={20} color="#FFF" />
-              <Text style={styles.nextBtnText}>Зберегти зміни</Text>
+              <Text style={styles.nextBtnText}>{t('saveChanges')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -792,6 +791,7 @@ function BirthDatePickerModal({
   onConfirm: (d: Date) => void;
   onClose: () => void;
 }) {
+  const { t } = useLocale();
   const [temp, setTemp] = useState<Date>(value ?? new Date(2000, 0, 1));
 
   // Sync temp when modal opens
@@ -829,11 +829,11 @@ function BirthDatePickerModal({
       <View style={bpStyles.sheet}>
         <View style={bpStyles.sheetHeader}>
           <TouchableOpacity onPress={onClose}>
-            <Text style={bpStyles.cancelBtn}>Скасувати</Text>
+            <Text style={bpStyles.cancelBtn}>{t('cancel')}</Text>
           </TouchableOpacity>
-          <Text style={bpStyles.sheetTitle}>Дата народження</Text>
+          <Text style={bpStyles.sheetTitle}>{t('birthDateTitle')}</Text>
           <TouchableOpacity onPress={() => onConfirm(temp)}>
-            <Text style={bpStyles.doneBtn}>Готово</Text>
+            <Text style={bpStyles.doneBtn}>{t('doneBtn')}</Text>
           </TouchableOpacity>
         </View>
         <DateTimePicker
@@ -878,16 +878,17 @@ function StepWelcome({
   lang: Lang; onLangChange: (l: Lang) => void;
   exerciseLang: Lang; onExerciseLangChange: (l: Lang) => void;
 }) {
+  const { t } = useLocale();
   return (
     <View style={styles.stepContent}>
       {/* App language picker */}
-      <Text style={styles.langSectionLabel}>{lang === 'uk' ? 'Мова додатку' : 'App language'}</Text>
+      <Text style={styles.langSectionLabel}>{t('appLanguage')}</Text>
       <View style={styles.langPicker}>
         <TouchableOpacity
           style={[styles.langBtn, lang === 'uk' && styles.langBtnActive]}
           onPress={() => onLangChange('uk')}
         >
-          <Text style={[styles.langBtnText, lang === 'uk' && styles.langBtnTextActive]}>🇺🇦 Українська</Text>
+          <Text style={[styles.langBtnText, lang === 'uk' && styles.langBtnTextActive]}>🇺🇦 {t('ukrainian')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.langBtn, lang === 'en' && styles.langBtnActive]}
@@ -898,13 +899,15 @@ function StepWelcome({
       </View>
 
       {/* Exercise language picker */}
-      <Text style={styles.langSectionLabel}>{lang === 'uk' ? 'Мова вправ' : 'Exercise names'}</Text>
+      <Text style={styles.langSectionLabel}>{t('exerciseNamesLanguage')}</Text>
       <View style={styles.langPicker}>
         <TouchableOpacity
           style={[styles.langBtn, exerciseLang === 'uk' && styles.langBtnActive]}
           onPress={() => onExerciseLangChange('uk')}
         >
-          <Text style={[styles.langBtnText, exerciseLang === 'uk' && styles.langBtnTextActive]}>🇺🇦 Українська</Text>
+          <Text style={[styles.langBtnText, exerciseLang === 'uk' && styles.langBtnTextActive]}>
+              🇺🇦 {t('ukrainian')}
+            </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.langBtn, exerciseLang === 'en' && styles.langBtnActive]}
@@ -917,16 +920,13 @@ function StepWelcome({
         <Ionicons name="barbell-outline" size={52} color={Colors.primary} />
       </View>
       <Text style={styles.stepTitle}>Ласкаво просимо до{'\n'}Гарту</Text>
-      <Text style={styles.stepDesc}>
-        Персональний AI-тренер, який будує план спеціально під тебе.{'\n\n'}
-        Пройди 7 простих кроків щоб налаштувати додаток — це займе лише 2 хвилини.
-      </Text>
+      <Text style={styles.stepDesc}>{t('welcomeIntro')}</Text>
       <View style={styles.featureList}>
         {[
-          { icon: 'calendar-outline', text: 'Персональний план тренувань' },
-          { icon: 'chatbubble-ellipses-outline', text: 'AI-тренер відповідає на питання' },
-          { icon: 'stats-chart-outline', text: 'Відстеження прогресу та статистика' },
-          { icon: 'notifications-outline', text: 'Нагадування про тренування' },
+          { icon: 'calendar-outline', text: t('welcomeFeature1') },
+          { icon: 'chatbubble-ellipses-outline', text: t('welcomeFeature2') },
+          { icon: 'stats-chart-outline', text: t('welcomeFeature3') },
+          { icon: 'notifications-outline', text: t('welcomeFeature4') },
         ].map((f) => (
           <View key={f.icon} style={styles.featureItem}>
             <Ionicons name={f.icon as any} size={18} color={Colors.primary} />
@@ -939,16 +939,17 @@ function StepWelcome({
 }
 
 function StepName({ name, setName }: { name: string; setName: (v: string) => void }) {
+  const { t } = useLocale();
   return (
     <View style={styles.stepContent}>
       <View style={styles.stepIcon}>
         <Ionicons name="person-outline" size={32} color={Colors.primary} />
       </View>
-      <Text style={styles.stepTitle}>Як тебе звати?</Text>
-      <Text style={styles.stepDesc}>AI-тренер буде звертатися до тебе по імені</Text>
+      <Text style={styles.stepTitle}>{t('whatsYourName')}</Text>
+      <Text style={styles.stepDesc}>{t('nameStepDesc')}</Text>
       <TextInput
         style={styles.bigInput}
-        placeholder="Твоє ім'я"
+        placeholder={t('yourNamePlaceholder')}
         placeholderTextColor={Colors.textMuted}
         value={name}
         onChangeText={setName}
@@ -965,6 +966,7 @@ function StepBody({ birthDate, onOpenDatePicker, weight, setWeight, height, setH
   height: string; setHeight: (v: string) => void;
   gender: 'male' | 'female'; setGender: (v: 'male' | 'female') => void;
 }) {
+  const { t } = useLocale();
   const ageDisplay = birthDate ? calcDisplayAge(birthDate) : null;
 
   return (
@@ -972,10 +974,12 @@ function StepBody({ birthDate, onOpenDatePicker, weight, setWeight, height, setH
       <View style={styles.stepIcon}>
         <Ionicons name="body-outline" size={32} color={Colors.primary} />
       </View>
-      <Text style={styles.stepTitle}>Твої параметри</Text>
-      <Text style={styles.stepDesc}>Потрібно для розрахунку навантаження і норм харчування</Text>
+      <Text style={styles.stepTitle}>{t('yourParams')}</Text>
+      <Text style={styles.stepDesc}>{t('paramsStepDesc')}</Text>
 
-      <Text style={[styles.metricLabel, { alignSelf: 'flex-start', marginBottom: 8, marginTop: 8 }]}>Стать</Text>
+      <Text style={[styles.metricLabel, { alignSelf: 'flex-start', marginBottom: 8, marginTop: 8 }]}>
+        {t('genderLabel')}
+      </Text>
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20, alignSelf: 'stretch' }}>
         {(['male', 'female'] as const).map((g) => (
           <TouchableOpacity
@@ -985,7 +989,7 @@ function StepBody({ birthDate, onOpenDatePicker, weight, setWeight, height, setH
           >
             <Text style={{ fontSize: 28 }}>{g === 'male' ? '👨' : '👩'}</Text>
             <Text style={[styles.genderBtnText, gender === g && { color: Colors.primary, fontWeight: '700' }]}>
-              {g === 'male' ? 'Чоловік' : 'Жінка'}
+              {t(g === 'male' ? 'male' : 'female')}
             </Text>
           </TouchableOpacity>
         ))}
@@ -994,7 +998,7 @@ function StepBody({ birthDate, onOpenDatePicker, weight, setWeight, height, setH
       <View style={styles.metricsGrid}>
         {/* Date of birth card */}
         <TouchableOpacity style={[styles.metricCard, { flex: 1.3 }]} onPress={onOpenDatePicker}>
-          <Text style={styles.metricLabel}>Дата народж.</Text>
+          <Text style={styles.metricLabel}>{t('birthDateShort')}</Text>
           {birthDate ? (
             <>
               <Text style={[styles.metricInput, { fontSize: 15 }]}>
@@ -1006,8 +1010,8 @@ function StepBody({ birthDate, onOpenDatePicker, weight, setWeight, height, setH
             <Ionicons name="calendar-outline" size={28} color={Colors.primary} style={{ marginVertical: 4 }} />
           )}
         </TouchableOpacity>
-        <MetricInput label="Вага" unit="кг" value={weight} onChange={setWeight} placeholder="75" />
-        <MetricInput label="Зріст" unit="см" value={height} onChange={setHeight} placeholder="175" />
+        <MetricInput label={t('weightLabel')} unit={t('kgUnit')} value={weight} onChange={setWeight} placeholder="75" />
+        <MetricInput label={t('heightLabel')} unit={t('cmUnit')} value={height} onChange={setHeight} placeholder="175" />
       </View>
     </View>
   );
@@ -1017,6 +1021,7 @@ function MetricInput({ label, unit, value, onChange, placeholder }: {
   label: string; unit: string; value: string;
   onChange: (v: string) => void; placeholder: string;
 }) {
+  const { t } = useLocale();
   return (
     <View style={styles.metricCard}>
       <Text style={styles.metricLabel}>{label}</Text>
@@ -1037,13 +1042,14 @@ function MetricInput({ label, unit, value, onChange, placeholder }: {
 function StepFitnessLevel({ value, onChange }: {
   value: string; onChange: (v: UserProfile['fitnessLevel']) => void;
 }) {
+  const { t } = useLocale();
   return (
     <View style={styles.stepContent}>
       <View style={styles.stepIcon}>
         <Ionicons name="trophy-outline" size={32} color={Colors.primary} />
       </View>
-      <Text style={styles.stepTitle}>Рівень підготовки</Text>
-      <Text style={styles.stepDesc}>Будемо чесними — від цього залежить інтенсивність</Text>
+      <Text style={styles.stepTitle}>{t('fitnessLevelTitle')}</Text>
+      <Text style={styles.stepDesc}>{t('levelStepDesc')}</Text>
       {FITNESS_LEVELS.map((l) => (
         <TouchableOpacity
           key={l.id}
@@ -1054,8 +1060,8 @@ function StepFitnessLevel({ value, onChange }: {
             <Ionicons name={l.icon as any} size={22} color={value === l.id ? Colors.primary : Colors.textMuted} />
           </View>
           <View style={styles.levelText}>
-            <Text style={[styles.levelTitle, value === l.id && { color: Colors.primary }]}>{l.label}</Text>
-            <Text style={styles.levelDesc}>{l.desc}</Text>
+            <Text style={[styles.levelTitle, value === l.id && { color: Colors.primary }]}>{t(l.key)}</Text>
+            <Text style={styles.levelDesc}>{t(l.descKey)}</Text>
           </View>
           {value === l.id && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
         </TouchableOpacity>
@@ -1065,22 +1071,23 @@ function StepFitnessLevel({ value, onChange }: {
 }
 
 function StepDays({ days, toggle }: { days: number[]; toggle: (d: number) => void }) {
+  const { t } = useLocale();
   return (
     <View style={styles.stepContent}>
       <View style={styles.stepIcon}>
         <Ionicons name="calendar-outline" size={32} color={Colors.primary} />
       </View>
-      <Text style={styles.stepTitle}>Коли тренуєшся?</Text>
-      <Text style={styles.stepDesc}>Вибери дні — AI побудує план саме під твій розклад</Text>
+      <Text style={styles.stepTitle}>{t('whenDoYouTrain')}</Text>
+      <Text style={styles.stepDesc}>{t('daysStepDesc')}</Text>
       <View style={styles.daysGrid}>
         {WEEK_DAYS.map((d) => (
           <TouchableOpacity
-            key={d.id}
-            style={[styles.dayCard, days.includes(d.id) && styles.dayCardActive]}
-            onPress={() => toggle(d.id)}
+            key={d}
+            style={[styles.dayCard, days.includes(d) && styles.dayCardActive]}
+            onPress={() => toggle(d)}
           >
-            <Text style={[styles.dayLabel, days.includes(d.id) && styles.dayLabelActive]}>{d.label}</Text>
-            {days.includes(d.id) && (
+            <Text style={[styles.dayLabel, days.includes(d) && styles.dayLabelActive]}>{t('dayShort', d)}</Text>
+            {days.includes(d) && (
               <View style={styles.dayCheck}>
                 <Ionicons name="checkmark" size={10} color="#FFF" />
               </View>
@@ -1090,21 +1097,23 @@ function StepDays({ days, toggle }: { days: number[]; toggle: (d: number) => voi
       </View>
       <Text style={styles.daysCount}>
         {days.length > 0
-          ? `Вибрано ${days.length} ${days.length === 1 ? 'день' : days.length < 5 ? 'дні' : 'днів'} на тиждень`
-          : 'Вибери хоча б один день'}
+          ? t('daysChosen', days.length,
+                          t(days.length === 1 ? 'dayWord' : days.length < 5 ? 'daysWordFew' : 'daysWordMany'))
+          : t('pickAtLeastOneDay')}
       </Text>
     </View>
   );
 }
 
 function StepEquipment({ selected, toggle }: { selected: string[]; toggle: (e: string) => void }) {
+  const { t } = useLocale();
   return (
     <View style={styles.stepContent}>
       <View style={styles.stepIcon}>
         <Ionicons name="fitness-outline" size={32} color={Colors.primary} />
       </View>
-      <Text style={styles.stepTitle}>Що є для тренувань?</Text>
-      <Text style={styles.stepDesc}>AI підбере вправи під твоє обладнання</Text>
+      <Text style={styles.stepTitle}>{t('whatEquipmentTitle')}</Text>
+      <Text style={styles.stepDesc}>{t('equipmentStepDesc')}</Text>
       <View style={styles.equipGrid}>
         {EQUIPMENT_OPTIONS.map((e) => (
           <TouchableOpacity
@@ -1118,7 +1127,7 @@ function StepEquipment({ selected, toggle }: { selected: string[]; toggle: (e: s
               color={selected.includes(e.id) ? Colors.primary : Colors.textMuted}
             />
             <Text style={[styles.equipLabel, selected.includes(e.id) && { color: Colors.primary }]}>
-              {e.id}
+              {t(e.key)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -1136,95 +1145,96 @@ function StepGemini({
   reminderHour, setReminderHour, reminderMinute, setReminderMinute,
   name,
 }: any) {
+  const { t } = useLocale();
   const [provider, setProvider] = useState<'groq' | 'gemini'>('groq');
   const [apiStep, setApiStep] = useState(0);
 
   const GROQ_STEPS = [
     {
-      num: '1', title: 'Відкрий Groq Console',
-      desc: 'Натисни кнопку — відкриється сайт Groq. Реєстрація безкоштовна',
+      num: '1', title: t('groqStep1Title'),
+      desc: t('groqStep1Desc'),
       action: (
         <TouchableOpacity style={styles.openBrowserBtn} onPress={() => { Linking.openURL('https://console.groq.com/keys'); setApiStep(1); }}>
           <Ionicons name="open-outline" size={18} color="#FFF" />
-          <Text style={styles.openBrowserBtnText}>Відкрити console.groq.com</Text>
+          <Text style={styles.openBrowserBtnText}>{t('openGroqConsole')}</Text>
         </TouchableOpacity>
       ),
     },
     {
-      num: '2', title: 'Зареєструйся або увійди',
-      desc: 'Можна через Google або email — це безкоштовно',
+      num: '2', title: t('groqStep2Title'),
+      desc: t('groqStep2Desc'),
       action: (
         <TouchableOpacity style={styles.doneStepBtn} onPress={() => setApiStep(2)}>
           <Ionicons name="checkmark" size={16} color={Colors.success} />
-          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>Залогінився</Text>
+          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>{t('loggedInBtn')}</Text>
         </TouchableOpacity>
       ),
     },
     {
-      num: '3', title: 'Натисни "Create API Key"',
-      desc: 'Вибери назву (наприклад "Hart") і натисни "Submit"',
+      num: '3', title: t('groqStep3Title'),
+      desc: t('groqStep3Desc'),
       action: (
         <TouchableOpacity style={styles.doneStepBtn} onPress={() => setApiStep(3)}>
           <Ionicons name="checkmark" size={16} color={Colors.success} />
-          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>Створив</Text>
+          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>{t('createdBtn')}</Text>
         </TouchableOpacity>
       ),
     },
     {
-      num: '4', title: 'Скопіюй ключ',
-      desc: 'Ключ починається на "gsk_..." — скопіюй його одразу, він показується лише раз',
+      num: '4', title: t('groqStep4Title'),
+      desc: t('groqStep4Desc'),
       action: (
         <TouchableOpacity style={styles.doneStepBtn} onPress={() => setApiStep(4)}>
           <Ionicons name="checkmark" size={16} color={Colors.success} />
-          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>Скопіював</Text>
+          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>{t('copiedBtn')}</Text>
         </TouchableOpacity>
       ),
     },
-    { num: '5', title: 'Встав ключ нижче', desc: 'Встав скопійований ключ і натисни "Перевірити"', action: null },
+    { num: '5', title: t('pasteKeyBelow'), desc: t('pasteKeyBelowDesc'), action: null },
   ];
 
   const GEMINI_STEPS = [
     {
-      num: '1', title: 'Відкрий Google AI Studio',
-      desc: 'Натисни кнопку — відкриється сайт Google де безкоштовно видають ключ',
+      num: '1', title: t('geminiStep1Title'),
+      desc: t('geminiStep1Desc'),
       action: (
         <TouchableOpacity style={styles.openBrowserBtn} onPress={() => { Linking.openURL('https://aistudio.google.com/apikey'); setApiStep(1); }}>
           <Ionicons name="open-outline" size={18} color="#FFF" />
-          <Text style={styles.openBrowserBtnText}>Відкрити Google AI Studio</Text>
+          <Text style={styles.openBrowserBtnText}>{t('openGoogleAiStudio')}</Text>
         </TouchableOpacity>
       ),
     },
     {
-      num: '2', title: 'Увійди в Google акаунт',
-      desc: 'Якщо ще не залогінений — увійди через Gmail',
+      num: '2', title: t('geminiStep2Title'),
+      desc: t('geminiStep2Desc'),
       action: (
         <TouchableOpacity style={styles.doneStepBtn} onPress={() => setApiStep(2)}>
           <Ionicons name="checkmark" size={16} color={Colors.success} />
-          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>Залогінився</Text>
+          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>{t('loggedInBtn')}</Text>
         </TouchableOpacity>
       ),
     },
     {
-      num: '3', title: 'Натисни "Create API key"',
-      desc: 'Велика синя кнопка на сторінці',
+      num: '3', title: t('geminiStep3Title'),
+      desc: t('geminiStep3Desc'),
       action: (
         <TouchableOpacity style={styles.doneStepBtn} onPress={() => setApiStep(3)}>
           <Ionicons name="checkmark" size={16} color={Colors.success} />
-          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>Натиснув</Text>
+          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>{t('pressedBtn')}</Text>
         </TouchableOpacity>
       ),
     },
     {
-      num: '4', title: 'Скопіюй ключ',
-      desc: 'Ключ починається на "AIza..." — натисни щоб скопіювати',
+      num: '4', title: t('geminiStep4Title'),
+      desc: t('geminiStep4Desc'),
       action: (
         <TouchableOpacity style={styles.doneStepBtn} onPress={() => setApiStep(4)}>
           <Ionicons name="checkmark" size={16} color={Colors.success} />
-          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>Скопіював</Text>
+          <Text style={[styles.doneStepBtnText, { color: Colors.success }]}>{t('copiedBtn')}</Text>
         </TouchableOpacity>
       ),
     },
-    { num: '5', title: 'Встав ключ нижче', desc: 'Встав скопійований ключ і натисни "Перевірити"', action: null },
+    { num: '5', title: t('pasteKeyBelow'), desc: t('pasteKeyBelowDesc'), action: null },
   ];
 
   const steps = provider === 'groq' ? GROQ_STEPS : GEMINI_STEPS;
@@ -1243,7 +1253,7 @@ function StepGemini({
         <Ionicons name="sparkles" size={32} color={Colors.primary} />
       </View>
       <Text style={styles.stepTitle}>
-        {name ? `${name}, підключи AI-тренера` : 'Підключи AI-тренера'}
+        {name ? t('connectAiNamed', name) : t('connectAi')}
       </Text>
 
       {/* Provider toggle */}
@@ -1256,7 +1266,7 @@ function StepGemini({
             Groq
           </Text>
           <Text style={[styles.providerBtnSub, provider === 'groq' && { color: Colors.primary }]}>
-            Рекомендовано
+            {t('recommendedTag')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1274,8 +1284,8 @@ function StepGemini({
 
       <Text style={styles.stepDesc}>
         {provider === 'groq'
-          ? 'Groq — безкоштовний і швидкий AI. 6000 запитів/день, реєстрація через Google'
-          : 'Gemini від Google. Безкоштовний ліміт може вичерпатись швидше'}
+          ? t('groqDesc')
+          : t('geminiDesc')}
       </Text>
 
       {/* Step-by-step */}
@@ -1325,12 +1335,12 @@ function StepGemini({
           </View>
           {!isVerified ? (
             <TouchableOpacity style={styles.verifyBtn} onPress={doVerify}>
-              <Text style={styles.verifyBtnText}>Перевірити ключ</Text>
+              <Text style={styles.verifyBtnText}>{t('verifyKeyBtn')}</Text>
             </TouchableOpacity>
           ) : (
             <View style={styles.verifiedBadge}>
               <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
-              <Text style={styles.verifiedText}>Ключ підтверджено — AI готовий!</Text>
+              <Text style={styles.verifiedText}>{t('keyConfirmed')}</Text>
             </View>
           )}
         </View>
@@ -1340,7 +1350,7 @@ function StepGemini({
       <View style={styles.notifSection}>
         <View style={styles.notifRow}>
           <Ionicons name="notifications-outline" size={20} color={Colors.textSecondary} />
-          <Text style={styles.notifLabel}>Нагадування про тренування</Text>
+          <Text style={styles.notifLabel}>{t('workoutReminders')}</Text>
           <Switch
             value={enableNotifications}
             onValueChange={setEnableNotifications}
@@ -1350,7 +1360,7 @@ function StepGemini({
         </View>
         {enableNotifications && (
           <View style={styles.timeRow}>
-            <Text style={styles.timeLabel}>Час нагадування:</Text>
+            <Text style={styles.timeLabel}>{t('reminderTimeLabel')}</Text>
             <TextInput style={styles.timeInput} value={reminderHour} onChangeText={setReminderHour} keyboardType="numeric" maxLength={2} />
             <Text style={styles.timeSep}>:</Text>
             <TextInput style={styles.timeInput} value={reminderMinute} onChangeText={setReminderMinute} keyboardType="numeric" maxLength={2} />
@@ -1370,11 +1380,12 @@ function BackupSection({
   onExport: () => void;
   onImport: () => void;
 }) {
+  const { t } = useLocale();
   return (
     <View style={backupStyles.section}>
       <View style={backupStyles.header}>
         <Ionicons name="save-outline" size={20} color={Colors.primary} />
-        <Text style={backupStyles.title}>Резервна копія</Text>
+        <Text style={backupStyles.title}>{t('backupTitle')}</Text>
       </View>
       <Text style={backupStyles.hint}>
         Збережи всі тренування, цілі та налаштування у файл.
@@ -1389,7 +1400,7 @@ function BackupSection({
         >
           <Ionicons name="share-outline" size={16} color="#FFF" />
           <Text style={backupStyles.btnExportText}>
-            {loading ? 'Зберігаю...' : 'Експорт'}
+            {t(loading ? 'savingEllipsis' : 'exportBtn')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1399,7 +1410,7 @@ function BackupSection({
         >
           <Ionicons name="download-outline" size={16} color={Colors.primary} />
           <Text style={backupStyles.btnImportText}>
-            {loading ? 'Відновлюю...' : 'Імпорт'}
+            {t(loading ? 'restoringEllipsis' : 'importBtn')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -1414,6 +1425,7 @@ function BackupSection({
  * але не від втрати телефона — про це й написано прямо, без ілюзій.
  */
 function AutoBackupRow() {
+  const { t } = useLocale();
   const [state, setState] = useState<AutoBackupState | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -1430,10 +1442,10 @@ function AutoBackupRow() {
       <Ionicons name="time-outline" size={16} color={Colors.textMuted} />
       <View style={{ flex: 1 }}>
         <Text style={autoBackupStyles.text}>
-          {when ? `Автокопія в додатку: ${when}` : 'Автокопія з’явиться при наступному запуску'}
+          {when ? t('autoBackupIn', when) : t('autoBackupSoon')}
         </Text>
         <Text style={autoBackupStyles.note}>
-          Рятує, якщо дані стерлись у додатку. Від втрати телефона рятує лише експорт у файл.
+          {t('autoBackupHint')}
         </Text>
       </View>
       <TouchableOpacity
@@ -1445,11 +1457,13 @@ function AutoBackupRow() {
           setBusy(false);
           if (next) {
             const res = await shareAutoBackup();
-            if (!res.success && res.error) Alert.alert('Не вдалось поділитись', res.error);
+            if (!res.success && res.errorCode !== 'cancelled') {
+        Alert.alert(t('shareFailed'), backupErrorText(res, t));
+      }
           }
         }}
       >
-        <Text style={autoBackupStyles.action}>{busy ? '…' : 'Зберегти'}</Text>
+        <Text style={autoBackupStyles.action}>{busy ? '…' : t('save')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -1473,6 +1487,7 @@ const autoBackupStyles = StyleSheet.create({
  * хеш коміту й час збірки показують, що саме зібрано.
  */
 function BuildInfo() {
+  const { t } = useLocale();
   const extra = (Constants.expoConfig?.extra ?? {}) as {
     gitHash?: string;
     gitDirty?: boolean;
@@ -1494,9 +1509,9 @@ function BuildInfo() {
       const info = await checkForUpdate(true);
       setAvailable(info);
       if (info) showUpdateAlert(info);
-      else Alert.alert('Оновлень немає', `У тебе остання версія — ${version}.`);
+      else Alert.alert(t('noUpdates'), t('latestVersionIs', version));
     } catch (e: any) {
-      Alert.alert('Не вдалося перевірити', e?.message ?? 'Перевір інтернет і спробуй ще раз.');
+      Alert.alert(t('checkFailed'), e?.message ?? t('checkInternet'));
     } finally {
       setChecking(false);
     }
@@ -1515,7 +1530,8 @@ function BuildInfo() {
           color={Colors.primary}
         />
         <Text style={buildStyles.updateText}>
-          {checking ? 'Перевіряю…' : available ? `Оновити до ${available.version}` : 'Перевірити оновлення'}
+          {checking ? t('checkingEllipsis')
+          : available ? t('updateTo', available.version) : t('checkUpdates')}
         </Text>
       </TouchableOpacity>
       <Text style={buildStyles.line}>
@@ -1524,7 +1540,7 @@ function BuildInfo() {
       </Text>
       <Text style={buildStyles.line}>Зібрано {built}</Text>
       {extra.gitDirty && (
-        <Text style={buildStyles.dirty}>* у збірці є незакомічені зміни</Text>
+        <Text style={buildStyles.dirty}>{t('buildDirty')}</Text>
       )}
     </View>
   );

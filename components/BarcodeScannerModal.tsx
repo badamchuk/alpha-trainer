@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
 import { lookupBarcode, searchFoodByName, offProductToFoodItem, OFFProduct } from '../services/foodAI';
+import { useLocale } from '../services/i18n';
 
 interface Props {
   visible: boolean;
@@ -20,6 +21,7 @@ interface Props {
 type ViewMode = 'scan' | 'search' | 'product';
 
 export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Props) {
+  const { t } = useLocale();
   const insets = useSafeAreaInsets();
   // Усередині Modal insets можуть повернути 0 (окрема ієрархія в'ю), тому
   // беремо більше з двох: колишнє жорстке 56 — нижня межа, яка вже працювала.
@@ -112,9 +114,9 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
   }
 
   function getHeaderTitle() {
-    if (mode === 'product') return 'Продукт знайдено';
-    if (mode === 'search') return 'Пошук продукту';
-    return 'Скануй штрих-код';
+    if (mode === 'product') return t('productFound');
+    if (mode === 'search') return t('productSearch');
+    return t('scanBarcodeTitle');
   }
 
   if (!visible) return null;
@@ -133,13 +135,13 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
         <View style={styles.dimOverlay}>
           <View style={styles.permCard}>
             <Ionicons name="camera-outline" size={48} color={Colors.primary} />
-            <Text style={styles.permTitle}>Потрібен доступ до камери</Text>
-            <Text style={styles.permText}>Для сканування штрих-кодів «Гарт» потребує доступ до камери.</Text>
+            <Text style={styles.permTitle}>{t('cameraNeeded')}</Text>
+            <Text style={styles.permText}>{t('cameraWhy')}</Text>
             <TouchableOpacity style={styles.permBtn} onPress={requestPermission}>
-              <Text style={styles.permBtnText}>Надати доступ</Text>
+              <Text style={styles.permBtnText}>{t('grantAccess')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
-              <Text style={styles.closeBtnText}>Скасувати</Text>
+              <Text style={styles.closeBtnText}>{t('cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -181,12 +183,12 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
                 <View style={[styles.corner, styles.cornerBL]} />
                 <View style={[styles.corner, styles.cornerBR]} />
               </View>
-              <Text style={styles.scanHint}>Наведи камеру на штрих-код</Text>
+              <Text style={styles.scanHint}>{t('pointCamera')}</Text>
             </View>
             {loading && (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="large" color={Colors.primary} />
-                <Text style={styles.loadingText}>Пошук продукту...</Text>
+                <Text style={styles.loadingText}>{t('searchingProduct')}</Text>
               </View>
             )}
           </>
@@ -203,7 +205,7 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
               <View style={styles.infoBanner}>
                 <Ionicons name="information-circle-outline" size={18} color={Colors.textSecondary} />
                 <Text style={styles.infoBannerText}>
-                  Продукт не знайдено за штрих-кодом. Спробуй пошук за назвою.
+                  {t('notFoundByBarcode')}
                 </Text>
               </View>
 
@@ -213,7 +215,7 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
                   style={styles.searchInput}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  placeholder="Назва продукту..."
+                  placeholder={t('productNamePlaceholder')}
                   placeholderTextColor={Colors.textMuted}
                   returnKeyType="search"
                   onSubmitEditing={handleSearch}
@@ -235,8 +237,8 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
               {searchResults.length === 0 && !searching && searchQuery.trim().length > 0 && (
                 <View style={styles.emptyResults}>
                   <Ionicons name="sad-outline" size={32} color={Colors.textMuted} />
-                  <Text style={styles.emptyResultsText}>Нічого не знайдено</Text>
-                  <Text style={styles.emptyResultsHint}>Спробуй іншу назву або мову (англійська пошукується краще)</Text>
+                  <Text style={styles.emptyResultsText}>{t('nothingFound')}</Text>
+                  <Text style={styles.emptyResultsHint}>{t('tryAnotherName')}</Text>
                 </View>
               )}
 
@@ -252,7 +254,7 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
                       {item.brand && <Text style={styles.resultBrand}>{item.brand}</Text>}
                     </View>
                     <View style={styles.resultMacros}>
-                      <Text style={styles.resultCal}>{item.calories} ккал</Text>
+                      <Text style={styles.resultCal}>{item.calories} {t('kcalLabel')}</Text>
                       <Text style={styles.resultMacroDetail}>Б{item.protein}·В{item.carbs}·Ж{item.fat}</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} style={{ marginLeft: 4 }} />
@@ -265,7 +267,7 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
             {/* Bottom: scan again */}
             <TouchableOpacity style={styles.backToScanBtn} onPress={rescan}>
               <Ionicons name="scan-outline" size={18} color={Colors.primary} />
-              <Text style={styles.backToScanText}>Сканувати ще раз</Text>
+              <Text style={styles.backToScanText}>{t('scanAgain')}</Text>
             </TouchableOpacity>
           </KeyboardAvoidingView>
         )}
@@ -285,17 +287,17 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
               <View style={styles.productCard}>
                 <Text style={styles.productName}>{product.name}</Text>
                 {product.brand && <Text style={styles.productBrand}>{product.brand}</Text>}
-                <Text style={styles.productPer}>Поживність на 100г:</Text>
+                <Text style={styles.productPer}>{t('per100g')}</Text>
                 <View style={styles.macroRow}>
-                  <MacroChip label="ккал" value={product.calories} color={Colors.accent} />
-                  <MacroChip label="Білки" value={product.protein} color="#E63946" />
-                  <MacroChip label="Вуглев." value={product.carbs} color="#F4A261" />
-                  <MacroChip label="Жири" value={product.fat} color="#2ECC71" />
+                  <MacroChip label={t('kcalLabel')} value={product.calories} color={Colors.accent} />
+                  <MacroChip label={t('proteinShort')} value={product.protein} color="#E63946" />
+                  <MacroChip label={t('carbsShort')} value={product.carbs} color="#F4A261" />
+                  <MacroChip label={t('fatShort')} value={product.fat} color="#2ECC71" />
                 </View>
               </View>
 
               <View style={styles.gramsRow}>
-                <Text style={styles.gramsLabel}>Кількість (г):</Text>
+                <Text style={styles.gramsLabel}>{t('amountGrams')}</Text>
                 <TextInput
                   style={styles.gramsInput}
                   value={gramsInput}
@@ -310,9 +312,12 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
                 const f = g / 100;
                 return (
                   <View style={styles.calcRow}>
-                    <Text style={styles.calcLabel}>На {g}г:</Text>
+                    <Text style={styles.calcLabel}>{t('forGrams', g)}</Text>
                     <Text style={styles.calcValue}>
-                      {Math.round(product.calories * f)} ккал · Б{Math.round(product.protein * f * 10) / 10}г · В{Math.round(product.carbs * f * 10) / 10}г · Ж{Math.round(product.fat * f * 10) / 10}г
+                      {t('macroSummary', Math.round(product.calories * f),
+                        Math.round(product.protein * f * 10) / 10,
+                        Math.round(product.carbs * f * 10) / 10,
+                        Math.round(product.fat * f * 10) / 10)}
                     </Text>
                   </View>
                 );
@@ -321,10 +326,10 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
               <View style={styles.actions}>
                 <TouchableOpacity style={styles.rescanBtn} onPress={rescan}>
                   <Ionicons name="scan-outline" size={18} color={Colors.textSecondary} />
-                  <Text style={styles.rescanBtnText}>Сканувати ще</Text>
+                  <Text style={styles.rescanBtnText}>{t('scanMore')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
-                  <Text style={styles.confirmBtnText}>Додати до прийому</Text>
+                  <Text style={styles.confirmBtnText}>{t('addToMeal')}</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>

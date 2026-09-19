@@ -10,7 +10,7 @@
 // відновиться, і він знову знадобиться.
 
 import { UserProfile } from '../types';
-import type { TFn } from './i18n';
+import { TFn, translate } from './i18n';
 
 export type ProviderId = 'groq' | 'gemini';
 
@@ -76,7 +76,7 @@ export async function askProvider<T>(
   if (hasGroq && dead.has('groq')) order.push('groq');
   if (hasGemini && dead.has('gemini')) order.push('gemini');
 
-  if (order.length === 0) throw new Error('Немає жодного AI-ключа');
+  if (order.length === 0) throw new Error(translate('noAiKey'));
 
   let switchedFrom: ProviderId | undefined;
   let lastError: unknown;

@@ -7,11 +7,11 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, parseISO } from 'date-fns';
-import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import { getWorkouts, deleteWorkout } from '../../services/storage';
 import { WorkoutEntry } from '../../types';
-import { useLocale } from '../../services/i18n';
+import { dateLocale, useLocale } from '../../services/i18n';
+import { WORKOUT_TYPE_KEYS } from '../../services/planParser';
 
 const WORKOUT_TYPE_COLORS: Record<string, string> = {
   strength: '#E63946',
@@ -26,18 +26,8 @@ const WORKOUT_TYPE_COLORS: Record<string, string> = {
   custom: '#95A5A6',
 };
 
-const WORKOUT_TYPE_LABELS: Record<string, string> = {
-  strength: 'Силове',
-  cardio: 'Кардіо',
-  crossfit: 'CrossFit',
-  hiit: 'HIIT',
-  yoga: 'Йога',
-  recovery: 'Відновлення',
-  run: 'Біг',
-  cycling: 'Велосипед',
-  swimming: 'Плавання',
-  custom: 'Інше',
-};
+// «Інше» в журналі — той самий custom, але людською назвою для списку
+const TYPE_KEY: Record<string, string> = { ...WORKOUT_TYPE_KEYS, custom: 'wtOther' };
 
 export default function JournalScreen() {
   const router = useRouter();
@@ -66,7 +56,7 @@ export default function JournalScreen() {
   };
 
   const handleDelete = (id: string, type: string) => {
-    Alert.alert(t('deleteWorkoutBtn') || 'Видалити тренування', t('deleteWorkoutTitle', type), [
+    Alert.alert(t('deleteWorkoutBtn'), t('deleteWorkoutTitle', type), [
       { text: t('cancel'), style: 'cancel' },
       {
         text: t('delete'),
@@ -93,18 +83,18 @@ export default function JournalScreen() {
   const typeFilters = Array.from(new Set(workouts.map((w) => w.workoutType)));
 
   async function exportCSV() {
-    if (workouts.length === 0) { Alert.alert('Немає даних для експорту'); return; }
+    if (workouts.length === 0) { Alert.alert(t('noExportData')); return; }
     const header = 'Дата,Тип,Тривалість (хв),Вправи,Дистанція (км),ккал,Нотатки,Оцінка\n';
     const rows = workouts.map((w) => {
       const exStr = w.exercises.map((e) => {
         const parts = [e.name];
         if (e.sets && e.reps) parts.push(`${e.sets}x${e.reps}`);
-        if (e.weight) parts.push(`${e.weight}кг`);
+        if (e.weight) parts.push(t('kgCompact', e.weight));
         return parts.join(' ');
       }).join('; ');
       const cols = [
         w.date,
-        WORKOUT_TYPE_LABELS[w.workoutType] || w.workoutType,
+        t(TYPE_KEY[w.workoutType] ?? w.workoutType),
         w.duration || '',
         `"${exStr.replace(/"/g, '""')}"`,
         w.totalDistance || '',
@@ -116,7 +106,7 @@ export default function JournalScreen() {
     });
     const csv = header + rows.join('\n');
     try {
-      await Share.share({ message: csv, title: 'Гарт – Журнал тренувань' });
+      await Share.share({ message: csv, title: t('exportJournalTitle') });
     } catch { /* user cancelled */ }
   }
 
@@ -172,7 +162,7 @@ export default function JournalScreen() {
                 onPress={() => setFilter(item)}
               >
                 <Text style={[styles.filterChipText, filter === item && styles.filterChipTextActive]}>
-                  {item ? (WORKOUT_TYPE_LABELS[item] || item) : t('all')}
+                  {item ? t(TYPE_KEY[item] ?? item) : t('all')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -211,11 +201,12 @@ export default function JournalScreen() {
 function WorkoutCard({ workout, onPress, onDelete, onRepeat }: {
   workout: WorkoutEntry; onPress: () => void; onDelete: () => void; onRepeat: () => void;
 }) {
+  const { t, lang } = useLocale();
   const color = WORKOUT_TYPE_COLORS[workout.workoutType] || Colors.textMuted;
-  const label = WORKOUT_TYPE_LABELS[workout.workoutType] || workout.workoutType;
+  const label = t(TYPE_KEY[workout.workoutType] ?? workout.workoutType);
   const dateObj = parseISO(workout.date);
-  const dateStr = format(dateObj, 'd MMMM yyyy', { locale: uk });
-  const dayStr = format(dateObj, 'EEEE', { locale: uk });
+  const dateStr = format(dateObj, 'd MMMM yyyy', { locale: dateLocale(lang) });
+  const dayStr = format(dateObj, 'EEEE', { locale: dateLocale(lang) });
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onDelete} activeOpacity={0.8}>
@@ -257,7 +248,7 @@ function WorkoutCard({ workout, onPress, onDelete, onRepeat }: {
 
         <TouchableOpacity style={styles.repeatBtn} onPress={onRepeat}>
           <Ionicons name="copy-outline" size={14} color={Colors.textMuted} />
-          <Text style={styles.repeatBtnText}>Повторити з правками</Text>
+          <Text style={styles.repeatBtnText}>{t('repeatWithEdits')}</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>

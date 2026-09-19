@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import { TFn, translate } from './i18n';
 
 const BACKUP_VERSION = 1;
 
@@ -67,7 +68,36 @@ async function collectBackup(): Promise<BackupFile> {
   };
 }
 
-export async function exportBackup(): Promise<{ success: boolean; error?: string }> {
+/**
+ * Чому не вийшло — кодом.
+ *
+ * Текст показує екран: сервіс не знає мови інтерфейсу. `error` лишається для
+ * несподіваних винятків, де є лише повідомлення системи.
+ */
+export type BackupErrorCode =
+  | 'cancelled' | 'sharingUnsupported' | 'badFile' | 'emptyFile' | 'fileMissing';
+
+export interface BackupResult {
+  success: boolean;
+  errorCode?: BackupErrorCode;
+  error?: string;
+}
+
+const BACKUP_ERR_KEY: Record<BackupErrorCode, string> = {
+  cancelled: 'backupErrCancelled',
+  sharingUnsupported: 'backupErrSharing',
+  badFile: 'backupErrBadFile',
+  emptyFile: 'backupErrEmptyFile',
+  fileMissing: 'backupErrFileMissing',
+};
+
+/** Повідомлення про збій словами: код перекладаємо, системний текст лишаємо як є. */
+export function backupErrorText(r: BackupResult, t: TFn): string {
+  if (r.errorCode) return t(BACKUP_ERR_KEY[r.errorCode]);
+  return r.error ?? '';
+}
+
+export async function exportBackup(): Promise<BackupResult> {
   try {
     const backup = await collectBackup();
     const date = new Date().toISOString().slice(0, 10);
@@ -79,12 +109,12 @@ export async function exportBackup(): Promise<{ success: boolean; error?: string
 
     const canShare = await Sharing.isAvailableAsync();
     if (!canShare) {
-      return { success: false, error: 'Sharing не підтримується на цьому пристрої' };
+      return { success: false, errorCode: 'sharingUnsupported' };
     }
 
     await Sharing.shareAsync(filePath, {
       mimeType: 'application/json',
-      dialogTitle: 'Зберегти резервну копію',
+      dialogTitle: translate('saveBackupDialog'),
       UTI: 'public.json',
     });
 
@@ -96,11 +126,9 @@ export async function exportBackup(): Promise<{ success: boolean; error?: string
 
 // ─── IMPORT ──────────────────────────────────────────────────────────────────
 
-export interface ImportResult {
-  success: boolean;
+export interface ImportResult extends BackupResult {
   createdAt?: string;
   itemCount?: number;
-  error?: string;
 }
 
 export async function importBackup(): Promise<ImportResult> {
@@ -111,7 +139,7 @@ export async function importBackup(): Promise<ImportResult> {
     });
 
     if (result.canceled || !result.assets?.length) {
-      return { success: false, error: 'Скасовано' };
+      return { success: false, errorCode: 'cancelled' };
     }
 
     const asset = result.assets[0];
@@ -120,7 +148,7 @@ export async function importBackup(): Promise<ImportResult> {
     const backup: BackupFile = JSON.parse(content);
 
     if (backup.appId !== 'alpha_trainer') {
-      return { success: false, error: 'Невірний файл резервної копії' };
+      return { success: false, errorCode: 'badFile' };
     }
 
     const pairs: [string, string][] = [];
@@ -131,7 +159,7 @@ export async function importBackup(): Promise<ImportResult> {
     }
 
     if (pairs.length === 0) {
-      return { success: false, error: 'Файл порожній або пошкоджений' };
+      return { success: false, errorCode: 'emptyFile' };
     }
 
     await AsyncStorage.multiSet(pairs);
@@ -232,18 +260,18 @@ export async function autoBackup(force = false): Promise<AutoBackupState | null>
 }
 
 /** Поділитись останньою автокопією (Профіль). */
-export async function shareAutoBackup(): Promise<{ success: boolean; error?: string }> {
+export async function shareAutoBackup(): Promise<BackupResult> {
   const state = await getAutoBackupState();
-  if (!state) return { success: false, error: 'Автокопії ще немає' };
+  if (!state) return { success: false, error: translate('noAutoBackupYet') };
   try {
     const path = `${autoDir()}${state.lastFile}`;
-    if (!new File(path).exists) return { success: false, error: 'Файл копії не знайдено' };
+    if (!new File(path).exists) return { success: false, errorCode: 'fileMissing' };
     if (!(await Sharing.isAvailableAsync())) {
-      return { success: false, error: 'Sharing не підтримується на цьому пристрої' };
+      return { success: false, errorCode: 'sharingUnsupported' };
     }
     await Sharing.shareAsync(path, {
       mimeType: 'application/json',
-      dialogTitle: 'Зберегти резервну копію',
+      dialogTitle: translate('saveBackupDialog'),
       UTI: 'public.json',
     });
     return { success: true };

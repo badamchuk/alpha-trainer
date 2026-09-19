@@ -29,15 +29,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import ExerciseImage from '../../components/ExerciseImage';
 import RichText from '../../components/RichText';
 import { prescribe } from '../../services/prescriptions';
-import { useLocale } from '../../services/i18n';
+import { tFor, translate, useLocale } from '../../services/i18n';
 
 const QUICK_PROMPTS = [
-  { text: 'Розроби план тренувань', icon: 'calendar-outline', isPlan: true },
-  { text: 'Що тренувати сьогодні?', icon: 'today-outline', isPlan: false },
-  { text: 'Як покращити результати?', icon: 'trending-up-outline', isPlan: false },
-  { text: 'Порадь вправи для схуднення', icon: 'flame-outline', isPlan: false },
-  { text: 'Як правильно відновлюватись?', icon: 'bed-outline', isPlan: false },
+  { key: 'quickPlanPrompt', icon: 'calendar-outline', isPlan: true },
+  { key: 'quickWhatToday', icon: 'today-outline', isPlan: false },
+  { key: 'quickImprove', icon: 'trending-up-outline', isPlan: false },
+  { key: 'quickWeightLoss', icon: 'flame-outline', isPlan: false },
+  { key: 'quickRecovery', icon: 'bed-outline', isPlan: false },
 ];
+
+/**
+ * Префікси помилок обома мовами.
+ *
+ * Історію чистимо від власних повідомлень про збій, а користувач міг
+ * перемкнути мову між запитами — тож перевіряємо обидва варіанти.
+ */
+const ERROR_PREFIXES = [tFor('uk')('errorPrefix'), tFor('en')('errorPrefix')];
 
 // Detect if AI response contains a training plan
 // (JS \b не працює після кирилиці — короткі назви днів матчимо з явними межами)
@@ -93,7 +101,7 @@ export default function TrainerScreen() {
         if (nutHist.length > 0) {
           const summary = nutHist.map((d) => {
             const t = getDailyTotals(d);
-            return `${d.date}: ${t.calories} ккал | Б:${t.protein}г В:${t.carbs}г Ж:${t.fat}г`;
+            return translate('nutritionDayLine', d.date, t.calories, t.protein, t.carbs, t.fat);
           }).join('\n');
           setNutritionSummary(summary);
         }
@@ -215,7 +223,7 @@ export default function TrainerScreen() {
       } else {
         // Не передаємо моделі повідомлення-помилки ("Помилка: ...") з минулих збоїв
         const cleanHistory = messages.filter(
-          (m) => !(m.role === 'assistant' && m.content.startsWith('Помилка:'))
+          (m) => !(m.role === 'assistant' && ERROR_PREFIXES.some((p) => m.content.startsWith(p)))
         );
         const groqHistory = cleanHistory.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
         const geminiHistory = cleanHistory.map((m) => ({
@@ -261,7 +269,7 @@ export default function TrainerScreen() {
       const errMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `Помилка: ${error.message || 'Не вдалося отримати відповідь.'}`,
+        content: t('errorWithText', error.message || t('couldNotAnswer')),
         timestamp: new Date().toISOString(),
       };
       setMessages([...updatedMessages, errMsg]);
@@ -282,12 +290,12 @@ export default function TrainerScreen() {
       await saveTrainingPlan(plan);
       setPlanSaved(true);
       Alert.alert(
-        'План збережено!',
-        'Тижневий план тепер доступний на головному екрані та у вкладці "План".',
-        [{ text: 'Чудово' }]
+        t('planSavedTitle'),
+        t('planSavedText'),
+        [{ text: t('greatBtn') }]
       );
     } catch {
-      Alert.alert('Помилка збереження плану');
+      Alert.alert(t('planSaveError'));
     } finally {
       setSavingPlan(false);
     }
@@ -355,7 +363,7 @@ export default function TrainerScreen() {
               {activeProvider === 'groq' ? 'Groq'
                 : activeProvider === 'gemini' ? 'Gemini'
                 : profile?.groqApiKey && !isProviderDead('groq') ? 'Groq' : 'Gemini'}
-              {' · '}{profile?.name || 'Налаштуй профіль'}
+              {' · '}{profile?.name || t('setUpProfile')}
             </Text>
           </View>
         </View>
@@ -374,14 +382,14 @@ export default function TrainerScreen() {
           <TouchableOpacity style={[styles.ctxHeader, ctxExpanded && styles.ctxHeaderExpanded]} onPress={() => { const next = !ctxExpanded; ctxExpandedRef.current = next; setCtxExpanded(next); }} activeOpacity={0.7}>
             <View style={styles.ctxBadge}>
               <Ionicons name="sparkles" size={11} color={Colors.primary} />
-              <Text style={styles.ctxBadgeText}>AI-аналіз</Text>
+              <Text style={styles.ctxBadgeText}>{t('aiAnalysis')}</Text>
             </View>
             <View style={styles.ctxHeaderRight}>
               {ctxTs && !ctxLoading && ctxExpanded && (
                 <Text style={styles.ctxTime}>
                   {Math.round((Date.now() - ctxTs) / 60000) < 2
-                    ? 'щойно'
-                    : `${Math.round((Date.now() - ctxTs) / 60000)} хв тому`}
+                    ? t('justNow')
+                    : t('minutesAgo', Math.round((Date.now() - ctxTs) / 60000))}
                 </Text>
               )}
               {ctxExpanded && (
@@ -399,7 +407,7 @@ export default function TrainerScreen() {
           </TouchableOpacity>
           {ctxExpanded && (
             ctxLoading && !ctxText
-              ? <Text style={styles.ctxLoading}>Аналізую твою активність…</Text>
+              ? <Text style={styles.ctxLoading}>{t('analysingActivity')}</Text>
               : <Text style={styles.ctxText}>{ctxText}</Text>
           )}
         </View>
@@ -411,11 +419,11 @@ export default function TrainerScreen() {
           <View style={styles.aiAvatarLarge}>
             <Ionicons name="sparkles" size={32} color={Colors.primary} />
           </View>
-          <Text style={styles.emptyChatTitle}>Привіт! Я твій AI-тренер</Text>
+          <Text style={styles.emptyChatTitle}>{t('trainerHello')}</Text>
           <Text style={styles.emptyChatSub}>
             {(profile?.groqApiKey || profile?.geminiApiKey)
-              ? 'Запитай про тренування або попроси скласти персональний план'
-              : 'Додай Groq або Gemini API ключ у налаштуваннях профілю'}
+              ? t('trainerIntroHint')
+              : t('addApiKeyHint')}
           </Text>
           {!profile?.groqApiKey && !profile?.geminiApiKey && (
             <TouchableOpacity style={styles.setupBtn} onPress={() => router.push('/onboarding')}>
@@ -426,14 +434,14 @@ export default function TrainerScreen() {
           {/* Plan CTA */}
           <TouchableOpacity
             style={styles.planCTA}
-            onPress={() => sendMessage('Розроби для мене детальний тижневий план тренувань, враховуючи мій рівень підготовки, цілі та доступні дні', true)}
+            onPress={() => sendMessage(t('fullPlanPrompt'), true)}
           >
             <View style={styles.planCTAIcon}>
               <Ionicons name="calendar-outline" size={24} color={Colors.primary} />
             </View>
             <View style={styles.planCTAText}>
-              <Text style={styles.planCTATitle}>Розробити план тренувань</Text>
-              <Text style={styles.planCTASub}>AI складе програму під твої цілі та збереже в додаток</Text>
+              <Text style={styles.planCTATitle}>{t('buildPlanBtn')}</Text>
+              <Text style={styles.planCTASub}>{t('buildPlanHint')}</Text>
             </View>
             <Ionicons name="arrow-forward" size={18} color={Colors.primary} />
           </TouchableOpacity>
@@ -447,9 +455,9 @@ export default function TrainerScreen() {
               <Ionicons name="construct-outline" size={24} color={Colors.success} />
             </View>
             <View style={styles.planCTAText}>
-              <Text style={styles.planCTATitle}>Скласти тренування без AI</Text>
+              <Text style={styles.planCTATitle}>{t('buildWithoutAi')}</Text>
               <Text style={styles.planCTASub}>
-                Конструктор підбере вправи з бібліотеки під твоє обладнання й час
+                {t('buildWithoutAiHint')}
               </Text>
             </View>
             <Ionicons name="arrow-forward" size={18} color={Colors.success} />
@@ -458,12 +466,12 @@ export default function TrainerScreen() {
           <View style={styles.quickPromptsContainer}>
             {QUICK_PROMPTS.slice(1).map((p) => (
               <TouchableOpacity
-                key={p.text}
+                key={p.key}
                 style={styles.quickPrompt}
-                onPress={() => sendMessage(p.text, p.isPlan)}
+                onPress={() => sendMessage(t(p.key), p.isPlan)}
               >
                 <Ionicons name={p.icon as any} size={16} color={Colors.textMuted} />
-                <Text style={styles.quickPromptText}>{p.text}</Text>
+                <Text style={styles.quickPromptText}>{t(p.key)}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -516,16 +524,16 @@ export default function TrainerScreen() {
         <FlatList
           horizontal
           data={QUICK_PROMPTS}
-          keyExtractor={(item) => item.text}
+          keyExtractor={(item) => item.key}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.quickPromptsRow}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={[styles.miniPrompt, item.isPlan && styles.miniPromptPlan]}
-              onPress={() => sendMessage(item.text, item.isPlan)}
+              onPress={() => sendMessage(t(item.key), item.isPlan)}
             >
               <Ionicons name={item.icon as any} size={13} color={item.isPlan ? Colors.primary : Colors.textMuted} />
-              <Text style={[styles.miniPromptText, item.isPlan && { color: Colors.primary }]}>{item.text}</Text>
+              <Text style={[styles.miniPromptText, item.isPlan && { color: Colors.primary }]}>{t(item.key)}</Text>
             </TouchableOpacity>
           )}
         />
@@ -559,6 +567,7 @@ function MessageBubble({ message, isPlanMessage, planSaved, onSavePlan, savingPl
   onSavePlan: () => void;
   savingPlan: boolean;
 }) {
+  const { t } = useLocale();
   const isUser = message.role === 'user';
   const time = format(new Date(message.timestamp), 'HH:mm');
 
@@ -599,13 +608,13 @@ function MessageBubble({ message, isPlanMessage, planSaved, onSavePlan, savingPl
                   : <Ionicons name="bookmark-outline" size={16} color={Colors.primary} />
                 }
                 <Text style={styles.savePlanText}>
-                  {savingPlan ? 'Зберігаю...' : 'Зберегти як мій план'}
+                  {t(savingPlan ? 'savingEllipsis' : 'saveAsMyPlan')}
                 </Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.planSavedBadge}>
                 <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
-                <Text style={styles.planSavedText}>План збережено в додаток</Text>
+                <Text style={styles.planSavedText}>{t('planSavedToApp')}</Text>
               </View>
             )}
           </View>
@@ -623,6 +632,7 @@ function MessageBubble({ message, isPlanMessage, planSaved, onSavePlan, savingPl
  * тренування. Вигадані ідентифікатори просто не знаходяться й не показуються.
  */
 function AiExercises({ text }: { text: string }) {
+  const { t } = useLocale();
   const router = useRouter();
   const found = useMemo(() => parseExerciseIds(text), [text]);
   if (found.length === 0) return null;
@@ -662,7 +672,7 @@ function AiExercises({ text }: { text: string }) {
       ))}
       <TouchableOpacity style={aiExStyles.startBtn} onPress={start}>
         <Ionicons name="play" size={14} color={Colors.primary} />
-        <Text style={aiExStyles.startText}>Почати тренування з цих вправ</Text>
+        <Text style={aiExStyles.startText}>{t('startFromTheseExercises')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -676,33 +686,31 @@ function AiExercises({ text }: { text: string }) {
  * Цього ж вимагають правила магазинів для додатків із генеративним AI.
  */
 function ReportAnswer({ text }: { text: string }) {
+  const { t } = useLocale();
   const [sent, setSent] = useState(false);
 
   function report() {
     Alert.alert(
-      'Поскаржитись на відповідь?',
-      'Відповідь позначиться як невдала. Можеш надіслати її розробнику — '
-      + 'разом із нею піде лише текст самої відповіді, без твоїх даних.',
+      t('reportAnswerTitle'),
+      t('reportAnswerText'),
       [
-        { text: 'Скасувати', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Лише позначити',
+          text: t('justMarkBtn'),
           onPress: async () => {
-            await addMemoryEntry('Користувач позначив відповідь тренера як невдалу — '
-              + 'уникай подібних формулювань.');
+            await addMemoryEntry(t('reportMemoryNote'));
             setSent(true);
           },
         },
         {
-          text: 'Надіслати',
+          text: t('sendBtn'),
           onPress: async () => {
-            await addMemoryEntry('Користувач позначив відповідь тренера як невдалу — '
-              + 'уникай подібних формулювань.');
+            await addMemoryEntry(t('reportMemoryNote'));
             setSent(true);
             const body = encodeURIComponent(`Скарга на відповідь AI:\n\n${text.slice(0, 1500)}`);
             Linking.openURL(
               `https://github.com/badamchuk/alpha-trainer/issues/new?title=${
-                encodeURIComponent('Невдала відповідь AI')}&body=${body}`,
+                encodeURIComponent(t('badAnswerSubject'))}&body=${body}`,
             ).catch(() => {});
           },
         },
@@ -714,14 +722,14 @@ function ReportAnswer({ text }: { text: string }) {
     return (
       <View style={reportStyles.row}>
         <Ionicons name="checkmark-circle-outline" size={13} color={Colors.success} />
-        <Text style={reportStyles.done}>Позначено — тренер це врахує</Text>
+        <Text style={reportStyles.done}>{t('markedTrainerWillNote')}</Text>
       </View>
     );
   }
   return (
     <TouchableOpacity style={reportStyles.row} onPress={report} hitSlop={6}>
       <Ionicons name="flag-outline" size={13} color={Colors.textMuted} />
-      <Text style={reportStyles.text}>Погана відповідь</Text>
+      <Text style={reportStyles.text}>{t('badAnswerBtn')}</Text>
     </TouchableOpacity>
   );
 }

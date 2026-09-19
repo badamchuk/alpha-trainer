@@ -4,6 +4,7 @@ import { classifyExercise } from './analytics';
 import { getExercise } from './library';
 import type { ExerciseResolver } from './exerciseMatch';
 import { getAgeFromProfile } from './nutrition';
+import { TFn, translate } from './i18n';
 
 // Оцінка витрат калорій по вправах з урахуванням параметрів користувача.
 //
@@ -87,12 +88,11 @@ export function bodyParamsFor(
 }
 
 /** «80 кг · 180 см · 34 р.» — щоб було видно, з чого рахувалось. */
-export function paramsLabel(p: BodyParams): string {
-  return [
-    `${Math.round(p.weightKg * 10) / 10} кг`,
-    p.heightCm && `${p.heightCm} см`,
-    p.age && `${p.age} р.`,
-  ].filter(Boolean).join(' · ');
+export function paramsLabel(p: BodyParams, t: TFn = translate): string {
+  const kg = Math.round(p.weightKg * 10) / 10;
+  if (p.heightCm && p.age) return t('bodyParamsLabel', kg, p.heightCm, p.age);
+  if (p.heightCm) return t('bodyParamsNoAge', kg, p.heightCm);
+  return t('bodyParamsWeightOnly', kg);
 }
 
 /** Базовий обмін, ккал/год. Без зросту чи віку — 1 ккал/кг/год (класичний 1 MET). */

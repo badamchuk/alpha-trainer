@@ -3,6 +3,7 @@
  */
 
 import { ParsedFoodItem } from './nutrition';
+import { translate } from './i18n';
 
 // ─── Open Food Facts ──────────────────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ function parseOFFProduct(p: any): OFFProduct | null {
   const fiber    = n['fiber_100g'] ?? n['fibers_100g'] ?? undefined;
   if (!calories && !protein && !carbs && !fat) return null;
   return {
-    name: p.product_name || 'Невідомий продукт',
+    name: p.product_name || translate('unknownProduct'),
     brand: p.brands || undefined,
     quantity: p.quantity || undefined,
     calories: Math.round(calories),
@@ -167,10 +168,10 @@ function parsePhotoJson(text: string): PhotoNutritionResult | null | 'continue' 
   if (parsed.error) return null; // not_food
   if (!parsed.items || !Array.isArray(parsed.items) || parsed.items.length === 0) return 'continue';
   return {
-    mealName: parsed.mealName || 'Страва з фото',
+    mealName: parsed.mealName || translate('dishFromPhoto'),
     items: parsed.items.map((it: any) => ({
       name: String(it.name || ''),
-      qty: String(it.qty || '1 порція'),
+      qty: String(it.qty || translate('onePortion')),
       calories: Number(it.calories) || 0,
       protein: Number(it.protein) || 0,
       carbs: Number(it.carbs) || 0,
@@ -193,13 +194,13 @@ export async function analyzePhotoNutrition(
   const hasGemini = !!geminiApiKey;
   const hasGroq   = !!groqApiKey;
   if (!hasGemini && !hasGroq) {
-    throw new PhotoAnalysisError('Додай Gemini або Groq API ключ у профілі → AI-моделі.');
+    throw new PhotoAnalysisError(translate('photoNeedsKey'));
   }
 
   const imageSizeKB = Math.round(base64Image.length * 0.75 / 1024);
   if (imageSizeKB > 3072) {
     throw new PhotoAnalysisError(
-      `Фото занадто велике (${imageSizeKB} КБ). Сфотографуй їжу ближче або вибери менший знімок.`
+      translate('photoTooBig', imageSizeKB)
     );
   }
 

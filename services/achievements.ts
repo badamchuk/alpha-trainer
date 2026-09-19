@@ -6,8 +6,9 @@ const KEY = '@alpha_trainer:achievements';
 
 export interface Achievement {
   id: string;
-  title: string;
-  description: string;
+  /** Ключі i18n: назву й опис збирає екран. */
+  titleKey: string;
+  descKey: string;
   icon: string;
   category: 'workout' | 'strength' | 'cardio' | 'nutrition' | 'consistency';
   unlockedAt?: string;
@@ -16,20 +17,20 @@ export interface Achievement {
 }
 
 const DEFINITIONS: Omit<Achievement, 'current' | 'unlockedAt'>[] = [
-  { id: 'first_workout',   title: 'Перше тренування',    description: 'Заверши перше тренування',         icon: 'barbell-outline',       category: 'workout',      target: 1 },
-  { id: 'workouts_10',     title: '10 тренувань',         description: 'Заверши 10 тренувань',             icon: 'flame-outline',         category: 'workout',      target: 10 },
-  { id: 'workouts_50',     title: '50 тренувань',         description: 'Заверши 50 тренувань',             icon: 'trophy-outline',        category: 'workout',      target: 50 },
-  { id: 'workouts_100',    title: '100 тренувань',        description: 'Заверши 100 тренувань',            icon: 'ribbon-outline',        category: 'workout',      target: 100 },
-  { id: 'streak_7',        title: 'Тиждень за планом',    description: 'Серія 7 днів — тренуйся у свої дні, відпочинок за планом не розриває серію', icon: 'calendar-outline', category: 'consistency', target: 7 },
-  { id: 'streak_30',       title: 'Місяць за планом',     description: 'Серія 30 днів без пропущених тренувальних днів', icon: 'medal-outline',  category: 'consistency',  target: 30 },
-  { id: 'first_run',       title: 'Перший пробіг',        description: 'Заверши перший біг',               icon: 'walk-outline',          category: 'cardio',       target: 1 },
-  { id: 'run_50km',        title: '50 км в кросівках',    description: 'Набіг загалом 50 км',              icon: 'footsteps-outline',     category: 'cardio',       target: 50 },
-  { id: 'first_pr',        title: 'Перший рекорд',        description: 'Встанови перший особистий рекорд', icon: 'star-outline',          category: 'strength',     target: 1 },
-  { id: 'pr_5',            title: '5 рекордів',           description: 'Встанови 5 рекордів',              icon: 'podium-outline',        category: 'strength',     target: 5 },
-  { id: 'heavy_session',   title: 'Важкий день',          description: 'Підніми 5 000 кг загального тоннажу за одне тренування', icon: 'fitness-outline', category: 'strength', target: 5000 },
-  { id: 'variety_5',       title: 'Різноманітність',      description: 'Виконай 5 різних типів тренувань',  icon: 'shuffle-outline',      category: 'workout',      target: 5 },
-  { id: 'early_bird',      title: 'Ранкова пташка',       description: 'Заверши тренування до 8:00',       icon: 'sunny-outline',         category: 'consistency',  target: 1 },
-  { id: 'long_session',    title: 'Марафонець',           description: 'Тренуйся 2+ години',               icon: 'timer-outline',         category: 'workout',      target: 120 },
+  { id: 'first_workout',   titleKey: 'achFirstWorkout',    descKey: 'achFirstWorkoutDesc',         icon: 'barbell-outline',       category: 'workout',      target: 1 },
+  { id: 'workouts_10',     titleKey: 'achWorkouts10',         descKey: 'achWorkouts10Desc',             icon: 'flame-outline',         category: 'workout',      target: 10 },
+  { id: 'workouts_50',     titleKey: 'achWorkouts50',         descKey: 'achWorkouts50Desc',             icon: 'trophy-outline',        category: 'workout',      target: 50 },
+  { id: 'workouts_100',    titleKey: 'achWorkouts100',        descKey: 'achWorkouts100Desc',            icon: 'ribbon-outline',        category: 'workout',      target: 100 },
+  { id: 'streak_7',        titleKey: 'achStreak7',    descKey: 'achStreak7Desc', icon: 'calendar-outline', category: 'consistency', target: 7 },
+  { id: 'streak_30',       titleKey: 'achStreak30',     descKey: 'achStreak30Desc', icon: 'medal-outline',  category: 'consistency',  target: 30 },
+  { id: 'first_run',       titleKey: 'achFirstRun',        descKey: 'achFirstRunDesc',               icon: 'walk-outline',          category: 'cardio',       target: 1 },
+  { id: 'run_50km',        titleKey: 'achRun50km',    descKey: 'achRun50kmDesc',              icon: 'footsteps-outline',     category: 'cardio',       target: 50 },
+  { id: 'first_pr',        titleKey: 'achFirstPr',        descKey: 'achFirstPrDesc', icon: 'star-outline',          category: 'strength',     target: 1 },
+  { id: 'pr_5',            titleKey: 'achPr5',           descKey: 'achPr5Desc',              icon: 'podium-outline',        category: 'strength',     target: 5 },
+  { id: 'heavy_session',   titleKey: 'achHeavySession',          descKey: 'achHeavySessionDesc', icon: 'fitness-outline', category: 'strength', target: 5000 },
+  { id: 'variety_5',       titleKey: 'achVariety5',      descKey: 'achVariety5Desc',  icon: 'shuffle-outline',      category: 'workout',      target: 5 },
+  { id: 'early_bird',      titleKey: 'achEarlyBird',       descKey: 'achEarlyBirdDesc',       icon: 'sunny-outline',         category: 'consistency',  target: 1 },
+  { id: 'long_session',    titleKey: 'achLongSession',           descKey: 'achLongSessionDesc',               icon: 'timer-outline',         category: 'workout',      target: 120 },
 ];
 
 function countPRs(workouts: WorkoutEntry[]): number {

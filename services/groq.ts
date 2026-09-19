@@ -1,6 +1,7 @@
 import { UserProfile, Goal, WorkoutEntry } from '../types';
 import type { AIContextBlocks } from './aiContext';
 import { answerLanguageRule } from './aiContext';
+import { translate } from './i18n';
 
 let groqApiKey: string | null = null;
 
@@ -20,7 +21,7 @@ async function callGroq(
   messages: { role: string; content: string }[],
   model = activeModel
 ): Promise<string> {
-  if (!groqApiKey) throw new Error('Groq не ініціалізовано. Додай API ключ у налаштуваннях.');
+  if (!groqApiKey) throw new Error(translate('groqNotInit'));
 
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -60,7 +61,7 @@ async function callWithFallback(
       throw e;
     }
   }
-  throw new Error('Всі Groq моделі недоступні');
+  throw new Error(translate('allGroqDown'));
 }
 
 type NutritionDay = { date: string; calories: number; protein: number; carbs: number; fat: number };

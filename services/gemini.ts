@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { UserProfile, Goal, WorkoutEntry } from '../types';
 import type { AIContextBlocks } from './aiContext';
 import { answerLanguageRule } from './aiContext';
+import { translate } from './i18n';
 
 let genAI: GoogleGenerativeAI | null = null;
 
@@ -16,12 +17,12 @@ export function isStreamingUnsupported(e: unknown): boolean {
 }
 
 function getModel() {
-  if (!genAI) throw new Error('Gemini не ініціалізовано. Додай API ключ у налаштуваннях.');
+  if (!genAI) throw new Error(translate('geminiNotInit'));
   return genAI.getGenerativeModel({ model: activeModel });
 }
 
 async function callWithFallback<T>(fn: (model: ReturnType<typeof getModel>) => Promise<T>): Promise<T> {
-  if (!genAI) throw new Error('Gemini не ініціалізовано. Додай API ключ у налаштуваннях.');
+  if (!genAI) throw new Error(translate('geminiNotInit'));
   for (let i = MODELS.indexOf(activeModel); i < MODELS.length; i++) {
     try {
       const model = genAI.getGenerativeModel({ model: MODELS[i] });
@@ -37,7 +38,7 @@ async function callWithFallback<T>(fn: (model: ReturnType<typeof getModel>) => P
       throw e;
     }
   }
-  throw new Error('Всі моделі Gemini недоступні');
+  throw new Error(translate('allGeminiDown'));
 }
 
 type NutritionDay = { date: string; calories: number; protein: number; carbs: number; fat: number };

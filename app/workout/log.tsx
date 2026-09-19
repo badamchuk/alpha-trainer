@@ -13,10 +13,10 @@ import {
 } from '../../services/storage';
 import { WorkoutEntry, ExerciseLog, WorkoutType, SetType, SetDetail, UserProfile } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
-import { computePace, formatPace, getExerciseProgress, getOverloadSuggestion, estimate1RM } from '../../services/analytics';
+import { computePace, formatPace, getExerciseProgress, getOverloadSuggestion, estimate1RM, overloadText } from '../../services/analytics';
 import RestTimer from '../../components/RestTimer';
 import { getTemplates, saveTemplate, deleteTemplate, WorkoutTemplate } from '../../services/templates';
-import { useLocale } from '../../services/i18n';
+import { TFn, useLocale } from '../../services/i18n';
 import LibraryPicker from '../../components/LibraryPicker';
 import SupersetBar from '../../components/SupersetBar';
 import { checkAndUnlock } from '../../services/achievements';
@@ -40,17 +40,17 @@ import SubstitutionSheet from '../../components/SubstitutionSheet';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
-const WORKOUT_TYPES: { id: WorkoutType; label: string; icon: string; color: string }[] = [
-  { id: 'strength', label: 'Силове', icon: 'barbell-outline', color: '#E63946' },
-  { id: 'cardio', label: 'Кардіо', icon: 'heart-outline', color: '#2EC4B6' },
-  { id: 'crossfit', label: 'CrossFit', icon: 'flash-outline', color: '#F4A261' },
-  { id: 'hiit', label: 'HIIT', icon: 'timer-outline', color: '#FF6B6B' },
-  { id: 'run', label: 'Біг', icon: 'walk-outline', color: '#2ECC71' },
-  { id: 'yoga', label: 'Йога', icon: 'leaf-outline', color: '#9B59B6' },
-  { id: 'recovery', label: 'Відновлення', icon: 'bed-outline', color: '#3498DB' },
-  { id: 'cycling', label: 'Велосипед', icon: 'bicycle-outline', color: '#E67E22' },
-  { id: 'swimming', label: 'Плавання', icon: 'water-outline', color: '#1ABC9C' },
-  { id: 'custom', label: 'Інше', icon: 'ellipsis-horizontal-outline', color: '#95A5A6' },
+const WORKOUT_TYPES: { id: WorkoutType; key: string; icon: string; color: string }[] = [
+  { id: 'strength', key: 'wtStrength', icon: 'barbell-outline', color: '#E63946' },
+  { id: 'cardio', key: 'wtCardio', icon: 'heart-outline', color: '#2EC4B6' },
+  { id: 'crossfit', key: 'wtCrossfit', icon: 'flash-outline', color: '#F4A261' },
+  { id: 'hiit', key: 'wtHiit', icon: 'timer-outline', color: '#FF6B6B' },
+  { id: 'run', key: 'wtRun', icon: 'walk-outline', color: '#2ECC71' },
+  { id: 'yoga', key: 'wtYoga', icon: 'leaf-outline', color: '#9B59B6' },
+  { id: 'recovery', key: 'wtRecovery', icon: 'bed-outline', color: '#3498DB' },
+  { id: 'cycling', key: 'wtCycling', icon: 'bicycle-outline', color: '#E67E22' },
+  { id: 'swimming', key: 'wtSwimming', icon: 'water-outline', color: '#1ABC9C' },
+  { id: 'custom', key: 'wtOther', icon: 'ellipsis-horizontal-outline', color: '#95A5A6' },
 ];
 
 const RATINGS = [1, 2, 3, 4, 5] as const;
@@ -294,7 +294,7 @@ export default function LogWorkoutScreen() {
   function addDraftSet() {
     const reps = parseNum(exReps);
     const weight = parseNum(exWeight);
-    if (!reps) { Alert.alert('Вкажи повтори для підходу'); return; }
+    if (!reps) { Alert.alert(t('setRepsNeeded')); return; }
     setDraftSets([...draftSets, { reps, weight }]);
     // вага/повтори лишаються у полях — зручно коригувати для наступного підходу
   }
@@ -346,7 +346,7 @@ export default function LogWorkoutScreen() {
     const all = await getWorkouts();
     const suggestion = getOverloadSuggestion(all, name, resolver);
     if (suggestion) {
-      setOverloadHint(suggestion.message);
+      setOverloadHint(overloadText(suggestion.message, t));
       // Auto-fill suggested values
       if (!exWeight) setExWeight(String(suggestion.suggestedWeight));
       if (!exReps) setExReps(String(
@@ -380,7 +380,7 @@ export default function LogWorkoutScreen() {
   }
 
   function confirmDeleteTemplate(tpl: WorkoutTemplate) {
-    Alert.alert(`Видалити шаблон «${tpl.name}»?`, 'Записані тренування не зміняться.', [
+    Alert.alert(t('deleteTemplateQuestion', tpl.name), t('templatesKeepWorkouts'), [
       { text: t('cancel'), style: 'cancel' },
       {
         text: t('delete'), style: 'destructive',
@@ -400,7 +400,7 @@ export default function LogWorkoutScreen() {
 
   /** 'update' — перезаписати шаблон, з якого почали; 'new' — окремий шаблон. */
   async function handleSaveTemplate(mode: 'new' | 'update') {
-    if (!templateName.trim()) { Alert.alert('Вкажи назву шаблону'); return; }
+    if (!templateName.trim()) { Alert.alert(t('templateNameNeeded')); return; }
     const base = mode === 'update' ? baseTemplate : null;
     const saved: WorkoutTemplate = {
       id: base?.id ?? Date.now().toString(),
@@ -413,13 +413,13 @@ export default function LogWorkoutScreen() {
     setBaseTemplate(saved);
     setSaveTemplateVisible(false);
     setTemplateName('');
-    Alert.alert(base ? 'Шаблон оновлено!' : t('templateSaved'));
+    Alert.alert(base ? t('templateUpdated') : t('templateSaved'));
   }
 
   async function handleSaveTemplateEdits() {
     if (!baseTemplate) return;
-    if (!templateName.trim()) { Alert.alert('Вкажи назву шаблону'); return; }
-    if (exercises.length === 0) { Alert.alert('Додай хоча б одну вправу'); return; }
+    if (!templateName.trim()) { Alert.alert(t('templateNameNeeded')); return; }
+    if (exercises.length === 0) { Alert.alert(t('addAtLeastOneExercise')); return; }
     await saveTemplate({
       ...baseTemplate,
       name: templateName.trim(),
@@ -531,8 +531,8 @@ export default function LogWorkoutScreen() {
     const lib = id ? getExercise(id) : undefined;
     if (!lib) {
       Alert.alert(
-        'Не знаємо цю вправу',
-        `«${log.name}» ще не прив’язана до бібліотеки. Профіль → Розпізнавання вправ — і заміни запрацюють.`,
+        t('unknownExerciseTitle'),
+        t('unknownExerciseText', log.name),
       );
       return;
     }
@@ -566,7 +566,7 @@ export default function LogWorkoutScreen() {
     setSubsExercise(null);
 
     if (needsNewScheme(subsExercise, next)) {
-      Alert.alert('Схему підходів оновлено', `${exerciseName(next)}: ${formatPrescription(prescribe(next), t)}`);
+      Alert.alert(t('schemeUpdated'), `${exerciseName(next)}: ${formatPrescription(prescribe(next), t)}`);
     }
   }
 
@@ -627,7 +627,7 @@ export default function LogWorkoutScreen() {
       checkAndUnlock(allAfter, stats.streak).catch(() => {});
       router.back();
     } catch (e) {
-      Alert.alert('Помилка збереження');
+      Alert.alert(t('saveError'));
     } finally {
       setSaving(false);
     }
@@ -656,7 +656,7 @@ export default function LogWorkoutScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="close" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{isTemplateMode ? 'Шаблон' : t('newWorkout')}</Text>
+          <Text style={styles.headerTitle}>{isTemplateMode ? t('templateLabel') : t('newWorkout')}</Text>
           <View style={styles.headerRight}>
             {!isTemplateMode && (
               <TouchableOpacity onPress={openTemplates} style={styles.headerIconBtn}>
@@ -679,7 +679,7 @@ export default function LogWorkoutScreen() {
         {repeatingFrom && (
           <View style={styles.repeatBanner}>
             <Ionicons name="copy-outline" size={14} color={Colors.primary} />
-            <Text style={styles.repeatBannerText}>Повторення тренування — відредагуй і збережи як нове</Text>
+            <Text style={styles.repeatBannerText}>{t('repeatWorkoutHint')}</Text>
           </View>
         )}
 
@@ -687,7 +687,7 @@ export default function LogWorkoutScreen() {
           <View style={styles.repeatBanner}>
             <Ionicons name="albums-outline" size={14} color={Colors.primary} />
             <Text style={styles.repeatBannerText}>
-              Редагування шаблону — «Зберегти» оновить шаблон, тренування не запишеться
+              {t('templateEditHint')}
             </Text>
           </View>
         )}
@@ -695,7 +695,7 @@ export default function LogWorkoutScreen() {
         <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {isTemplateMode && (
             <>
-              <Text style={styles.label}>Назва шаблону</Text>
+              <Text style={styles.label}>{t('templateNamePlaceholder')}</Text>
               <TextInput
                 style={styles.input}
                 value={templateName}
@@ -709,14 +709,14 @@ export default function LogWorkoutScreen() {
           {/* Workout Type */}
           <Text style={styles.label}>{t('workoutTypeLabel')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeList}>
-            {WORKOUT_TYPES.map((t) => (
+            {WORKOUT_TYPES.map((wt) => (
               <TouchableOpacity
-                key={t.id}
-                style={[styles.typeChip, workoutType === t.id && { backgroundColor: t.color + '20', borderColor: t.color }]}
-                onPress={() => setWorkoutType(t.id)}
+                key={wt.id}
+                style={[styles.typeChip, workoutType === wt.id && { backgroundColor: wt.color + '20', borderColor: wt.color }]}
+                onPress={() => setWorkoutType(wt.id)}
               >
-                <Ionicons name={t.icon as any} size={18} color={workoutType === t.id ? t.color : Colors.textMuted} />
-                <Text style={[styles.typeChipText, workoutType === t.id && { color: t.color }]}>{t.label}</Text>
+                <Ionicons name={wt.icon as any} size={18} color={workoutType === wt.id ? wt.color : Colors.textMuted} />
+                <Text style={[styles.typeChipText, workoutType === wt.id && { color: wt.color }]}>{t(wt.key)}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -726,7 +726,7 @@ export default function LogWorkoutScreen() {
           <>
           {/* Date & Duration */}
           <DatePickerField
-            label="Дата"
+            label={t('dateLabel')}
             value={date}
             onChange={setDate}
             maximumDate={new Date()}
@@ -748,7 +748,7 @@ export default function LogWorkoutScreen() {
               onPress={toggleTimer}
             >
               <Ionicons name={timerRunning ? 'stop' : 'play'} size={16} color="#FFF" />
-              <Text style={styles.timerBtnText}>{timerRunning ? 'Зупинити' : 'Старт'}</Text>
+              <Text style={styles.timerBtnText}>{t(timerRunning ? 'stopBtn' : 'startBtn')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -851,7 +851,7 @@ export default function LogWorkoutScreen() {
                   onPress={openSaveTemplate}
                 >
                   <Ionicons name="bookmark-outline" size={15} color={Colors.textSecondary} />
-                  <Text style={styles.saveTemplateBtnText}>Шаблон</Text>
+                  <Text style={styles.saveTemplateBtnText}>{t('templateLabel')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -865,7 +865,7 @@ export default function LogWorkoutScreen() {
                 {kcalEst.estimated ? `≈ ${roundKcal(kcalEst.total)}` : Math.round(kcalEst.total)} ккал
               </Text>
               <Text style={styles.kcalRowHint} numberOfLines={1}>
-                {kcalEst.estimated ? `оцінка · ${paramsLabel(kcalParams)}` : 'вписано вручну'}
+                {kcalEst.estimated ? t('estimateBy', paramsLabel(kcalParams)) : t('enteredManually')}
               </Text>
             </View>
           )}
@@ -876,16 +876,17 @@ export default function LogWorkoutScreen() {
               {!groupMode ? (
                 <TouchableOpacity style={styles.groupBarBtn} onPress={toggleGroupMode}>
                   <Ionicons name="link-outline" size={15} color={Colors.textSecondary} />
-                  <Text style={styles.groupBarText}>Об'єднати в суперсет</Text>
+                  <Text style={styles.groupBarText}>{t('mergeIntoSuperset')}</Text>
                 </TouchableOpacity>
               ) : (
                 // самі кнопки — на панелі внизу екрана, щоб не зникали при прокрутці
-                <Text style={styles.groupBarHint}>Відміть вправи — «Об'єднати» внизу екрана</Text>
+                <Text style={styles.groupBarHint}>{t('markExercisesHint')}</Text>
               )}
             </View>
           )}
 
           {renderExerciseGroups({
+            t,
             exercises,
             kcal: kcalEst?.perExercise,
             onRemove: removeExercise,
@@ -910,12 +911,12 @@ export default function LogWorkoutScreen() {
           >
             <View style={styles.formHeader}>
               <Text style={styles.formSubtitle}>
-                {editingExIdx !== null ? 'Редагувати вправу' : t('addExercise')}
+                {editingExIdx !== null ? t('editExercise') : t('addExercise')}
               </Text>
               {editingExIdx !== null ? (
                 <TouchableOpacity style={styles.cancelEditBtn} onPress={cancelEditExercise}>
                   <Ionicons name="close" size={14} color={Colors.textSecondary} />
-                  <Text style={styles.cancelEditText}>Скасувати</Text>
+                  <Text style={styles.cancelEditText}>{t('cancel')}</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
@@ -924,7 +925,7 @@ export default function LogWorkoutScreen() {
                 >
                   <Ionicons name="link-outline" size={14} color={supersetMode ? '#FFF' : Colors.textSecondary} />
                   <Text style={[styles.supersetToggleText, supersetMode && styles.supersetToggleTextActive]}>
-                    Суперсет
+                    {t('supersetLabel')}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -985,7 +986,7 @@ export default function LogWorkoutScreen() {
                 {draftSets.map((s, i) => (
                   <View key={i} style={styles.draftSetChip}>
                     <Text style={styles.draftSetChipText}>
-                      {i + 1}) {s.weight ? `${s.weight}кг × ` : ''}{s.reps}
+                      {i + 1}) {s.weight ? t('weightBySets', s.weight) : ''}{s.reps}
                     </Text>
                     <TouchableOpacity onPress={() => removeDraftSet(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
@@ -998,8 +999,8 @@ export default function LogWorkoutScreen() {
               <Ionicons name="add-circle-outline" size={16} color={Colors.textSecondary} />
               <Text style={styles.addSetBtnText}>
                 {draftSets.length > 0
-                  ? `Додати підхід ${draftSets.length + 1} (з полів вище)`
-                  : 'Записати підходи окремо (піраміда)'}
+                  ? t('addSetN', draftSets.length + 1)
+                  : t('logSetsSeparately')}
               </Text>
             </TouchableOpacity>
 
@@ -1042,7 +1043,7 @@ export default function LogWorkoutScreen() {
             <View style={styles.setTypeRow}>
               {(['normal', 'warmup', 'dropset', 'failure'] as SetType[]).map((type) => {
                 const labels: Record<SetType, string> = {
-                  normal: 'Звичайний', warmup: 'Розминка', dropset: 'Дроп-сет', failure: 'Відмова',
+                  normal: t('setNormal'), warmup: t('setWarmup'), dropset: t('setDropset'), failure: t('setFailure'),
                 };
                 const colors: Record<SetType, string> = {
                   normal: Colors.primary, warmup: '#3498DB', dropset: '#F4A261', failure: '#E63946',
@@ -1065,7 +1066,7 @@ export default function LogWorkoutScreen() {
             <TouchableOpacity style={styles.addExBtn} onPress={addExercise}>
               <Ionicons name={editingExIdx !== null ? 'checkmark' : 'add'} size={20} color="#FFF" />
               <Text style={styles.addExBtnText}>
-                {editingExIdx !== null ? 'Зберегти зміни' : t('add')}
+                {editingExIdx !== null ? t('saveChanges') : t('add')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1141,7 +1142,7 @@ export default function LogWorkoutScreen() {
             ) : (
               <>
                 <Text style={styles.templatesHint}>
-                  Торкнись шаблону, щоб застосувати. Олівець — змінити вправи й суперсети.
+                  {t('templatesHint')}
                 </Text>
                 <FlatList
                   data={templates}
@@ -1149,14 +1150,15 @@ export default function LogWorkoutScreen() {
                   style={{ maxHeight: 360 }}
                   renderItem={({ item }) => {
                     const ssCount = new Set(item.exercises.map((e) => e.supersetId).filter(Boolean)).size;
-                    const typeLabel = WORKOUT_TYPES.find((w) => w.id === item.workoutType)?.label ?? item.workoutType;
+                    const typeKey = WORKOUT_TYPES.find((w) => w.id === item.workoutType)?.key;
+                    const typeLabel = typeKey ? t(typeKey) : item.workoutType;
                     return (
                       <View style={styles.templateItem}>
                         <TouchableOpacity style={styles.templateItemLeft} onPress={() => applyTemplate(item)}>
                           <Text style={styles.templateName}>{item.name}</Text>
                           <Text style={styles.templateMeta}>
                             {item.exercises.length} вправ · {typeLabel}
-                            {ssCount > 0 ? ` · суперсетів: ${ssCount}` : ''}
+                            {ssCount > 0 ? t('supersetsCount', ssCount) : ''}
                           </Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => editTemplate(item)} style={styles.templateIconBtn} hitSlop={6}>
@@ -1180,13 +1182,13 @@ export default function LogWorkoutScreen() {
         <View style={styles.plateCalcOverlay}>
           <View style={styles.plateCalcCard}>
             <View style={styles.plateCalcHeader}>
-              <Text style={styles.plateCalcTitle}>Калькулятор блінів</Text>
+              <Text style={styles.plateCalcTitle}>{t('plateCalculator')}</Text>
               <TouchableOpacity onPress={() => setPlateCalcVisible(false)}>
                 <Ionicons name="close" size={22} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
             <View style={styles.plateCalcRow}>
-              <Text style={styles.plateCalcLabel}>Штанга:</Text>
+              <Text style={styles.plateCalcLabel}>{t('barLabel')}</Text>
               {[20, 15, 10].map((kg) => (
                 <TouchableOpacity
                   key={kg}
@@ -1200,7 +1202,7 @@ export default function LogWorkoutScreen() {
               ))}
             </View>
             <View style={styles.plateCalcRow}>
-              <Text style={styles.plateCalcLabel}>Загальна вага (кг):</Text>
+              <Text style={styles.plateCalcLabel}>{t('totalWeightKg')}</Text>
               <TextInput
                 style={styles.plateCalcInput}
                 value={plateCalcTarget}
@@ -1222,7 +1224,7 @@ export default function LogWorkoutScreen() {
                 <View style={styles.plateResult}>
                   <Text style={styles.plateResultTitle}>По {perSide % 1 === 0 ? perSide : perSide.toFixed(2)} кг на кожну сторону:</Text>
                   {plates.length === 0 ? (
-                    <Text style={styles.plateCalcHint}>Неможливо скласти зі стандартних блінів</Text>
+                    <Text style={styles.plateCalcHint}>{t('platesImpossible')}</Text>
                   ) : (
                     <View style={styles.plateList}>
                       {plates.map(({ plate, count }) => (
@@ -1299,7 +1301,7 @@ export default function LogWorkoutScreen() {
                 onPress={() => handleSaveTemplate('new')}
               >
                 <Text style={baseTemplate ? styles.modalCancelText : styles.modalConfirmText}>
-                  {baseTemplate ? 'Як новий' : t('save')}
+                  {baseTemplate ? t('asNew') : t('save')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1358,9 +1360,9 @@ function MoveArrows({ exercises, idx, onMove }: {
   );
 }
 
-function renderExerciseMeta(ex: ExerciseLog): string {
+function renderExerciseMeta(ex: ExerciseLog, t: TFn): string {
   const SET_TYPE_LABELS: Record<string, string> = {
-    warmup: '🔵 Розм.', dropset: '🟠 Дроп', failure: '🔴 Відмова',
+    warmup: t('tagWarmup'), dropset: t('tagDrop'), failure: t('tagFailure'),
   };
   if (ex.setsDetail && ex.setsDetail.length > 0) {
     const setsStr = ex.setsDetail
@@ -1374,13 +1376,13 @@ function renderExerciseMeta(ex: ExerciseLog): string {
   }
   return [
     ex.setType && ex.setType !== 'normal' && SET_TYPE_LABELS[ex.setType],
-    ex.sets && `${ex.sets} підх.`,
-    ex.reps && `${ex.reps} повт.`,
-    ex.weight && `${ex.weight} кг`,
-    ex.duration && `${ex.duration} хв`,
-    ex.distance && `${ex.distance} км`,
-    ex.calories && `${ex.calories} ккал`,
-    ex.watts && `${ex.watts} вт`,
+    ex.sets && t('setsCountShort', ex.sets),
+    ex.reps && t('repsCountShort', ex.reps),
+    ex.weight && t('kgValue', ex.weight),
+    ex.duration && t('minValue', ex.duration),
+    ex.distance && t('kmValue', ex.distance),
+    ex.calories && t('kcalValue', ex.calories),
+    ex.watts && t('wattsValue', ex.watts),
     ex.rpe && `RPE ${ex.rpe}`,
   ].filter(Boolean).join(' · ');
 }
@@ -1389,13 +1391,13 @@ function renderExerciseMeta(ex: ExerciseLog): string {
  * Підпис вправи + калорії на всі підходи. Вписані вручну вже є в підписі —
  * окремо лише сума, коли їх записано на кілька підходів.
  */
-function metaWithKcal(ex: ExerciseLog, k?: ExerciseCalories): string {
+function metaWithKcal(ex: ExerciseLog, t: TFn, k?: ExerciseCalories): string {
   let kcalText = '';
   if (k && k.kcal > 0) {
-    if (k.estimated) kcalText = `≈${roundKcal(k.kcal)} ккал`;
-    else if (Math.round(k.kcal) !== ex.calories) kcalText = `разом ${Math.round(k.kcal)} ккал`;
+    if (k.estimated) kcalText = t('kcalApprox', roundKcal(k.kcal));
+    else if (Math.round(k.kcal) !== ex.calories) kcalText = t('kcalTotal', Math.round(k.kcal));
   }
-  return [renderExerciseMeta(ex), kcalText].filter(Boolean).join(' · ');
+  return [renderExerciseMeta(ex, t), kcalText].filter(Boolean).join(' · ');
 }
 
 interface ExerciseGroupOpts {
@@ -1412,9 +1414,12 @@ interface ExerciseGroupOpts {
   selected: number[];
   onToggleSel: (i: number) => void;
   onUngroup: (ssId: string) => void;
+  /** Переклад: функція, а не компонент, тож хук сюди не поставиш. */
+  t: TFn;
 }
 
 function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
+  const { t } = o;
   const {
     exercises, kcal, onRemove, onEdit, onSubstitute, onMove, editingIdx,
     groupMode, selected, onToggleSel, onUngroup, done, onToggleDone,
@@ -1455,7 +1460,7 @@ function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
           <Text style={[styles.exerciseName, done.includes(idx) && styles.exerciseNameDone]}>
             {ex.name}
           </Text>
-          <Text style={styles.exerciseMeta}>{metaWithKcal(ex, kcal?.[idx])}</Text>
+          <Text style={styles.exerciseMeta}>{metaWithKcal(ex, t, kcal?.[idx])}</Text>
         </TouchableOpacity>
         {!groupMode && (
           <>
@@ -1496,7 +1501,7 @@ function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
           <View key={`ss_${ssId}`} style={[styles.supersetGroup, { borderLeftColor: color }]}>
             <View style={styles.supersetHeader}>
               <Ionicons name="link-outline" size={12} color={color} />
-              <Text style={[styles.supersetLabel, { color }]}>СУПЕРСЕТ</Text>
+              <Text style={[styles.supersetLabel, { color }]}>{t('supersetCaps')}</Text>
               {!groupMode && (
                 <TouchableOpacity
                   onPress={() => onUngroup(ssId)}
@@ -1504,7 +1509,7 @@ function renderExerciseGroups(o: ExerciseGroupOpts): React.ReactNode[] {
                   hitSlop={6}
                 >
                   <Ionicons name="unlink-outline" size={13} color={Colors.textMuted} />
-                  <Text style={styles.ungroupBtnText}>Розгрупувати</Text>
+                  <Text style={styles.ungroupBtnText}>{t('ungroup')}</Text>
                 </TouchableOpacity>
               )}
             </View>

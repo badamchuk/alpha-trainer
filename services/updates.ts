@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Alert, Linking, Platform } from 'react-native';
+import { translate } from './i18n';
 
 // Оновлення через GitHub Releases.
 //
@@ -91,7 +92,7 @@ async function writeState(state: UpdateState): Promise<void> {
 async function fetchLatest(): Promise<UpdateInfo | null> {
   const res = await fetch(LATEST_URL, { headers: { Accept: 'application/vnd.github+json' } });
   if (res.status === 404) return null; // релізів ще немає
-  if (!res.ok) throw new Error(`GitHub відповів ${res.status}`);
+  if (!res.ok) throw new Error(translate('githubResponded', res.status));
   return parseRelease(await res.json());
 }
 
@@ -137,11 +138,12 @@ export function openUpdate(info: UpdateInfo): void {
 export function showUpdateAlert(info: UpdateInfo): void {
   const notes = info.notes.length > 600 ? `${info.notes.slice(0, 600).trimEnd()}…` : info.notes;
   Alert.alert(
-    `Доступна версія ${info.version}`,
-    `Зараз у тебе ${currentVersion()}.${notes ? `\n\nЩо нового:\n${notes}` : ''}`,
+    translate('updateAvailable', info.version),
+    translate('updateCurrentIs', currentVersion())
+      + (notes ? translate('updateWhatsNew', notes) : ''),
     [
-      { text: 'Пізніше', style: 'cancel' },
-      { text: 'Оновити', onPress: () => openUpdate(info) },
+      { text: translate('updateLater'), style: 'cancel' },
+      { text: translate('updateNow'), onPress: () => openUpdate(info) },
     ],
   );
 }

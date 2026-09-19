@@ -29,6 +29,7 @@ import { buildResolver } from '../../services/exerciseLinks';
 import type { ExerciseResolver } from '../../services/exerciseMatch';
 import { startOfWeek, endOfWeek } from 'date-fns';
 import { getLocalDateString as toDateStr } from '../../services/storage';
+import { WORKOUT_TYPE_KEYS } from '../../services/planParser';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -166,7 +167,7 @@ export default function ProgressScreen() {
       neck: parseMeasure(measureForm.neck),
     };
     if (!Object.values(entry).slice(1).some((v) => v !== undefined)) {
-      Alert.alert('Введи хоча б один вимір');
+      Alert.alert(t('enterAtLeastOneMeasure'));
       return;
     }
     await addMeasurement(entry);
@@ -178,7 +179,7 @@ export default function ProgressScreen() {
   async function handleLogWeight() {
     const val = parseFloat(weightInput.replace(',', '.'));
     if (isNaN(val) || val < 20 || val > 300) {
-      Alert.alert('Введи коректну вагу (20–300 кг)');
+      Alert.alert(t('enterValidWeight'));
       return;
     }
     await addWeightEntry({ date: getLocalDateString(new Date()), weight: val });
@@ -220,11 +221,7 @@ export default function ProgressScreen() {
   const typeEntries = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const maxType = typeEntries[0]?.[1] || 1;
 
-  const TYPE_LABELS: Record<string, string> = {
-    strength: 'Силове', cardio: 'Кардіо', crossfit: 'CrossFit',
-    hiit: 'HIIT', yoga: 'Йога', recovery: 'Відновлення',
-    run: 'Біг', cycling: 'Велосипед', swimming: 'Плавання', custom: 'Інше',
-  };
+  const typeLabel = (id: string) => t(WORKOUT_TYPE_KEYS[id] === 'wtCustom' ? 'wtOther' : WORKOUT_TYPE_KEYS[id] ?? id);
 
   const TYPE_COLORS: Record<string, string> = {
     strength: '#E63946', cardio: '#2EC4B6', crossfit: '#F4A261',
@@ -245,19 +242,21 @@ export default function ProgressScreen() {
 
       {/* Key Stats */}
       <View style={styles.statsGrid}>
-        <BigStat icon="flame-outline" color={Colors.primary} value={`${stats.streak}`} unit="днів поспіль" label="Серія" />
-        <BigStat icon="barbell-outline" color={Colors.success} value={`${stats.totalWorkouts}`} unit="тренувань" label="Загалом" />
-        <BigStat icon="calendar-outline" color={Colors.accent} value={`${stats.weeklyWorkouts}`} unit="цього тижня" label="Тижнево" />
+        <BigStat icon="flame-outline" color={Colors.primary} value={`${stats.streak}`} unit={t('daysInRow')} label={t('streak')} />
+        <BigStat icon="barbell-outline" color={Colors.success} value={`${stats.totalWorkouts}`} unit={t('workoutsWord')} label={t('totalLabel')} />
+        <BigStat icon="calendar-outline" color={Colors.accent} value={`${stats.weeklyWorkouts}`} unit={t('thisWeekWord')} label={t('weeklyWord')} />
         <BigStat
           icon="timer-outline" color="#9B59B6"
-          value={totalDurationHours > 0 ? `${totalDurationHours}г ${totalDurationMins}хв` : `${stats.totalDuration}хв`}
-          unit="загальний час" label="Тривалість"
+          value={totalDurationHours > 0
+            ? t('hoursMinutes', totalDurationHours, totalDurationMins)
+            : t('minutesCompact', stats.totalDuration)}
+          unit={t('totalTime')} label={t('durationStat')}
         />
       </View>
 
       {/* Activity Heatmap */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Активність — останні 28 днів</Text>
+        <Text style={styles.sectionTitle}>{t('activity28Days')}</Text>
         <View style={styles.heatmapContainer}>
           <View style={styles.heatmap}>
             {last28Days.map((day) => {
@@ -277,9 +276,9 @@ export default function ProgressScreen() {
           </View>
           <View style={styles.heatmapLegend}>
             <View style={styles.heatmapCell} />
-            <Text style={styles.legendText}>Немає</Text>
+            <Text style={styles.legendText}>{t('noneWord')}</Text>
             <View style={[styles.heatmapCell, styles.heatmapActive]} />
-            <Text style={styles.legendText}>Є тренування</Text>
+            <Text style={styles.legendText}>{t('hasWorkout')}</Text>
           </View>
         </View>
       </View>
@@ -308,13 +307,13 @@ export default function ProgressScreen() {
       {/* Workout type distribution */}
       {typeEntries.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Типи тренувань</Text>
+          <Text style={styles.sectionTitle}>{t('workoutTypesTitle')}</Text>
           {typeEntries.map(([type, count]) => {
             const pct = (count / maxType) * 100;
             const color = TYPE_COLORS[type] || Colors.textMuted;
             return (
               <View key={type} style={styles.typeRow}>
-                <Text style={styles.typeLabel}>{TYPE_LABELS[type] || type}</Text>
+                <Text style={styles.typeLabel}>{typeLabel(type)}</Text>
                 <View style={styles.typeBar}>
                   <View style={[styles.typeBarFill, { width: `${pct}%`, backgroundColor: color }]} />
                 </View>
@@ -330,28 +329,30 @@ export default function ProgressScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('runStatsTitle')}</Text>
           <View style={styles.runStatsGrid}>
-            <RunStatCard label="Всього пробіжок" value={`${runStats.totalRuns}`} icon="walk-outline" color="#2ECC71" />
-            <RunStatCard label="Загальна дистанція" value={`${runStats.totalDistanceKm} км`} icon="navigate-outline" color="#2ECC71" />
-            <RunStatCard label="Цього місяця" value={`${runStats.monthlyDistanceKm} км`} icon="calendar-outline" color="#2ECC71" />
-            <RunStatCard label="Найдовший біг" value={`${runStats.longestRunKm} км`} icon="trophy-outline" color="#F4A261" />
+            <RunStatCard label={t('totalRuns')} value={`${runStats.totalRuns}`} icon="walk-outline" color="#2ECC71" />
+            <RunStatCard label={t('totalDistanceLabel')} value={t('kmValue', runStats.totalDistanceKm)} icon="navigate-outline" color="#2ECC71" />
+            <RunStatCard label={t('thisMonth')} value={t('kmValue', runStats.monthlyDistanceKm)} icon="calendar-outline" color="#2ECC71" />
+            <RunStatCard label={t('longestRun')} value={t('kmValue', runStats.longestRunKm)} icon="trophy-outline" color="#F4A261" />
             {runStats.bestPaceSec > 0 && (
-              <RunStatCard label="Кращий темп" value={formatPace(runStats.bestPaceSec)} icon="flash-outline" color="#E63946" />
+              <RunStatCard label={t('bestPace')} value={formatPace(runStats.bestPaceSec)} icon="flash-outline" color="#E63946" />
             )}
             {runStats.avgPaceSec > 0 && (
-              <RunStatCard label="Середній темп" value={formatPace(runStats.avgPaceSec)} icon="speedometer-outline" color="#3498DB" />
+              <RunStatCard label={t('avgPace')} value={formatPace(runStats.avgPaceSec)} icon="speedometer-outline" color="#3498DB" />
             )}
           </View>
 
           {/* Last runs */}
           {runStats.recentRuns.length > 0 && (
             <View style={styles.runList}>
-              <Text style={styles.subSectionTitle}>Останні пробіжки</Text>
+              <Text style={styles.subSectionTitle}>{t('recentRuns')}</Text>
               {runStats.recentRuns.slice(0, 6).map((r, i) => (
                 <View key={i} style={styles.runRow}>
                   <Text style={styles.runDate}>{r.date}</Text>
-                  <Text style={styles.runDist}>{r.distanceKm > 0 ? `${r.distanceKm} км` : `${r.durationMin} хв`}</Text>
+                  <Text style={styles.runDist}>
+                    {r.distanceKm > 0 ? t('kmValue', r.distanceKm) : t('minValue', r.durationMin)}
+                  </Text>
                   {r.paceSec > 0 && <Text style={styles.runPace}>{formatPace(r.paceSec)}</Text>}
-                  <Text style={styles.runDur}>{r.durationMin} хв</Text>
+                  <Text style={styles.runDur}>{t('minValue', r.durationMin)}</Text>
                 </View>
               ))}
             </View>
@@ -368,7 +369,7 @@ export default function ProgressScreen() {
             const step = chartW / Math.max(paceRuns.length - 1, 1);
             return (
               <View style={[styles.weightChartContainer, { marginTop: Spacing.sm }]}>
-                <Text style={styles.subSectionTitle}>Динаміка темпу (менше = краще)</Text>
+                <Text style={styles.subSectionTitle}>{t('paceTrend')}</Text>
                 <View style={{ height: chartH, position: 'relative' }}>
                   {paceRuns.map((r, i) => {
                     const x = i * step;
@@ -390,14 +391,14 @@ export default function ProgressScreen() {
       {/* Strength stats */}
       {strengthStats && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Статистика силових</Text>
+          <Text style={styles.sectionTitle}>{t('strengthStats')}</Text>
           <View style={styles.runStatsGrid}>
-            <RunStatCard label="Тренувань" value={`${strengthStats.totalSessions}`} icon="barbell-outline" color="#E63946" />
-            <RunStatCard label="Цього місяця" value={`${strengthStats.monthSessions}`} icon="calendar-outline" color="#E63946" />
-            <RunStatCard label="Всього підходів" value={`${strengthStats.totalSets}`} icon="repeat-outline" color="#9B59B6" />
-            <RunStatCard label="Сер. тривалість" value={`${strengthStats.avgDurationMin} хв`} icon="time-outline" color="#3498DB" />
+            <RunStatCard label={t('workoutsStat')} value={`${strengthStats.totalSessions}`} icon="barbell-outline" color="#E63946" />
+            <RunStatCard label={t('thisMonth')} value={`${strengthStats.monthSessions}`} icon="calendar-outline" color="#E63946" />
+            <RunStatCard label={t('totalSets')} value={`${strengthStats.totalSets}`} icon="repeat-outline" color="#9B59B6" />
+            <RunStatCard label={t('avgDuration')} value={t('minValue', strengthStats.avgDurationMin)} icon="time-outline" color="#3498DB" />
             {strengthStats.avgRating > 0 && (
-              <RunStatCard label="Сер. оцінка" value={`${strengthStats.avgRating}/5`} icon="star-outline" color="#F4A261" />
+              <RunStatCard label={t('avgRating')} value={`${strengthStats.avgRating}/5`} icon="star-outline" color="#F4A261" />
             )}
           </View>
         </View>
@@ -414,7 +415,7 @@ export default function ProgressScreen() {
             </View>
             <View style={styles.strengthScoreRight}>
               <Text style={[styles.strengthScoreLevel, { color: SCORE_COLORS[strengthScore.level] }]}>
-                {SCORE_LEVEL_LABELS[strengthScore.level]}
+                {t(SCORE_LEVEL_KEY[strengthScore.level] ?? strengthScore.level)}
               </Text>
               {strengthScore.lifts.map((lift) => (
                 <Text key={lift.name} style={styles.strengthLiftRow}>
@@ -429,13 +430,13 @@ export default function ProgressScreen() {
       {/* Volume Landmarks */}
       {volumeLandmarks.some((v) => v.weeklySets > 0) && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Об'єм цього тижня</Text>
-          <Text style={styles.sectionHint}>MEV = мінімум · MAV = ціль · MRV = максимум</Text>
+          <Text style={styles.sectionTitle}>{t('volumeThisWeek')}</Text>
+          <Text style={styles.sectionHint}>{t('mevMavMrv')}</Text>
           {volumeLandmarks.filter((v) => v.weeklySets > 0).map((v) => (
             <View key={v.group} style={styles.volumeRow}>
               <View style={styles.volumeRowLeft}>
-                <Text style={styles.volumeLabel}>{v.label}</Text>
-                <Text style={styles.volumeSets}>{v.weeklySets} підх.</Text>
+                <Text style={styles.volumeLabel}>{t(v.labelKey)}</Text>
+                <Text style={styles.volumeSets}>{t('setsShortUnit', v.weeklySets)}</Text>
               </View>
               <View style={styles.volumeBarContainer}>
                 <View style={styles.volumeBarBg}>
@@ -451,7 +452,8 @@ export default function ProgressScreen() {
                 <Text style={[styles.volumeStatus, {
                   color: v.status === 'low' ? Colors.textMuted : v.status === 'optimal' ? '#2ECC71' : v.status === 'high' ? '#F4A261' : '#E63946',
                 }]}>
-                  {v.status === 'low' ? 'Мало' : v.status === 'optimal' ? 'Норма' : v.status === 'high' ? 'Багато' : 'Перевантаж'}
+                  {t(v.status === 'low' ? 'volumeLow' : v.status === 'optimal' ? 'volumeOk'
+                      : v.status === 'high' ? 'volumeHigh' : 'volumeOver')}
                 </Text>
               </View>
             </View>
@@ -462,13 +464,15 @@ export default function ProgressScreen() {
       {/* Tonnage chart */}
       {tonnage.some((t) => t.tonnage > 0) && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Тоннаж (підх × повт × вага)</Text>
+          <Text style={styles.sectionTitle}>{t('tonnageLabel')}</Text>
           <View style={styles.barChart}>
             {(() => {
               const maxT = Math.max(...tonnage.map((t) => t.tonnage), 1);
               return tonnage.map((item, i) => (
                 <View key={i} style={styles.barColumn}>
-                  <Text style={styles.barValue}>{item.tonnage > 0 ? `${Math.round(item.tonnage / 1000)}т` : ''}</Text>
+                  <Text style={styles.barValue}>
+                  {item.tonnage > 0 ? t('tonsShort', Math.round(item.tonnage / 1000)) : ''}
+                </Text>
                   <View style={styles.barWrapper}>
                     <View style={[styles.bar, { height: Math.max((item.tonnage / maxT) * 80, item.tonnage > 0 ? 4 : 0), backgroundColor: '#9B59B6' }]} />
                   </View>
@@ -529,15 +533,15 @@ export default function ProgressScreen() {
               <View style={styles.exProgressContainer}>
                 <View style={styles.exBestRow}>
                   <View style={styles.exBestCard}>
-                    <Text style={styles.exBestLabel}>Макс. вага</Text>
+                    <Text style={styles.exBestLabel}>{t('maxWeightLabel')}</Text>
                     <Text style={styles.exBestValue}>{Math.max(...exerciseProgress.map(p => p.weight))} кг</Text>
                   </View>
                   <View style={styles.exBestCard}>
-                    <Text style={styles.exBestLabel}>Розрах. 1RM</Text>
+                    <Text style={styles.exBestLabel}>{t('e1rmLabel')}</Text>
                     <Text style={[styles.exBestValue, { color: Colors.primary }]}>{best.estimated1RM} кг</Text>
                   </View>
                   <View style={styles.exBestCard}>
-                    <Text style={styles.exBestLabel}>Сесій</Text>
+                    <Text style={styles.exBestLabel}>{t('sessionsLabel')}</Text>
                     <Text style={styles.exBestValue}>{exerciseProgress.length}</Text>
                   </View>
                 </View>
@@ -598,7 +602,7 @@ export default function ProgressScreen() {
             const maxCount = muscleGroups[0].count;
             return muscleGroups.map((mg) => (
               <View key={mg.group} style={styles.typeRow}>
-                <Text style={[styles.typeLabel, { color: mg.color }]}>{mg.label}</Text>
+                <Text style={[styles.typeLabel, { color: mg.color }]}>{t(mg.labelKey)}</Text>
                 <View style={styles.typeBar}>
                   <View style={[styles.typeBarFill, { width: `${(mg.count / maxCount) * 100}%`, backgroundColor: mg.color }]} />
                 </View>
@@ -606,7 +610,7 @@ export default function ProgressScreen() {
               </View>
             ));
           })()}
-          <Text style={styles.muscleNote}>підходів всього</Text>
+          <Text style={styles.muscleNote}>{t('setsTotalWord')}</Text>
         </View>
       )}
 
@@ -618,9 +622,9 @@ export default function ProgressScreen() {
           {hrZones.map((z) => (
             <View key={z.zone} style={styles.hrZoneRow}>
               <View style={[styles.hrZoneDot, { backgroundColor: z.color }]} />
-              <Text style={styles.hrZoneLabel}>{z.label}</Text>
-              <Text style={styles.hrZoneCount}>{z.count} трен.</Text>
-              <Text style={styles.hrZoneMin}>{z.totalMinutes} хв</Text>
+              <Text style={styles.hrZoneLabel}>{t(z.labelKey)}</Text>
+              <Text style={styles.hrZoneCount}>{t('workoutsShortUnit', z.count)}</Text>
+              <Text style={styles.hrZoneMin}>{t('minValue', z.totalMinutes)}</Text>
             </View>
           ))}
         </View>
@@ -633,11 +637,8 @@ export default function ProgressScreen() {
           {(() => {
             const monthCutoff = getLocalDateString(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
             const recentW = workouts.filter((w) => w.date >= monthCutoff);
-            const TYPE_LABELS_UA: Record<string, string> = {
-              strength: 'Силове', cardio: 'Кардіо', crossfit: 'CrossFit',
-              hiit: 'HIIT', yoga: 'Йога', recovery: 'Відновлення',
-              run: 'Біг', cycling: 'Велосипед', swimming: 'Плавання', custom: 'Інше',
-            };
+            const typeName = (id: string) => t(
+              WORKOUT_TYPE_KEYS[id] === 'wtCustom' ? 'wtOther' : WORKOUT_TYPE_KEYS[id] ?? id);
             // Та сама оцінка, що в деталях тренування: по вправах, з вагою на
             // дату тренування; ккал, вписані з годинника, мають пріоритет
             const byType: Record<string, number> = {};
@@ -653,15 +654,15 @@ export default function ProgressScreen() {
                 <View style={styles.calTotalRow}>
                   <Ionicons name="flame-outline" size={22} color={Colors.accent} />
                   <Text style={styles.calTotal}>{Math.round(totalCal).toLocaleString()} ккал</Text>
-                  <Text style={styles.calTotalLabel}>за останній місяць</Text>
+                  <Text style={styles.calTotalLabel}>{t('lastMonthWord')}</Text>
                 </View>
                 {Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([type, cal]) => (
                   <View key={type} style={styles.calRow}>
-                    <Text style={styles.calType}>{TYPE_LABELS_UA[type] || type}</Text>
+                    <Text style={styles.calType}>{typeName(type)}</Text>
                     <Text style={styles.calValue}>{Math.round(cal)} ккал</Text>
                   </View>
                 ))}
-                <Text style={styles.calNote}>* Оцінка по вправах з урахуванням ваги, зросту, віку і статі. Ккал з годинника, вписані вручну, мають пріоритет.</Text>
+                <Text style={styles.calNote}>{t('kcalFootnote')}</Text>
               </>
             );
           })()}
@@ -680,7 +681,7 @@ export default function ProgressScreen() {
         {measurements.length === 0 ? (
           <TouchableOpacity style={styles.weightEmpty} onPress={() => setMeasureModalVisible(true)}>
             <Ionicons name="body-outline" size={28} color={Colors.textMuted} />
-            <Text style={styles.weightEmptyText}>Записуй заміри — відстежуй зміни складу тіла</Text>
+            <Text style={styles.weightEmptyText}>{t('trackMeasurements')}</Text>
           </TouchableOpacity>
         ) : (
           <>
@@ -689,9 +690,9 @@ export default function ProgressScreen() {
               const latest = measurements[measurements.length - 1];
               const prev = measurements.length >= 2 ? measurements[measurements.length - 2] : null;
               const fields: { key: keyof BodyMeasurement; label: string }[] = [
-                { key: 'waist', label: 'Талія' }, { key: 'chest', label: 'Груди' },
-                { key: 'hips', label: 'Стегна' }, { key: 'bicep', label: 'Біцепс' },
-                { key: 'thigh', label: 'Стегно' },
+                { key: 'waist', label: t('measureWaist') }, { key: 'chest', label: t('measureChest') },
+                { key: 'hips', label: t('measureHips') }, { key: 'bicep', label: t('measureBiceps') },
+                { key: 'thigh', label: t('measureThigh') },
               ];
               return (
                 <View style={styles.measureCard}>
@@ -704,7 +705,7 @@ export default function ProgressScreen() {
                       return (
                         <View key={f.key} style={styles.measureCell}>
                           <Text style={styles.measureLabel}>{f.label}</Text>
-                          <Text style={styles.measureVal}>{val} <Text style={styles.measureUnit}>см</Text></Text>
+                          <Text style={styles.measureVal}>{val} <Text style={styles.measureUnit}>{t('cmUnit')}</Text></Text>
                           {diff != null && diff !== 0 && (
                             <Text style={[styles.measureDiff, { color: diff < 0 ? Colors.success : Colors.error }]}>
                               {diff > 0 ? '+' : ''}{diff.toFixed(1)}
@@ -728,15 +729,18 @@ export default function ProgressScreen() {
               // Норми жиру різні для статей (ACE): у жінок здоровий діапазон зсунутий на ~8-10% вище
               const isFemale = profile.gender === 'female';
               const cuts = isFemale ? [15, 22, 26, 32] : [8, 15, 20, 25];
-              const bfCategory = bf < cuts[0] ? 'Дуже низький' : bf < cuts[1] ? 'Атлетичний' : bf < cuts[2] ? 'Норма' : bf < cuts[3] ? 'Вище норми' : 'Надмірний';
+              const bfCategory = t(bf < cuts[0] ? 'bfVeryLow' : bf < cuts[1] ? 'bfAthletic'
+                : bf < cuts[2] ? 'bfNormal' : bf < cuts[3] ? 'bfAboveNormal' : 'bfExcess');
               const bfColor = bf < cuts[0] ? '#3498DB' : bf < cuts[1] ? '#2ECC71' : bf < cuts[2] ? Colors.success : bf < cuts[3] ? Colors.accent : Colors.error;
               return (
                 <View style={styles.bodyFatCard}>
                   <View style={styles.bodyFatRow}>
                     <Ionicons name="body-outline" size={20} color={bfColor} />
                     <View style={styles.bodyFatInfo}>
-                      <Text style={styles.bodyFatLabel}>Відсоток жиру (US Navy)</Text>
-                      <Text style={styles.bodyFatNote}>потрібно: талія + шия{profile.gender === 'female' ? ' + стегна' : ''}</Text>
+                      <Text style={styles.bodyFatLabel}>{t('bodyFatUsNavy')}</Text>
+                      <Text style={styles.bodyFatNote}>
+                {t('bodyFatNeeds')}{profile.gender === 'female' ? t('plusHips') : ''}
+              </Text>
                     </View>
                     <View style={styles.bodyFatRight}>
                       <Text style={[styles.bodyFatValue, { color: bfColor }]}>{bf}%</Text>
@@ -762,7 +766,7 @@ export default function ProgressScreen() {
         {weightLog.length === 0 ? (
           <TouchableOpacity style={styles.weightEmpty} onPress={() => setWeightModalVisible(true)}>
             <Ionicons name="scale-outline" size={28} color={Colors.textMuted} />
-            <Text style={styles.weightEmptyText}>Записуй вагу щоб відстежувати динаміку</Text>
+            <Text style={styles.weightEmptyText}>{t('trackWeightHint')}</Text>
           </TouchableOpacity>
         ) : (
           <>
@@ -843,7 +847,7 @@ export default function ProgressScreen() {
       {/* Achievements */}
       {achievements.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Досягнення</Text>
+          <Text style={styles.sectionTitle}>{t('achievementsTitle')}</Text>
           <Text style={styles.sectionHint}>
             {achievements.filter((a) => a.unlockedAt).length} / {achievements.length} розблоковано
           </Text>
@@ -862,7 +866,7 @@ export default function ProgressScreen() {
                     color={ach.unlockedAt ? ACH_CATEGORY_COLORS[ach.category] : Colors.textMuted}
                   />
                   <Text style={[styles.achTitle, ach.unlockedAt ? styles.achTitleUnlocked : undefined]} numberOfLines={2}>
-                    {ach.title}
+                    {t(ach.titleKey)}
                   </Text>
                   {ach.unlockedAt ? (
                     <Text style={styles.achDate}>{ach.unlockedAt.split('T')[0]}</Text>
@@ -891,35 +895,36 @@ export default function ProgressScreen() {
       {adaptiveTDEE && (
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Адаптивний TDEE</Text>
+            <Text style={styles.sectionTitle}>{t('adaptiveTdee')}</Text>
             <View style={[styles.confidenceBadge, {
               backgroundColor: adaptiveTDEE.confidence === 'high' ? '#2ECC7122' : adaptiveTDEE.confidence === 'medium' ? '#F4A26122' : '#95A5A622',
             }]}>
               <Text style={[styles.confidenceText, {
                 color: adaptiveTDEE.confidence === 'high' ? '#2ECC71' : adaptiveTDEE.confidence === 'medium' ? '#F4A261' : Colors.textMuted,
               }]}>
-                {adaptiveTDEE.confidence === 'high' ? 'Висока точність' : adaptiveTDEE.confidence === 'medium' ? 'Середня точність' : 'Мало даних'}
+                {t(adaptiveTDEE.confidence === 'high' ? 'accuracyHigh'
+                  : adaptiveTDEE.confidence === 'medium' ? 'accuracyMedium' : 'accuracyLow')}
               </Text>
             </View>
           </View>
           <View style={styles.tdeeCard}>
             <View style={styles.tdeeMain}>
               <Text style={styles.tdeeValue}>{adaptiveTDEE.estimatedTDEE}</Text>
-              <Text style={styles.tdeeUnit}>ккал/день</Text>
+              <Text style={styles.tdeeUnit}>{t('kcalPerDay')}</Text>
             </View>
             <View style={styles.tdeeStats}>
               <View style={styles.tdeeStat}>
-                <Text style={styles.tdeeStatLabel}>Середнє споживання</Text>
+                <Text style={styles.tdeeStatLabel}>{t('avgIntake')}</Text>
                 <Text style={styles.tdeeStatValue}>{adaptiveTDEE.avgDailyCalories} ккал</Text>
               </View>
               <View style={styles.tdeeStat}>
-                <Text style={styles.tdeeStatLabel}>Зміна ваги/тиждень</Text>
+                <Text style={styles.tdeeStatLabel}>{t('weightChangePerWeek')}</Text>
                 <Text style={[styles.tdeeStatValue, { color: adaptiveTDEE.weeklyWeightDelta < 0 ? '#2ECC71' : adaptiveTDEE.weeklyWeightDelta > 0 ? '#E63946' : Colors.textPrimary }]}>
                   {adaptiveTDEE.weeklyWeightDelta > 0 ? '+' : ''}{adaptiveTDEE.weeklyWeightDelta} кг
                 </Text>
               </View>
               <View style={styles.tdeeStat}>
-                <Text style={styles.tdeeStatLabel}>Тижнів аналізу</Text>
+                <Text style={styles.tdeeStatLabel}>{t('weeksAnalysed')}</Text>
                 <Text style={styles.tdeeStatValue}>{adaptiveTDEE.weeksAnalyzed}</Text>
               </View>
             </View>
@@ -936,7 +941,7 @@ export default function ProgressScreen() {
       {/* Food → Performance correlation */}
       {foodCorrelation.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Харчування → Результати</Text>
+          <Text style={styles.sectionTitle}>{t('nutritionResultsLink')}</Text>
           {foodCorrelation.map((c, i) => (
             <View key={i} style={styles.correlationCard}>
               <View style={styles.correlationHeader}>
@@ -946,13 +951,13 @@ export default function ProgressScreen() {
               <Text style={styles.correlationInsight}>{c.insight}</Text>
               <View style={styles.correlationStats}>
                 <View style={styles.correlationStat}>
-                  <Text style={styles.correlationStatLabel}>Добре харчування</Text>
+                  <Text style={styles.correlationStatLabel}>{t('goodNutrition')}</Text>
                   <Text style={styles.correlationStatVal}>⭐ {c.avgRatingHighCal} · {c.avgDurationHighCal} хв</Text>
                   <Text style={styles.correlationN}>{c.highCalDays} тренувань</Text>
                 </View>
                 <View style={styles.correlationDivider} />
                 <View style={styles.correlationStat}>
-                  <Text style={styles.correlationStatLabel}>Мало ккал</Text>
+                  <Text style={styles.correlationStatLabel}>{t('lowKcal')}</Text>
                   <Text style={styles.correlationStatVal}>⭐ {c.avgRatingLowCal} · {c.avgDurationLowCal} хв</Text>
                   <Text style={styles.correlationN}>{c.lowCalDays} тренувань</Text>
                 </View>
@@ -966,11 +971,11 @@ export default function ProgressScreen() {
       <Modal visible={measureModalVisible} transparent animationType="fade" onRequestClose={() => setMeasureModalVisible(false)}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={[styles.modalCard, { width: '90%' }]}>
-            <Text style={styles.modalTitle}>Заміри тіла (см)</Text>
+            <Text style={styles.modalTitle}>{t('bodyMeasurementsCm')}</Text>
             {[
-              { key: 'waist', label: 'Талія' }, { key: 'neck', label: 'Шия' },
-              { key: 'hips', label: 'Стегна' }, { key: 'chest', label: 'Груди' },
-              { key: 'bicep', label: 'Біцепс' }, { key: 'thigh', label: 'Стегно (обхват)' },
+              { key: 'waist', label: t('measureWaist') }, { key: 'neck', label: t('measureNeck') },
+              { key: 'hips', label: t('measureHips') }, { key: 'chest', label: t('measureChest') },
+              { key: 'bicep', label: t('measureBiceps') }, { key: 'thigh', label: t('measureThighFull') },
             ].map((f) => (
               <View key={f.key} style={styles.measureModalRow}>
                 <Text style={styles.measureModalLabel}>{f.label}</Text>
@@ -986,10 +991,10 @@ export default function ProgressScreen() {
             ))}
             <View style={[styles.modalActions, { marginTop: Spacing.md }]}>
               <TouchableOpacity style={styles.modalCancel} onPress={() => { setMeasureModalVisible(false); setMeasureForm({ waist: '', chest: '', hips: '', bicep: '', thigh: '', neck: '' }); }}>
-                <Text style={styles.modalCancelText}>Скасувати</Text>
+                <Text style={styles.modalCancelText}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalSave} onPress={handleSaveMeasurement}>
-                <Text style={styles.modalSaveText}>Зберегти</Text>
+                <Text style={styles.modalSaveText}>{t('save')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1000,23 +1005,23 @@ export default function ProgressScreen() {
       <Modal visible={weightModalVisible} transparent animationType="fade" onRequestClose={() => setWeightModalVisible(false)}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Записати вагу</Text>
+            <Text style={styles.modalTitle}>{t('logWeight')}</Text>
             <TextInput
               style={styles.weightModalInput}
-              placeholder="наприклад: 75.5"
+              placeholder={t('weightExample')}
               placeholderTextColor={Colors.textMuted}
               value={weightInput}
               onChangeText={setWeightInput}
               keyboardType="decimal-pad"
               autoFocus
             />
-            <Text style={styles.modalUnit}>кг</Text>
+            <Text style={styles.modalUnit}>{t('kgUnit')}</Text>
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalCancel} onPress={() => { setWeightModalVisible(false); setWeightInput(''); }}>
-                <Text style={styles.modalCancelText}>Скасувати</Text>
+                <Text style={styles.modalCancelText}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalSave} onPress={handleLogWeight}>
-                <Text style={styles.modalSaveText}>Зберегти</Text>
+                <Text style={styles.modalSaveText}>{t('save')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1029,8 +1034,9 @@ export default function ProgressScreen() {
 const SCORE_COLORS: Record<string, string> = {
   beginner: '#95A5A6', novice: '#3498DB', intermediate: '#2ECC71', advanced: '#F4A261', elite: '#E63946',
 };
-const SCORE_LEVEL_LABELS: Record<string, string> = {
-  beginner: 'Початківець', novice: 'Новачок', intermediate: 'Середній', advanced: 'Просунутий', elite: 'Еліта',
+const SCORE_LEVEL_KEY: Record<string, string> = {
+  beginner: 'levelBeginner', novice: 'levelNovice', intermediate: 'levelIntermediate',
+  advanced: 'levelAdvanced', elite: 'levelElite',
 };
 
 function RunStatCard({ icon, color, value, label }: {

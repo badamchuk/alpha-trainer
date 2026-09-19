@@ -38,24 +38,26 @@ import { getMemoryEntries, buildMemoryContext } from '../../services/aiMemory';
 import { ChatMessage } from '../../types';
 import { analyzePhotoNutrition, PhotoAnalysisError } from '../../services/foodAI';
 import BarcodeScannerModal from '../../components/BarcodeScannerModal';
+import { TFn, tFor, useLocale } from '../../services/i18n';
 
-const MODE_LABELS: Record<NutritionMode, string> = {
-  cut: 'Схуднення', maintain: 'Підтримка', bulk: 'Набір',
+/** Префікси помилок обома мовами — щоб не годувати модель власними збоями. */
+const ERROR_PREFIXES = [tFor('uk')('errorPrefix'), tFor('en')('errorPrefix')];
+
+const MODE_KEY: Record<NutritionMode, string> = {
+  cut: 'modeCut', maintain: 'modeMaintain', bulk: 'modeBulk',
 };
 const MODE_COLORS: Record<NutritionMode, string> = {
   cut: '#E63946', maintain: '#2ECC71', bulk: '#3498DB',
 };
 
-function formatDateLabel(dateStr: string): string {
+function formatDateLabel(dateStr: string, t: TFn): string {
   const today = getLocalDateString(new Date());
-  if (dateStr === today) return 'Сьогодні';
+  if (dateStr === today) return t('todayWord');
   const yd = new Date(); yd.setDate(yd.getDate() - 1);
   const yesterday = getLocalDateString(yd);
-  if (dateStr === yesterday) return 'Вчора';
+  if (dateStr === yesterday) return t('yesterdayWord');
   const d = new Date(dateStr + 'T12:00:00');
-  const days = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-  const months = ['січ', 'лют', 'бер', 'квіт', 'трав', 'черв', 'лип', 'серп', 'вер', 'жовт', 'лист', 'груд'];
-  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+  return `${t('dayShort', d.getDay())}, ${d.getDate()} ${t('monthShort', d.getMonth())}`;
 }
 
 function addDays(dateStr: string, n: number): string {
@@ -65,6 +67,7 @@ function addDays(dateStr: string, n: number): string {
 }
 
 export default function NutritionScreen() {
+  const { t } = useLocale();
   const insets = useSafeAreaInsets();
   const today = getLocalDateString(new Date());
   const [selectedDate, setSelectedDate] = useState(today);
@@ -169,11 +172,11 @@ export default function NutritionScreen() {
       setParsed(result);
       if (!mealName) {
         const hour = new Date().getHours();
-        const autoName = hour < 11 ? 'Сніданок' : hour < 15 ? 'Обід' : hour < 19 ? 'Перекус' : 'Вечеря';
+        const autoName = t(hour < 11 ? 'mealBreakfast' : hour < 15 ? 'mealLunch' : hour < 19 ? 'mealSnack' : 'mealDinner');
         setMealName(autoName);
       }
     } catch (e: any) {
-      Alert.alert('Помилка AI', e?.message ?? 'Не вдалось розрахувати. Перевір API ключ.');
+      Alert.alert(t('aiError'), e?.message ?? t('aiCountFailed'));
     } finally {
       setParsing(false);
     }
@@ -230,7 +233,7 @@ export default function NutritionScreen() {
     const meal: MealEntry = {
       id: editingMeal?.id ?? Date.now().toString(),
       time,
-      name: mealName || 'Прийом їжі',
+      name: mealName || t('mealFallbackName'),
       rawText: foodText,
       calories: parsed.total.calories,
       protein: parsed.total.protein,
@@ -280,10 +283,10 @@ export default function NutritionScreen() {
   }
 
   async function handleDeleteMeal(mealId: string) {
-    Alert.alert('Видалити прийом?', '', [
-      { text: 'Скасувати', style: 'cancel' },
+    Alert.alert(t('deleteMealQuestion'), '', [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Видалити', style: 'destructive',
+        text: t('delete'), style: 'destructive',
         onPress: async () => {
           const updated = await removeMeal(selectedDate, mealId);
           setDaily(updated);
@@ -293,7 +296,7 @@ export default function NutritionScreen() {
   }
 
   async function handleSaveGoals() {
-    if (!profile) { Alert.alert('Заповни профіль спочатку'); return; }
+    if (!profile) { Alert.alert(t('fillProfileFirst')); return; }
     const computed = calculateNutritionGoals(profile, editMode);
     await saveNutritionGoals(computed);
     setGoals(computed);
@@ -305,7 +308,7 @@ export default function NutritionScreen() {
   }) {
     const { name, calories, protein, carbs, fat, fiber } = params;
     setParsed({
-      meals: [{ name, qty: '1 порція', calories, protein, carbs, fat, fiber: fiber ?? 0 }],
+      meals: [{ name, qty: t('onePortion'), calories, protein, carbs, fat, fiber: fiber ?? 0 }],
       total: { calories, protein, carbs, fat, fiber: fiber ?? 0 },
     });
     setFoodText(name);
@@ -316,7 +319,7 @@ export default function NutritionScreen() {
 
   function applyPhotoAnalysis(analysis: Awaited<ReturnType<typeof analyzePhotoNutrition>>) {
     if (!analysis) {
-      Alert.alert('Не їжа', 'AI не розпізнав їжу на фото. Сфотографуй страву ближче.');
+      Alert.alert(t('notFoodTitle'), t('notFoodText'));
       return;
     }
     setParsed({
@@ -344,13 +347,13 @@ export default function NutritionScreen() {
 
   async function handlePhotoAdd() {
     if (!profile?.geminiApiKey && !profile?.groqApiKey) {
-      Alert.alert('Потрібен API ключ', 'Фото-розпізнавання потребує Gemini або Groq API ключ. Додай його у профілі → AI-моделі.');
+      Alert.alert(t('apiKeyNeeded'), t('photoNeedsKey'));
       return;
     }
     try {
       const perm = await ImagePicker.requestCameraPermissionsAsync();
       if (perm.status !== 'granted') {
-        Alert.alert('Потрібен доступ до камери', 'Дозволь доступ до камери в Налаштуваннях телефону → Додатки → Гарт → Дозволи.');
+        Alert.alert(t('cameraAccessNeeded'), t('cameraAccessText'));
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
@@ -362,12 +365,12 @@ export default function NutritionScreen() {
       if (result.canceled || !result.assets[0]) return;
       setPhotoLoading(true);
       const b64 = result.assets[0].base64 || await getPhotoBase64(result.assets[0].uri);
-      if (!b64) { Alert.alert('Помилка', 'Не вдалось отримати дані фото.'); return; }
+      if (!b64) { Alert.alert(t('error'), t('photoDataFailed')); return; }
       const analysis = await analyzePhotoNutrition(b64, 'image/jpeg', profile.geminiApiKey, profile.groqApiKey);
       applyPhotoAnalysis(analysis);
     } catch (e) {
-      const msg = e instanceof PhotoAnalysisError ? e.message : `Помилка: ${e instanceof Error ? e.message : String(e)}`;
-      Alert.alert('Помилка розпізнавання', msg);
+      const msg = e instanceof PhotoAnalysisError ? e.message : t('errorWithText', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('recognitionError'), msg);
     } finally {
       setPhotoLoading(false);
     }
@@ -375,13 +378,13 @@ export default function NutritionScreen() {
 
   async function handlePhotoFromGallery() {
     if (!profile?.geminiApiKey && !profile?.groqApiKey) {
-      Alert.alert('Потрібен API ключ', 'Фото-розпізнавання потребує Gemini або Groq API ключ. Додай його у профілі → AI-моделі.');
+      Alert.alert(t('apiKeyNeeded'), t('photoNeedsKey'));
       return;
     }
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (perm.status !== 'granted') {
-        Alert.alert('Потрібен доступ до галереї', 'Дозволь доступ до фото в Налаштуваннях телефону → Додатки → Гарт → Дозволи.');
+        Alert.alert(t('galleryAccessNeeded'), t('galleryAccessText'));
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -393,12 +396,12 @@ export default function NutritionScreen() {
       if (result.canceled || !result.assets[0]) return;
       setPhotoLoading(true);
       const b64 = result.assets[0].base64 || await getPhotoBase64(result.assets[0].uri);
-      if (!b64) { Alert.alert('Помилка', 'Не вдалось отримати дані фото.'); return; }
+      if (!b64) { Alert.alert(t('error'), t('photoDataFailed')); return; }
       const analysis = await analyzePhotoNutrition(b64, 'image/jpeg', profile.geminiApiKey, profile.groqApiKey);
       applyPhotoAnalysis(analysis);
     } catch (e) {
-      const msg = e instanceof PhotoAnalysisError ? e.message : `Помилка: ${e instanceof Error ? e.message : String(e)}`;
-      Alert.alert('Помилка розпізнавання', msg);
+      const msg = e instanceof PhotoAnalysisError ? e.message : t('errorWithText', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('recognitionError'), msg);
     } finally {
       setPhotoLoading(false);
     }
@@ -413,7 +416,7 @@ export default function NutritionScreen() {
   async function sendNutritionistMessage() {
     if (!nutInput.trim() || nutLoading) return;
     if (!profile?.groqApiKey && !profile?.geminiApiKey) {
-      Alert.alert('Потрібен API ключ', 'Додай Gemini або Groq API ключ у профілі.');
+      Alert.alert(t('apiKeyNeeded'), t('addApiKeyShort'));
       return;
     }
 
@@ -447,7 +450,7 @@ export default function NutritionScreen() {
       const memBlock = buildMemoryContext(memEntries, recentWorkouts, [], []);
       // Не передаємо моделі повідомлення-помилки з минулих збоїв
       const chatHistory = nutMessages.filter(
-        (m) => !(m.role === 'assistant' && m.content.startsWith('Помилка:'))
+        (m) => !(m.role === 'assistant' && ERROR_PREFIXES.some((p) => m.content.startsWith(p)))
       ).map((m) =>
         profile?.groqApiKey
           ? { role: m.role as 'user' | 'assistant', content: m.content }
@@ -480,7 +483,7 @@ export default function NutritionScreen() {
     } catch (e: any) {
       const errMsg: ChatMessage = {
         id: (Date.now() + 1).toString(), role: 'assistant',
-        content: `Помилка: ${e?.message || 'Не вдалося отримати відповідь.'}`,
+        content: t('errorWithText', e?.message || t('couldNotAnswer')),
         timestamp: new Date().toISOString(),
       };
       setNutMessages([...updatedMessages, errMsg]);
@@ -504,7 +507,7 @@ export default function NutritionScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Харчування</Text>
+          <Text style={styles.title}>{t('nutritionTitle')}</Text>
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={openNutritionist} style={styles.headerBtn}>
               <Ionicons name="sparkles-outline" size={20} color={Colors.primary} />
@@ -523,7 +526,7 @@ export default function NutritionScreen() {
           <TouchableOpacity onPress={() => goToDate(addDays(selectedDate, -1))} style={styles.dateNavBtn}>
             <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
           </TouchableOpacity>
-          <Text style={styles.dateNavLabel}>{formatDateLabel(selectedDate)}</Text>
+          <Text style={styles.dateNavLabel}>{formatDateLabel(selectedDate, t)}</Text>
           <TouchableOpacity
             onPress={() => goToDate(addDays(selectedDate, 1))}
             style={[styles.dateNavBtn, selectedDate >= today && { opacity: 0.3 }]}
@@ -547,7 +550,7 @@ export default function NutritionScreen() {
                 <Text style={styles.calOf}>/ {goals.calories} ккал</Text>
               </View>
               <View style={[styles.modeBadge, { backgroundColor: MODE_COLORS[goals.mode] + '22', borderColor: MODE_COLORS[goals.mode] + '44' }]}>
-                <Text style={[styles.modeText, { color: MODE_COLORS[goals.mode] }]}>{MODE_LABELS[goals.mode]}</Text>
+                <Text style={[styles.modeText, { color: MODE_COLORS[goals.mode] }]}>{t(MODE_KEY[goals.mode])}</Text>
               </View>
             </View>
             <View style={styles.calBar}>
@@ -558,9 +561,9 @@ export default function NutritionScreen() {
             </View>
 
             <View style={styles.macroRow}>
-              <MacroBar label="Білки" value={totals.protein} goal={goals.protein} pct={proteinPct} color="#E63946" unit="г" />
-              <MacroBar label="Вугл." value={totals.carbs} goal={goals.carbs} pct={carbsPct} color="#F4A261" unit="г" />
-              <MacroBar label="Жири" value={totals.fat} goal={goals.fat} pct={fatPct} color="#3498DB" unit="г" />
+              <MacroBar label={t('proteinShort')} value={totals.protein} goal={goals.protein} pct={proteinPct} color="#E63946" unit={t('gramsUnit')} />
+              <MacroBar label={t('macroCarbsShort')} value={totals.carbs} goal={goals.carbs} pct={carbsPct} color="#F4A261" unit={t('gramsUnit')} />
+              <MacroBar label={t('fatShort')} value={totals.fat} goal={goals.fat} pct={fatPct} color="#3498DB" unit={t('gramsUnit')} />
               {totals.fiber > 0 && (
                 <FiberBar value={totals.fiber} />
               )}
@@ -573,8 +576,8 @@ export default function NutritionScreen() {
           >
             <Ionicons name="calculator-outline" size={24} color={Colors.primary} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.setupTitle}>Налаштуй цілі харчування</Text>
-              <Text style={styles.setupSub}>Калорії та макро розраховуються автоматично з профілю</Text>
+              <Text style={styles.setupTitle}>{t('setUpNutritionGoals')}</Text>
+              <Text style={styles.setupSub}>{t('goalsAutoFromProfile')}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
           </TouchableOpacity>
@@ -584,16 +587,16 @@ export default function NutritionScreen() {
         <View style={styles.addBtnRow}>
           <TouchableOpacity style={styles.addBtnMain} onPress={() => setAddVisible(true)}>
             <Ionicons name="add" size={20} color="#FFF" />
-            <Text style={styles.addBtnText}>Додати прийом їжі</Text>
+            <Text style={styles.addBtnText}>{t('addMealBtn')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.addBtnIcon} onPress={() => setBarcodeVisible(true)}>
             <Ionicons name="barcode-outline" size={22} color={Colors.textSecondary} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.addBtnIcon} onPress={() => {
-            Alert.alert('Фото їжі', 'Вибери джерело', [
-              { text: 'Камера', onPress: handlePhotoAdd },
-              { text: 'Галерея', onPress: handlePhotoFromGallery },
-              { text: 'Скасувати', style: 'cancel' },
+            Alert.alert(t('foodPhotoTitle'), t('pickSource'), [
+              { text: t('cameraOption'), onPress: handlePhotoAdd },
+              { text: t('galleryOption'), onPress: handlePhotoFromGallery },
+              { text: t('cancel'), style: 'cancel' },
             ]);
           }}>
             {photoLoading
@@ -606,7 +609,7 @@ export default function NutritionScreen() {
         {/* Meals list */}
         {daily.meals.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Прийоми їжі</Text>
+            <Text style={styles.sectionTitle}>{t('mealsTitle')}</Text>
             {daily.meals.map((meal) => (
               <View key={meal.id} style={styles.mealCard}>
                 <View style={styles.mealHeader}>
@@ -655,12 +658,12 @@ export default function NutritionScreen() {
         ) : (
           <View style={styles.emptyState}>
             <Ionicons name="restaurant-outline" size={48} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>Ще нічого не додано</Text>
+            <Text style={styles.emptyText}>{t('nothingAddedYet')}</Text>
             <Text style={styles.emptyHint}>
               {/* без ключа AI не порахує — не обіцяємо того, чого не буде */}
               {profile?.geminiApiKey || profile?.groqApiKey
-                ? 'Напиши що їв — AI порахує калорії'
-                : 'Додай прийом їжі вручну або зі штрихкоду. Для підрахунку з тексту й фото потрібен AI-ключ у профілі'}
+                ? t('writeWhatYouAte')
+                : t('addMealManually')}
             </Text>
           </View>
         )}
@@ -674,7 +677,7 @@ export default function NutritionScreen() {
         >
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingMeal ? 'Редагувати прийом' : 'Що ти їв?'}</Text>
+              <Text style={styles.modalTitle}>{t(editingMeal ? 'editMeal' : 'whatDidYouEat')}</Text>
               <TouchableOpacity onPress={closeAddModal}>
                 <Ionicons name="close" size={22} color={Colors.textSecondary} />
               </TouchableOpacity>
@@ -687,7 +690,7 @@ export default function NutritionScreen() {
             >
               <TextInput
                 style={styles.foodInput}
-                placeholder={'Наприклад: 2 яйця, жменя шпинату, хліб з хумусом...'}
+                placeholder={t('mealExample')}
                 placeholderTextColor={Colors.textMuted}
                 value={foodText}
                 onChangeText={setFoodText}
@@ -707,19 +710,19 @@ export default function NutritionScreen() {
                   <Ionicons name="sparkles-outline" size={16} color="#FFF" />
                 )}
                 <Text style={styles.parseBtnText}>
-                  {parsing ? 'Рахую...' : editingMeal ? 'Перерахувати (AI)' : 'Розрахувати КБЖУ (AI)'}
+                  {t(parsing ? 'countingEllipsis' : editingMeal ? 'recountAi' : 'countMacrosAi')}
                 </Text>
               </TouchableOpacity>
 
               {parsed && (
                 <View style={styles.parsedResult}>
                   <View style={styles.parsedTotals}>
-                    <PillStat label="ккал" value={parsed.total.calories} color={Colors.primary} />
-                    <PillStat label="Білки" value={`${parsed.total.protein}г`} color="#E63946" />
-                    <PillStat label="Вугл." value={`${parsed.total.carbs}г`} color="#F4A261" />
-                    <PillStat label="Жири" value={`${parsed.total.fat}г`} color="#3498DB" />
+                    <PillStat label={t('kcalLabel')} value={parsed.total.calories} color={Colors.primary} />
+                    <PillStat label={t('proteinShort')} value={`${parsed.total.protein}${t('gramsUnit')}`} color="#E63946" />
+                    <PillStat label={t('macroCarbsShort')} value={`${parsed.total.carbs}${t('gramsUnit')}`} color="#F4A261" />
+                    <PillStat label={t('fatShort')} value={`${parsed.total.fat}${t('gramsUnit')}`} color="#3498DB" />
                     {(parsed.total.fiber ?? 0) > 0 && (
-                      <PillStat label="Клітк." value={`${parsed.total.fiber}г`} color="#2ECC71" />
+                      <PillStat label={t('macroFiberShort')} value={`${parsed.total.fiber}${t('gramsUnit')}`} color="#2ECC71" />
                     )}
                   </View>
 
@@ -733,7 +736,7 @@ export default function NutritionScreen() {
 
                   <TextInput
                     style={styles.mealNameInput}
-                    placeholder="Назва (Сніданок, Обід...)"
+                    placeholder={t('mealNamePlaceholder')}
                     placeholderTextColor={Colors.textMuted}
                     value={mealName}
                     onChangeText={setMealName}
@@ -742,7 +745,7 @@ export default function NutritionScreen() {
 
                   <TouchableOpacity style={styles.saveBtn} onPress={handleSaveMeal}>
                     <Ionicons name="checkmark" size={18} color="#FFF" />
-                    <Text style={styles.saveBtnText}>Зберегти</Text>
+                    <Text style={styles.saveBtnText}>{t('save')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -756,17 +759,17 @@ export default function NutritionScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { paddingBottom: Spacing.xl }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Ціль харчування</Text>
+              <Text style={styles.modalTitle}>{t('nutritionGoalTitle')}</Text>
               <TouchableOpacity onPress={() => setGoalsVisible(false)}>
                 <Ionicons name="close" size={22} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
             <Text style={styles.goalsHint}>
-              Калорії та макронутрієнти розраховуються автоматично на основі твого профілю (вага, зріст, вік, активність).
+              {t('goalsAutoFromProfileLong')}
             </Text>
 
-            <Text style={styles.modeLabel}>Режим</Text>
+            <Text style={styles.modeLabel}>{t('modeLabel')}</Text>
             <View style={styles.modeRow}>
               {(['cut', 'maintain', 'bulk'] as NutritionMode[]).map((m) => (
                 <TouchableOpacity
@@ -775,10 +778,10 @@ export default function NutritionScreen() {
                   onPress={() => setEditMode(m)}
                 >
                   <Text style={[styles.modeBtnText, editMode === m && { color: MODE_COLORS[m], fontWeight: '700' }]}>
-                    {MODE_LABELS[m]}
+                    {t(MODE_KEY[m])}
                   </Text>
                   <Text style={styles.modeBtnSub}>
-                    {m === 'cut' ? '−350 ккал' : m === 'bulk' ? '+275 ккал' : '= TDEE'}
+                    {m === 'cut' ? t('modeCutKcal') : m === 'bulk' ? t('modeBulkKcal') : '= TDEE'}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -789,19 +792,19 @@ export default function NutritionScreen() {
               return (
                 <View style={styles.goalsPreview}>
                   <View style={styles.goalsPreviewRow}>
-                    <Text style={styles.goalsPreviewLabel}>Калорії</Text>
+                    <Text style={styles.goalsPreviewLabel}>{t('caloriesWord')}</Text>
                     <Text style={styles.goalsPreviewVal}>{preview.calories} ккал</Text>
                   </View>
                   <View style={styles.goalsPreviewRow}>
-                    <Text style={styles.goalsPreviewLabel}>Білки</Text>
+                    <Text style={styles.goalsPreviewLabel}>{t('proteinsWord')}</Text>
                     <Text style={[styles.goalsPreviewVal, { color: '#E63946' }]}>{preview.protein}г</Text>
                   </View>
                   <View style={styles.goalsPreviewRow}>
-                    <Text style={styles.goalsPreviewLabel}>Вуглеводи</Text>
+                    <Text style={styles.goalsPreviewLabel}>{t('carbsWord')}</Text>
                     <Text style={[styles.goalsPreviewVal, { color: '#F4A261' }]}>{preview.carbs}г</Text>
                   </View>
                   <View style={styles.goalsPreviewRow}>
-                    <Text style={styles.goalsPreviewLabel}>Жири</Text>
+                    <Text style={styles.goalsPreviewLabel}>{t('fatsWord')}</Text>
                     <Text style={[styles.goalsPreviewVal, { color: '#3498DB' }]}>{preview.fat}г</Text>
                   </View>
                 </View>
@@ -809,7 +812,7 @@ export default function NutritionScreen() {
             })()}
 
             <TouchableOpacity style={styles.saveBtn} onPress={handleSaveGoals}>
-              <Text style={styles.saveBtnText}>Зберегти</Text>
+              <Text style={styles.saveBtnText}>{t('save')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -822,14 +825,14 @@ export default function NutritionScreen() {
             <View style={styles.nutHeader}>
               <View style={styles.nutHeaderLeft}>
                 <Ionicons name="sparkles" size={18} color={Colors.primary} />
-                <Text style={styles.nutTitle}>AI Нутріціолог</Text>
+                <Text style={styles.nutTitle}>{t('aiNutritionist')}</Text>
               </View>
               <View style={styles.nutHeaderRight}>
                 <TouchableOpacity
                   onPress={() => {
-                    Alert.alert('Очистити чат?', '', [
-                      { text: 'Скасувати', style: 'cancel' },
-                      { text: 'Очистити', style: 'destructive', onPress: async () => {
+                    Alert.alert(t('clearChatQuestion'), '', [
+                      { text: t('cancel'), style: 'cancel' },
+                      { text: t('clearBtn'), style: 'destructive', onPress: async () => {
                         await clearNutritionistChatHistory();
                         setNutMessages([]);
                       }},
@@ -859,8 +862,8 @@ export default function NutritionScreen() {
               ListEmptyComponent={
                 <View style={styles.nutEmpty}>
                   <Ionicons name="nutrition-outline" size={40} color={Colors.textMuted} />
-                  <Text style={styles.nutEmptyText}>Запитай свого нутріціолога</Text>
-                  <Text style={styles.nutEmptyHint}>Він бачить твою 7-денну історію харчування та тренувань</Text>
+                  <Text style={styles.nutEmptyText}>{t('askYourNutritionist')}</Text>
+                  <Text style={styles.nutEmptyHint}>{t('nutritionistSeesHistory')}</Text>
                 </View>
               }
               renderItem={({ item }) => (
@@ -875,7 +878,7 @@ export default function NutritionScreen() {
             <View style={styles.nutInputRow}>
               <TextInput
                 style={styles.nutInput}
-                placeholder="Запитай про харчування..."
+                placeholder={t('askAboutNutrition')}
                 placeholderTextColor={Colors.textMuted}
                 value={nutInput}
                 onChangeText={setNutInput}
@@ -904,7 +907,7 @@ export default function NutritionScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Збережені прийоми</Text>
+              <Text style={styles.modalTitle}>{t('savedMeals')}</Text>
               <TouchableOpacity onPress={() => setLibraryVisible(false)}>
                 <Ionicons name="close" size={22} color={Colors.textSecondary} />
               </TouchableOpacity>
@@ -913,8 +916,8 @@ export default function NutritionScreen() {
             {library.length === 0 ? (
               <View style={styles.libraryEmpty}>
                 <Ionicons name="bookmark-outline" size={40} color={Colors.textMuted} />
-                <Text style={styles.emptyText}>Ще немає збережених страв</Text>
-                <Text style={styles.emptyHint}>Після першого збереження прийому їжі він з'явиться тут</Text>
+                <Text style={styles.emptyText}>{t('noSavedMeals')}</Text>
+                <Text style={styles.emptyHint}>{t('savedMealsHint')}</Text>
               </View>
             ) : (
               <FlatList
@@ -935,9 +938,9 @@ export default function NutritionScreen() {
                     <View style={styles.libraryRight}>
                       <TouchableOpacity
                         onPress={() => {
-                          Alert.alert('Видалити зі збережених?', '', [
-                            { text: 'Скасувати', style: 'cancel' },
-                            { text: 'Видалити', style: 'destructive', onPress: async () => {
+                          Alert.alert(t('deleteFromSaved'), '', [
+                            { text: t('cancel'), style: 'cancel' },
+                            { text: t('delete'), style: 'destructive', onPress: async () => {
                               await removeFromFoodLibrary(item.id);
                               setLibrary(library.filter((l) => l.id !== item.id));
                             }},
@@ -975,7 +978,7 @@ function WeeklyCalChart({ history, goal, selectedDate, onSelectDate }: {
   selectedDate: string;
   onSelectDate: (date: string) => void;
 }) {
-  const days = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+  const { t } = useLocale();
   const maxCal = Math.max(goal, ...history.map((d) => d.calories));
   const BAR_H = 48;
   return (
@@ -985,7 +988,7 @@ function WeeklyCalChart({ history, goal, selectedDate, onSelectDate }: {
         const isSelected = d.date === selectedDate;
         const overGoal = d.calories > goal;
         const barColor = overGoal ? '#E63946' : d.calories >= goal * 0.85 ? Colors.primary : Colors.primary + '70';
-        const dayLabel = days[new Date(d.date + 'T12:00:00').getDay()];
+        const dayLabel = t('dayShort', new Date(d.date + 'T12:00:00').getDay());
         return (
           <TouchableOpacity key={d.date} style={styles.weekChartCol} onPress={() => onSelectDate(d.date)}>
             <Text style={[styles.weekChartCal, isSelected && { color: Colors.primary, fontWeight: '700' }]}>
@@ -1025,13 +1028,14 @@ function MacroBar({ label, value, goal, pct, color, unit }: {
 }
 
 function FiberBar({ value }: { value: number }) {
+  const { t } = useLocale();
   // Daily fiber goal: ~25g (general recommendation)
   const goal = 25;
   const pct = Math.min(100, Math.round((value / goal) * 100));
   return (
     <View style={styles.macroItem}>
-      <Text style={styles.macroLabel}>Клітк.</Text>
-      <Text style={[styles.macroValue, { color: '#2ECC71' }]}>{value}<Text style={styles.macroUnit}>г</Text></Text>
+      <Text style={styles.macroLabel}>{t('macroFiberShort')}</Text>
+      <Text style={[styles.macroValue, { color: '#2ECC71' }]}>{value}<Text style={styles.macroUnit}>{t('gramsUnit')}</Text></Text>
       <Text style={styles.macroGoal}>/ {goal}г</Text>
       <View style={styles.macroBarBg}>
         <View style={[styles.macroBarFill, { width: `${pct}%` as any, backgroundColor: '#2ECC71' }]} />

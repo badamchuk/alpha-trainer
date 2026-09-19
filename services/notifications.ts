@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { translate } from './i18n';
 
 // expo-notifications remote push is unavailable in Expo Go (SDK 53+)
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -21,7 +22,7 @@ export async function requestPermissions(): Promise<boolean> {
   if (isExpoGo) return false;
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('workouts', {
-      name: 'Тренування',
+      name: translate('notifChannelWorkouts'),
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
     });
@@ -59,20 +60,16 @@ export async function scheduleWorkoutReminders(
   const hasPermission = await requestPermissions();
   if (!hasPermission) return;
 
-  const dayNames = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-  const messages = [
-    'Час тренуватися! Ти вже на шляху до своїх цілей.',
-    'Сьогодні день тренування! Не пропускай.',
-    'Тренування запланове на сьогодні. Вперед!',
-    'Гарт чекає на твої результати сьогодні!',
-  ];
+  // Текст сповіщення фіксується в момент планування — мовою, якою людина
+  // зараз користується. Перемкне мову — перепланує при наступному заході.
+  const messages = [1, 2, 3, 4].map((i) => translate(`notifWorkout${i}`));
 
   for (const day of workoutDays) {
     const msg = messages[Math.floor(Math.random() * messages.length)];
     await Notifications.scheduleNotificationAsync({
       identifier: `workout-reminder-${day}`,
       content: {
-        title: 'Гарт — час тренуватися!',
+        title: translate('notifWorkoutTitle'),
         body: msg,
         data: { type: 'workout_reminder', day },
         sound: true,
@@ -116,20 +113,13 @@ export async function scheduleWaterReminders(
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('water', {
-      name: 'Водний баланс',
+      name: translate('notifChannelWater'),
       importance: Notifications.AndroidImportance.DEFAULT,
       vibrationPattern: [0, 150],
     });
   }
 
-  const messages = [
-    'Час випити склянку води 💧',
-    'Не забувай про воду — твоє тіло дякує 💧',
-    'Підтримуй водний баланс — випий склянку зараз 💧',
-    'Вода = енергія. Час зробити ковток! 💧',
-    'Гідратація — ключ до продуктивності 💧',
-    'Склянка води прямо зараз! 💧',
-  ];
+  const messages = [1, 2, 3, 4, 5, 6].map((i) => translate(`notifWater${i}`));
 
   // Spread reminders evenly: glasses notifications between startHour and endHour
   const totalMinutes = (endHour - startHour) * 60;
@@ -144,7 +134,7 @@ export async function scheduleWaterReminders(
     await Notifications.scheduleNotificationAsync({
       identifier: `water-reminder-${i}`,
       content: {
-        title: 'Гарт — вода',
+        title: translate('notifWaterTitle'),
         body: msg,
         data: { type: 'water_reminder' },
         sound: true,

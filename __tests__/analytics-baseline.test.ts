@@ -1,3 +1,4 @@
+import { tFor } from '../services/i18n';
 /**
  * Зліпок поточної поведінки функцій аналітики ДО появи резолвера вправ.
  *
@@ -7,7 +8,7 @@
  */
 import {
   getAllExerciseNames, getExerciseProgress, getMuscleGroupBalance, getOverloadSuggestion,
-  getPersonalRecords, getStrengthScore, getVolumeLandmarks,
+  getPersonalRecords, getStrengthScore, getVolumeLandmarks, overloadText,
 } from '../services/analytics';
 import { ExerciseLog, WorkoutEntry } from '../types';
 
@@ -50,6 +51,12 @@ describe('аналітика без резолвера — зліпок пове
 
   it('підказка прогресії', () => {
     expect(getOverloadSuggestion(WORKOUTS, 'Присідання зі штангою на спині')).toMatchSnapshot();
+  });
+
+  it('підказка прогресії словами — та сама, що й була', () => {
+    const s = getOverloadSuggestion(WORKOUTS, 'Присідання зі штангою на спині')!;
+    expect(overloadText(s.message, tFor('uk'))).toBe('Збільш кількість повторів до 6–7');
+    expect(overloadText(s.message, tFor('en'))).toBe('Push the reps up to 6–7');
   });
 
   it('баланс груп м’язів', () => {

@@ -6,25 +6,25 @@ exports[`аналітика без резолвера — зліпок пове�
     "color": "#3498DB",
     "count": 12,
     "group": "back",
-    "label": "Спина",
+    "labelKey": "mgBack",
   },
   {
     "color": "#2ECC71",
     "count": 6,
     "group": "legs",
-    "label": "Ноги",
+    "labelKey": "mgLegs",
   },
   {
     "color": "#E63946",
     "count": 3,
     "group": "chest",
-    "label": "Груди",
+    "labelKey": "mgChest",
   },
   {
     "color": "#1ABC9C",
     "count": 3,
     "group": "core",
-    "label": "Прес/Кор",
+    "labelKey": "mgCore",
   },
 ]
 `;
@@ -34,7 +34,7 @@ exports[`аналітика без резолвера — зліпок пове�
   {
     "color": "#3498DB",
     "group": "back",
-    "label": "Спина",
+    "labelKey": "mgBack",
     "mav": 16,
     "mev": 8,
     "mrv": 25,
@@ -45,7 +45,7 @@ exports[`аналітика без резолвера — зліпок пове�
   {
     "color": "#2EC4B6",
     "group": "legs",
-    "label": "Квадри",
+    "labelKey": "mgQuads",
     "mav": 14,
     "mev": 6,
     "mrv": 22,
@@ -56,7 +56,7 @@ exports[`аналітика без резолвера — зліпок пове�
   {
     "color": "#E63946",
     "group": "chest",
-    "label": "Груди",
+    "labelKey": "mgChest",
     "mav": 12,
     "mev": 6,
     "mrv": 20,
@@ -67,7 +67,7 @@ exports[`аналітика без резолвера — зліпок пове�
   {
     "color": "#1ABC9C",
     "group": "core",
-    "label": "Прес/Кор",
+    "labelKey": "mgCore",
     "mav": 12,
     "mev": 4,
     "mrv": 20,
@@ -78,7 +78,7 @@ exports[`аналітика без резолвера — зліпок пове�
   {
     "color": "#9B59B6",
     "group": "shoulders",
-    "label": "Плечі",
+    "labelKey": "mgShoulders",
     "mav": 14,
     "mev": 6,
     "mrv": 22,
@@ -89,7 +89,7 @@ exports[`аналітика без резолвера — зліпок пове�
   {
     "color": "#F4A261",
     "group": "biceps",
-    "label": "Біцепс",
+    "labelKey": "mgBiceps",
     "mav": 12,
     "mev": 6,
     "mrv": 20,
@@ -100,7 +100,7 @@ exports[`аналітика без резолвера — зліпок пове�
   {
     "color": "#2ECC71",
     "group": "triceps",
-    "label": "Трицепс",
+    "labelKey": "mgTriceps",
     "mav": 10,
     "mev": 4,
     "mrv": 18,
@@ -111,7 +111,7 @@ exports[`аналітика без резолвера — зліпок пове�
   {
     "color": "#E67E22",
     "group": "hamstrings",
-    "label": "Задня ст.",
+    "labelKey": "mgHamstrings",
     "mav": 10,
     "mev": 4,
     "mrv": 16,
@@ -122,7 +122,7 @@ exports[`аналітика без резолвера — зліпок пове�
   {
     "color": "#FF6B6B",
     "group": "glutes",
-    "label": "Сідниці",
+    "labelKey": "mgGlutes",
     "mav": 10,
     "mev": 4,
     "mrv": 16,
@@ -133,7 +133,7 @@ exports[`аналітика без резолвера — зліпок пове�
   {
     "color": "#F1C40F",
     "group": "calves",
-    "label": "Литки",
+    "labelKey": "mgCalves",
     "mav": 8,
     "mev": 4,
     "mrv": 16,
@@ -217,7 +217,11 @@ exports[`аналітика без резолвера — зліпок пове�
   "lastReps": 5,
   "lastSets": 3,
   "lastWeight": 105,
-  "message": "Збільш кількість повторів до 6–7",
+  "message": {
+    "from": 6,
+    "kind": "moreReps",
+    "to": 7,
+  },
   "suggestedReps": "6–7",
   "suggestedWeight": 105,
 }

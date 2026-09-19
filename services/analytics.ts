@@ -3,7 +3,7 @@ import { getLocalDateString } from './storage';
 import { EXERCISES, MuscleGroup } from './exercises';
 import { LibraryExercise, exerciseName, getExercise, muscleGroupOf } from './library';
 import type { ExerciseResolver } from './exerciseMatch';
-import type { TFn } from './i18n';
+import { TFn, translate } from './i18n';
 
 // ─── Вправа з бібліотеки, якщо запис вдалося впізнати ────────────────────────
 //
@@ -85,7 +85,7 @@ export function formatPace(secondsPerKm: number): string {
   if (!secondsPerKm || secondsPerKm <= 0) return '–';
   const mins = Math.floor(secondsPerKm / 60);
   const secs = Math.round(secondsPerKm % 60);
-  return `${mins}:${String(secs).padStart(2, '0')}/км`;
+  return translate('pacePerKm', `${mins}:${String(secs).padStart(2, '0')}`);
 }
 
 export function computePace(distanceKm: number, durationMin: number): number {
@@ -427,12 +427,12 @@ export function getExerciseList(
 
 export type HRZone = 1 | 2 | 3 | 4 | 5;
 
-const HR_ZONE_LABELS: Record<HRZone, string> = {
-  1: 'Відновлення',
-  2: 'Жироспалення',
-  3: 'Аеробна',
-  4: 'Анаеробна',
-  5: 'Максимум',
+const HR_ZONE_KEYS: Record<HRZone, string> = {
+  1: 'hrZoneRecovery',
+  2: 'hrZoneFatBurn',
+  3: 'hrZoneAerobic',
+  4: 'hrZoneAnaerobic',
+  5: 'hrZoneMax',
 };
 const HR_ZONE_COLORS: Record<HRZone, string> = {
   1: '#3498DB',
@@ -452,11 +452,12 @@ export function getHRZone(avgHR: number, maxHREstimate: number): HRZone {
   return 5;
 }
 
-export { HR_ZONE_LABELS, HR_ZONE_COLORS };
+export { HR_ZONE_KEYS, HR_ZONE_COLORS };
 
 export interface HRZoneSummary {
   zone: HRZone;
-  label: string;
+  /** Ключ i18n: підпис малює екран. */
+  labelKey: string;
   color: string;
   count: number;
   totalMinutes: number;
@@ -470,7 +471,7 @@ export function getHRZoneSummary(workouts: WorkoutEntry[], age: number): HRZoneS
     if (!w.avgHeartRate) continue;
     const zone = getHRZone(w.avgHeartRate, maxHR);
     const existing = map.get(zone) || {
-      zone, label: HR_ZONE_LABELS[zone], color: HR_ZONE_COLORS[zone],
+      zone, labelKey: HR_ZONE_KEYS[zone], color: HR_ZONE_COLORS[zone],
       count: 0, totalMinutes: 0,
     };
     existing.count++;
@@ -485,18 +486,19 @@ export function getHRZoneSummary(workouts: WorkoutEntry[], age: number): HRZoneS
 
 export interface MuscleGroupData {
   group: string;
-  label: string;
+  /** Ключ i18n: підпис малює екран. */
+  labelKey: string;
   count: number; // total exercise sets logged
   color: string;
 }
 
-const BALANCE_GROUPS: { group: string; label: string; color: string }[] = [
-  { group: 'chest',     label: 'Груди',    color: '#E63946' },
-  { group: 'back',      label: 'Спина',    color: '#3498DB' },
-  { group: 'legs',      label: 'Ноги',     color: '#2ECC71' },
-  { group: 'shoulders', label: 'Плечі',    color: '#9B59B6' },
-  { group: 'arms',      label: 'Руки',     color: '#F4A261' },
-  { group: 'core',      label: 'Прес/Кор', color: '#1ABC9C' },
+const BALANCE_GROUPS: { group: string; labelKey: string; color: string }[] = [
+  { group: 'chest',     labelKey: 'mgChest',    color: '#E63946' },
+  { group: 'back',      labelKey: 'mgBack',    color: '#3498DB' },
+  { group: 'legs',      labelKey: 'mgLegs',     color: '#2ECC71' },
+  { group: 'shoulders', labelKey: 'mgShoulders',    color: '#9B59B6' },
+  { group: 'arms',      labelKey: 'mgArms',     color: '#F4A261' },
+  { group: 'core',      labelKey: 'mgCore', color: '#1ABC9C' },
 ];
 
 // Collapse fine-grained library groups into the 6 display groups
@@ -525,7 +527,7 @@ export function getMuscleGroupBalance(
   }
 
   return BALANCE_GROUPS
-    .map((mg) => ({ group: mg.group, label: mg.label, color: mg.color, count: Math.round(counts[mg.group]) }))
+    .map((mg) => ({ group: mg.group, labelKey: mg.labelKey, color: mg.color, count: Math.round(counts[mg.group]) }))
     .filter((mg) => mg.count > 0)
     .sort((a, b) => b.count - a.count);
 }
@@ -611,17 +613,17 @@ export function getStrengthScore(
 // ─── Volume Landmarks ─────────────────────────────────────────────────────────
 
 // Evidence-based weekly set ranges (RP Strength / Mike Israetel)
-const VOLUME_TARGETS: Record<string, { mev: number; mav: number; mrv: number; label: string; color: string }> = {
-  chest:      { mev: 6,  mav: 12, mrv: 20, label: 'Груди',    color: '#E63946' },
-  back:       { mev: 8,  mav: 16, mrv: 25, label: 'Спина',    color: '#3498DB' },
-  shoulders:  { mev: 6,  mav: 14, mrv: 22, label: 'Плечі',    color: '#9B59B6' },
-  biceps:     { mev: 6,  mav: 12, mrv: 20, label: 'Біцепс',   color: '#F4A261' },
-  triceps:    { mev: 4,  mav: 10, mrv: 18, label: 'Трицепс',  color: '#2ECC71' },
-  legs:       { mev: 6,  mav: 14, mrv: 22, label: 'Квадри',   color: '#2EC4B6' },
-  hamstrings: { mev: 4,  mav: 10, mrv: 16, label: 'Задня ст.', color: '#E67E22' },
-  glutes:     { mev: 4,  mav: 10, mrv: 16, label: 'Сідниці',  color: '#FF6B6B' },
-  core:       { mev: 4,  mav: 12, mrv: 20, label: 'Прес/Кор', color: '#1ABC9C' },
-  calves:     { mev: 4,  mav: 8,  mrv: 16, label: 'Литки',    color: '#F1C40F' },
+const VOLUME_TARGETS: Record<string, { mev: number; mav: number; mrv: number; labelKey: string; color: string }> = {
+  chest:      { mev: 6,  mav: 12, mrv: 20, labelKey: 'mgChest',    color: '#E63946' },
+  back:       { mev: 8,  mav: 16, mrv: 25, labelKey: 'mgBack',    color: '#3498DB' },
+  shoulders:  { mev: 6,  mav: 14, mrv: 22, labelKey: 'mgShoulders',    color: '#9B59B6' },
+  biceps:     { mev: 6,  mav: 12, mrv: 20, labelKey: 'mgBiceps',   color: '#F4A261' },
+  triceps:    { mev: 4,  mav: 10, mrv: 18, labelKey: 'mgTriceps',  color: '#2ECC71' },
+  legs:       { mev: 6,  mav: 14, mrv: 22, labelKey: 'mgQuads',   color: '#2EC4B6' },
+  hamstrings: { mev: 4,  mav: 10, mrv: 16, labelKey: 'mgHamstrings', color: '#E67E22' },
+  glutes:     { mev: 4,  mav: 10, mrv: 16, labelKey: 'mgGlutes',  color: '#FF6B6B' },
+  core:       { mev: 4,  mav: 12, mrv: 20, labelKey: 'mgCore', color: '#1ABC9C' },
+  calves:     { mev: 4,  mav: 8,  mrv: 16, labelKey: 'mgCalves',    color: '#F1C40F' },
 };
 
 // Map exercise muscle group (from exercises.ts MuscleGroup) to volume target key
@@ -635,7 +637,8 @@ export type VolumeLandmarkStatus = 'low' | 'optimal' | 'high' | 'overreaching';
 
 export interface VolumeLandmark {
   group: string;
-  label: string;
+  /** Ключ i18n: підпис малює екран. */
+  labelKey: string;
   color: string;
   weeklySets: number;
   mev: number;
@@ -674,7 +677,7 @@ export function getVolumeLandmarks(
         sets <= target.mav ? 'optimal' :
         sets <= target.mrv ? 'high' : 'overreaching';
       const pct = Math.min(100, Math.round((sets / target.mrv) * 100));
-      return { group, label: target.label, color: target.color, weeklySets: sets, mev: target.mev, mav: target.mav, mrv: target.mrv, status, pct };
+      return { group, labelKey: target.labelKey, color: target.color, weeklySets: sets, mev: target.mev, mav: target.mav, mrv: target.mrv, status, pct };
     })
     .sort((a, b) => b.weeklySets - a.weeklySets);
 }
@@ -685,7 +688,7 @@ export interface RecoveryScoreResult {
   score: number; // 0–100
   level: 'rest' | 'easy' | 'moderate' | 'hard' | 'peak';
   color: string;
-  factors: { label: string; impact: number }[];
+  factors: { labelKey: string; impact: number }[];
 }
 
 export interface WellbeingSnapshot {
@@ -703,11 +706,11 @@ export function getRecoveryScore(
   const recent = sorted.slice(0, 10);
 
   let score = 70;
-  const factors: { label: string; impact: number }[] = [];
+  const factors: { labelKey: string; impact: number }[] = [];
 
   // Factor 1: days since last workout
   if (recent.length === 0) {
-    factors.push({ label: 'Давно не тренувався', impact: +5 });
+    factors.push({ labelKey: 'rfLongBreak', impact: +5 });
     score += 5;
   } else {
     const lastDate = recent[0].date;
@@ -715,16 +718,16 @@ export function getRecoveryScore(
       (new Date(today).getTime() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24)
     );
     if (daysDiff === 0) {
-      factors.push({ label: 'Тренування сьогодні', impact: -20 });
+      factors.push({ labelKey: 'rfWorkoutToday', impact: -20 });
       score -= 20;
     } else if (daysDiff === 1) {
-      factors.push({ label: 'Тренування вчора', impact: -10 });
+      factors.push({ labelKey: 'rfWorkoutYesterday', impact: -10 });
       score -= 10;
     } else if (daysDiff >= 2 && daysDiff <= 3) {
-      factors.push({ label: '2–3 дні відпочинку', impact: +10 });
+      factors.push({ labelKey: 'rfRest23', impact: +10 });
       score += 10;
     } else {
-      factors.push({ label: '4+ дні відпочинку', impact: +5 });
+      factors.push({ labelKey: 'rfRest4', impact: +5 });
       score += 5;
     }
   }
@@ -735,13 +738,13 @@ export function getRecoveryScore(
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   const weekCount = sorted.filter((w) => w.date >= cutoffStr).length;
   if (weekCount >= 6) {
-    factors.push({ label: '6+ тренувань за тиждень', impact: -15 });
+    factors.push({ labelKey: 'rfSix', impact: -15 });
     score -= 15;
   } else if (weekCount === 5) {
-    factors.push({ label: '5 тренувань за тиждень', impact: -5 });
+    factors.push({ labelKey: 'rfFive', impact: -5 });
     score -= 5;
   } else if (weekCount <= 2) {
-    factors.push({ label: 'Мало тренувань цього тижня', impact: +5 });
+    factors.push({ labelKey: 'rfFewThisWeek', impact: +5 });
     score += 5;
   }
 
@@ -749,15 +752,15 @@ export function getRecoveryScore(
   if (recent.length > 0) {
     const last = recent[0];
     if (last.duration && last.duration > 90) {
-      factors.push({ label: 'Довге тренування (>90хв)', impact: -8 });
+      factors.push({ labelKey: 'rfLongSession', impact: -8 });
       score -= 8;
     }
     if (last.rating) {
       if (last.rating <= 2) {
-        factors.push({ label: 'Погане самопочуття минулого разу', impact: -5 });
+        factors.push({ labelKey: 'rfPoorLast', impact: -5 });
         score -= 5;
       } else if (last.rating >= 5) {
-        factors.push({ label: 'Відмінне самопочуття', impact: +5 });
+        factors.push({ labelKey: 'rfGreatFeel', impact: +5 });
         score += 5;
       }
     }
@@ -766,27 +769,27 @@ export function getRecoveryScore(
   // Factor 4: wellbeing (sleep + stress + mood)
   if (wellbeing) {
     if (wellbeing.sleep < 5) {
-      factors.push({ label: 'Мало сну (<5 год)', impact: -15 });
+      factors.push({ labelKey: 'rfLowSleep', impact: -15 });
       score -= 15;
     } else if (wellbeing.sleep < 7) {
-      factors.push({ label: 'Сон 5–7 год', impact: -5 });
+      factors.push({ labelKey: 'rfMidSleep', impact: -5 });
       score -= 5;
     } else if (wellbeing.sleep >= 8) {
-      factors.push({ label: 'Добрий сон (8+ год)', impact: +10 });
+      factors.push({ labelKey: 'rfGoodSleep', impact: +10 });
       score += 10;
     }
     if (wellbeing.stress >= 4) {
-      factors.push({ label: 'Високий стрес', impact: -10 });
+      factors.push({ labelKey: 'rfHighStress', impact: -10 });
       score -= 10;
     } else if (wellbeing.stress <= 2) {
-      factors.push({ label: 'Низький стрес', impact: +5 });
+      factors.push({ labelKey: 'rfLowStress', impact: +5 });
       score += 5;
     }
     if (wellbeing.mood >= 4) {
-      factors.push({ label: 'Хороший настрій', impact: +5 });
+      factors.push({ labelKey: 'rfGoodMood', impact: +5 });
       score += 5;
     } else if (wellbeing.mood <= 2) {
-      factors.push({ label: 'Поганий настрій', impact: -5 });
+      factors.push({ labelKey: 'rfBadMood', impact: -5 });
       score -= 5;
     }
   }
@@ -810,6 +813,38 @@ export function getRecoveryScore(
 
 // ─── Progressive Overload Suggestion ─────────────────────────────────────────
 
+/** Що радимо цього разу — кодом; фразу збирає форма запису. */
+export type OverloadMessage =
+  | { kind: 'holdWeight'; rpe: number; weight: number; reps: number }
+  | { kind: 'addWeightRpe'; rpe: number; add: number; target: number }
+  | { kind: 'tryAdd'; weight: number; reps: number; add: number }
+  | { kind: 'progressing'; add: number; from: number }
+  | { kind: 'moreReps'; from: number; to: number }
+  | { kind: 'readyToAdd'; add: number }
+  | { kind: 'repsAtWeight'; reps: number; weight: number; add: number }
+  | { kind: 'holdAim'; weight: number; reps: number };
+
+const OVERLOAD_KEY: Record<OverloadMessage['kind'], string> = {
+  holdWeight: 'olHoldWeight', addWeightRpe: 'olAddWeightRpe', tryAdd: 'olTryAdd',
+  progressing: 'olProgressing', moreReps: 'olMoreReps', readyToAdd: 'olReadyToAdd',
+  repsAtWeight: 'olRepsAtWeight', holdAim: 'olHoldAim',
+};
+
+/** Підказка словами — збирає екран, бо тільки він знає мову. */
+export function overloadText(m: OverloadMessage, t: TFn): string {
+  const key = OVERLOAD_KEY[m.kind];
+  switch (m.kind) {
+    case 'holdWeight': return t(key, m.rpe, m.weight, m.reps);
+    case 'addWeightRpe': return t(key, m.rpe, m.add, m.target);
+    case 'tryAdd': return t(key, m.weight, m.reps, m.add);
+    case 'progressing': return t(key, m.add, m.from);
+    case 'moreReps': return t(key, m.from, m.to);
+    case 'readyToAdd': return t(key, m.add);
+    case 'repsAtWeight': return t(key, m.reps, m.weight, m.add);
+    case 'holdAim': return t(key, m.weight, m.reps);
+  }
+}
+
 export interface OverloadSuggestion {
   lastWeight: number;
   lastReps: number;
@@ -817,7 +852,7 @@ export interface OverloadSuggestion {
   lastDate: string;
   suggestedWeight: number;
   suggestedReps: number | string;
-  message: string; // short hint
+  message: OverloadMessage;
 }
 
 export function getOverloadSuggestion(
@@ -872,7 +907,7 @@ export function getOverloadSuggestion(
 
   let suggestedWeight = last.weight;
   let suggestedReps: number | string = last.reps;
-  let message = '';
+  let message: OverloadMessage = { kind: 'readyToAdd', add: increment };
 
   // RPE has priority: it tells how hard the last top set actually was
   if (last.rpe && last.rpe >= 9) {
@@ -880,7 +915,7 @@ export function getOverloadSuggestion(
       lastWeight: last.weight, lastReps: last.reps, lastSets: last.sets, lastDate: last.date,
       suggestedWeight: last.weight,
       suggestedReps: last.reps,
-      message: `Минулого разу RPE ${last.rpe} — закріпи ${last.weight}кг × ${last.reps}, без додавання ваги`,
+      message: { kind: 'holdWeight', rpe: last.rpe, weight: last.weight, reps: last.reps },
     };
   }
   if (last.rpe && last.rpe <= 7) {
@@ -888,14 +923,14 @@ export function getOverloadSuggestion(
       lastWeight: last.weight, lastReps: last.reps, lastSets: last.sets, lastDate: last.date,
       suggestedWeight: last.weight + increment,
       suggestedReps: last.reps,
-      message: `RPE ${last.rpe} — був запас, додай +${increment}кг (${last.weight + increment}кг)`,
+      message: { kind: 'addWeightRpe', rpe: last.rpe, add: increment, target: last.weight + increment },
     };
   }
 
   if (!prev) {
     // Only one session — suggest slight increase
     suggestedWeight = last.weight + increment;
-    message = `Минулого разу: ${last.weight}кг × ${last.reps}. Спробуй +${increment}кг`;
+    message = { kind: 'tryAdd', weight: last.weight, reps: last.reps, add: increment };
   } else {
     const sameWeight = last.weight === prev.weight;
     const moreReps = last.reps > prev.reps;
@@ -905,25 +940,25 @@ export function getOverloadSuggestion(
       // Already progressing on weight — keep going if reps were good
       if (last.reps >= 6) {
         suggestedWeight = last.weight + increment;
-        message = `Прогресуєш (+${increment}кг від ${last.weight}кг)`;
+        message = { kind: 'progressing', add: increment, from: last.weight };
       } else {
         suggestedWeight = last.weight;
         suggestedReps = `${last.reps + 1}–${last.reps + 2}`;
-        message = `Збільш кількість повторів до ${last.reps + 1}–${last.reps + 2}`;
+        message = { kind: 'moreReps', from: last.reps + 1, to: last.reps + 2 };
       }
     } else if (sameWeight && moreReps) {
       // Same weight, more reps — time to increase weight
       suggestedWeight = last.weight + increment;
-      message = `Готовий до +${increment}кг (повтори зросли)`;
+      message = { kind: 'readyToAdd', add: increment };
     } else if (sameWeight && last.reps >= 10) {
       // Hit 10+ reps at same weight — definitely increase
       suggestedWeight = last.weight + increment;
-      message = `${last.reps} повт. @ ${last.weight}кг → +${increment}кг`;
+      message = { kind: 'repsAtWeight', reps: last.reps, weight: last.weight, add: increment };
     } else {
       // Same or less — hold weight, focus on reps
       suggestedWeight = last.weight;
       suggestedReps = `${last.reps + 1}`;
-      message = `Утримуй ${last.weight}кг, цільуйся в ${last.reps + 1} повт.`;
+      message = { kind: 'holdAim', weight: last.weight, reps: last.reps + 1 };
     }
   }
 

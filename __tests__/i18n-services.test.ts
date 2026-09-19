@@ -202,3 +202,41 @@ describe('порожній результат заміни', () => {
     }
   });
 });
+
+describe('аналітика й досягнення теж кодами', () => {
+  it('зони пульсу, групи м’язів і фактори — ключі, а не слова', () => {
+    const { getHRZoneSummary, getMuscleGroupBalance, getVolumeLandmarks } = require('../services/analytics');
+    const workouts = [
+      {
+        id: '1', date: '2026-09-01', workoutType: 'strength', duration: 60, avgHeartRate: 140,
+        exercises: [{ name: 'Присідання зі штангою на спині', sets: 5, reps: 5, weight: 100 }],
+      },
+    ];
+    for (const z of getHRZoneSummary(workouts, 35)) {
+      expect(z.labelKey).not.toMatch(CYRILLIC);
+      expect(en(z.labelKey)).not.toMatch(CYRILLIC);
+      expect(uk(z.labelKey)).toMatch(CYRILLIC);
+    }
+    for (const g of getMuscleGroupBalance(workouts)) {
+      expect(g.labelKey).not.toMatch(CYRILLIC);
+      expect(en(g.labelKey)).not.toMatch(CYRILLIC);
+    }
+    for (const v of getVolumeLandmarks(workouts, '2026-08-31', '2026-09-06')) {
+      expect(v.labelKey).not.toMatch(CYRILLIC);
+      expect(en(v.labelKey)).not.toMatch(CYRILLIC);
+    }
+  });
+
+  it('досягнення описані ключами', () => {
+    const { getAchievementDef } = require('../services/achievements');
+    const ids = ['first_workout', 'workouts_10', 'streak_7', 'first_run', 'heavy_session', 'early_bird'];
+    const list = ids.map((id: string) => getAchievementDef(id)).filter(Boolean);
+    expect(list.length).toBe(ids.length);
+    for (const a of list) {
+      expect(a.titleKey).not.toMatch(CYRILLIC);
+      expect(en(a.titleKey)).not.toMatch(CYRILLIC);
+      expect(en(a.descKey)).not.toMatch(CYRILLIC);
+      expect(uk(a.titleKey)).toMatch(CYRILLIC);
+    }
+  });
+});

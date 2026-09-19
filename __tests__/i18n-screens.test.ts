@@ -25,11 +25,32 @@ const TRANSLATED = [
   'components/SubstitutionSheet.tsx',
   'components/LibraryPicker.tsx',
   'components/ExerciseHowTo.tsx',
+  'app/(tabs)/journal.tsx',
+  'app/(tabs)/trainer.tsx',
+  'app/workout/log.tsx',
+  'app/(tabs)/goals.tsx',
+  'components/BarcodeScannerModal.tsx',
+  'components/RestTimer.tsx',
+  'app/(tabs)/progress.tsx',
+  'app/(tabs)/nutrition.tsx',
+  'app/workout/[id].tsx',
+  'app/onboarding/index.tsx',
   'components/SupersetBar.tsx',
   'components/DatePickerField.tsx',
 ];
 
 const CYRILLIC = /[А-Яа-яЇїІіЄєҐґ]/;
+
+/**
+ * Значення, які лишаються українськими навмисно.
+ *
+ * Обладнання профілю роками лежить у сховищі саме такими рядками — переклад
+ * зламав би дані користувача. На екрані показується t(key), не цей id.
+ */
+const ALLOWED = new Set([
+  'Штанга', 'Гантелі', 'Турнік', 'Брусся', 'Гирі', 'Еспандер',
+  'Тренажерний зал', 'Бігова доріжка', 'Скакалка', 'Лише власна вага',
+]);
 
 /**
  * Прибрати коментарі. Українською в коді написані саме вони, тож без цього
@@ -46,7 +67,7 @@ function ukrainianLiterals(src: string): string[] {
   const code = stripComments(src);
   const out: string[] = [];
   const literal = /(['"`])((?:(?!\1)[^\\\n]){0,200}?[А-Яа-яЇїІіЄєҐґ](?:(?!\1)[^\\\n])*?)\1/g;
-  for (const m of code.matchAll(literal)) out.push(m[2]);
+  for (const m of code.matchAll(literal)) if (!ALLOWED.has(m[2])) out.push(m[2]);
   // текст просто в розмітці: <Text>Зберегти</Text>
   const jsx = />\s*([^<>{}\n]*[А-Яа-яЇїІіЄєҐґ][^<>{}\n]*?)\s*</g;
   for (const m of code.matchAll(jsx)) out.push(m[1].trim());

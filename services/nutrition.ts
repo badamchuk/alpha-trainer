@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile } from '../types';
+import { translate } from './i18n';
 
 const KEY = '@alpha_trainer:nutrition';
 const GOALS_KEY = '@alpha_trainer:nutrition_goals';
@@ -322,8 +323,8 @@ export async function computeAdaptiveTDEE(
     );
     const diff = estimatedTDEE - currentGoalTDEE;
     if (Math.abs(diff) > 150) {
-      const dir = diff > 0 ? 'вище' : 'нижче';
-      suggestion = `Твій реальний TDEE ~${estimatedTDEE} ккал — ${Math.abs(diff)} ккал ${dir} від поточних налаштувань. Оновити ціль?`;
+      const dir = translate(diff > 0 ? 'aboveWord' : 'belowWord');
+      suggestion = translate('tdeeSuggestion', estimatedTDEE, Math.abs(diff), dir);
     }
   }
 
@@ -405,11 +406,11 @@ export function computeFoodCorrelation(
 
     let insight: string;
     if (rh > rl + 0.3) {
-      insight = `Після дня з ≥85% нормою ккал оцінки вищі (${rh} vs ${rl}). Не скорочуй вуглеводи перед тренуванням.`;
+      insight = translate('insightBetterFed', rh, rl);
     } else if (rl > rh + 0.3) {
-      insight = `Ти тренуєшся краще в легший день харчування (оцінка ${rl} vs ${rh}).`;
+      insight = translate('insightBetterLight', rl, rh);
     } else if (dh > dl + 5) {
-      insight = `Після хорошого харчування тренування на ${dh - dl} хв довші в середньому.`;
+      insight = translate('insightLongerAfterFood', dh - dl);
     } else {
       return null; // no meaningful correlation
     }
@@ -422,8 +423,8 @@ export function computeFoodCorrelation(
     };
   }
 
-  const si = buildInsight(strengthSamples, 'Силові тренування');
-  const ci = buildInsight(cardioSamples, 'Кардіо / Біг');
+  const si = buildInsight(strengthSamples, translate('insightStrengthGroup'));
+  const ci = buildInsight(cardioSamples, translate('insightCardioGroup'));
   if (si) insights.push(si);
   if (ci) insights.push(ci);
 

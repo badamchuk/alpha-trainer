@@ -14,12 +14,12 @@ import { useLocale } from '../../services/i18n';
 import DatePickerField from '../../components/DatePickerField';
 
 const GOAL_TYPES = [
-  { id: 'strength', label: 'Сила', icon: 'barbell-outline', color: '#E63946' },
-  { id: 'endurance', label: 'Витривалість', icon: 'bicycle-outline', color: '#2EC4B6' },
-  { id: 'weight_loss', label: 'Схуднення', icon: 'trending-down-outline', color: '#F4A261' },
-  { id: 'muscle_gain', label: 'М\'язова маса', icon: 'fitness-outline', color: '#9B59B6' },
-  { id: 'flexibility', label: 'Гнучкість', icon: 'body-outline', color: '#3498DB' },
-  { id: 'custom', label: 'Власна', icon: 'star-outline', color: '#95A5A6' },
+  { id: 'strength', key: 'goalStrength', icon: 'barbell-outline', color: '#E63946' },
+  { id: 'endurance', key: 'goalEndurance', icon: 'bicycle-outline', color: '#2EC4B6' },
+  { id: 'weight_loss', key: 'goalWeightLoss', icon: 'trending-down-outline', color: '#F4A261' },
+  { id: 'muscle_gain', key: 'goalMuscle', icon: 'fitness-outline', color: '#9B59B6' },
+  { id: 'flexibility', key: 'goalFlexibility', icon: 'body-outline', color: '#3498DB' },
+  { id: 'custom', key: 'goalCustom', icon: 'star-outline', color: '#95A5A6' },
 ];
 
 export default function GoalsScreen() {
@@ -59,7 +59,7 @@ export default function GoalsScreen() {
 
   async function handleSave() {
     if (!form.title.trim() || !form.target.trim()) {
-      Alert.alert('Заповни назву та ціль');
+      Alert.alert(t('fillTitleAndTarget'));
       return;
     }
     if (editGoal) {
@@ -95,8 +95,8 @@ export default function GoalsScreen() {
   async function handleDelete(id: string) {
     const goal = goals.find((g) => g.id === id);
     Alert.alert(
-      'Видалити ціль?',
-      goal ? `«${goal.title}» буде видалено назавжди.` : 'Ціль буде видалено назавжди.',
+      t('deleteGoalQuestion'),
+      goal ? t('deleteGoalNamed', goal.title) : t('deleteGoalPlain'),
       [
         { text: t('cancel'), style: 'cancel' },
         { text: t('delete'), style: 'destructive', onPress: async () => { await deleteGoal(id); await loadGoals(); } },
@@ -165,50 +165,50 @@ export default function GoalsScreen() {
           </View>
 
           <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            <Text style={styles.fieldLabel}>Назва цілі</Text>
+            <Text style={styles.fieldLabel}>{t('goalTitleLabel')}</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="наприклад: 20 підтягувань"
+              placeholder={t('goalTitlePlaceholder')}
               placeholderTextColor={Colors.textMuted}
               value={form.title}
               onChangeText={(t) => setForm((f) => ({ ...f, title: t }))}
             />
 
-            <Text style={styles.fieldLabel}>Тип</Text>
+            <Text style={styles.fieldLabel}>{t('goalTypeLabel')}</Text>
             <View style={styles.typeGrid}>
-              {GOAL_TYPES.map((t) => (
+              {GOAL_TYPES.map((gt) => (
                 <TouchableOpacity
-                  key={t.id}
-                  style={[styles.typeBtn, form.type === t.id && { backgroundColor: t.color + '20', borderColor: t.color + '60' }]}
-                  onPress={() => setForm((f) => ({ ...f, type: t.id as Goal['type'] }))}
+                  key={gt.id}
+                  style={[styles.typeBtn, form.type === gt.id && { backgroundColor: gt.color + '20', borderColor: gt.color + '60' }]}
+                  onPress={() => setForm((f) => ({ ...f, type: gt.id as Goal['type'] }))}
                 >
-                  <Ionicons name={t.icon as any} size={20} color={form.type === t.id ? t.color : Colors.textMuted} />
-                  <Text style={[styles.typeBtnText, form.type === t.id && { color: t.color }]}>{t.label}</Text>
+                  <Ionicons name={gt.icon as any} size={20} color={form.type === gt.id ? gt.color : Colors.textMuted} />
+                  <Text style={[styles.typeBtnText, form.type === gt.id && { color: gt.color }]}>{t(gt.key)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.fieldLabel}>Ціль (що хочеш досягти)</Text>
+            <Text style={styles.fieldLabel}>{t('goalTargetLabel')}</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="наприклад: Підтягуватися 20 разів без зупинки"
+              placeholder={t('goalTargetPlaceholder')}
               placeholderTextColor={Colors.textMuted}
               value={form.target}
               onChangeText={(t) => setForm((f) => ({ ...f, target: t }))}
               multiline
             />
 
-            <Text style={styles.fieldLabel}>Поточний стан (необов'язково)</Text>
+            <Text style={styles.fieldLabel}>{t('goalCurrentLabel')}</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="наприклад: зараз 8 разів"
+              placeholder={t('goalCurrentPlaceholder')}
               placeholderTextColor={Colors.textMuted}
               value={form.currentValue}
               onChangeText={(t) => setForm((f) => ({ ...f, currentValue: t }))}
             />
 
             <DatePickerField
-              label="Дедлайн (необов'язково)"
+              label={t('goalDeadlineLabel')}
               value={form.deadline}
               onChange={(d) => setForm((f) => ({ ...f, deadline: d }))}
               minimumDate={new Date()}

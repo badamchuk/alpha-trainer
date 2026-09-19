@@ -7,7 +7,6 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, parseISO } from 'date-fns';
-import { uk } from 'date-fns/locale';
 import { Colors, Spacing, BorderRadius, Typography } from '../../constants/theme';
 import {
   getWorkouts, deleteWorkout, updateWorkout, addWorkout, getUserProfile, getWeightLog, WeightEntry,
@@ -16,7 +15,7 @@ import { WorkoutEntry, ExerciseLog, WorkoutType, SetType, SetDetail, UserProfile
 import DatePickerField from '../../components/DatePickerField';
 import SupersetBar from '../../components/SupersetBar';
 import { computePace, formatPace } from '../../services/analytics';
-import { useLocale } from '../../services/i18n';
+import { dateLocale, TFn, useLocale } from '../../services/i18n';
 import {
   getSupersetColor, groupIntoSuperset, ungroupSuperset, normalizeSupersets,
   moveExercise, canMoveExercise,
@@ -26,14 +25,11 @@ import {
 } from '../../services/calories';
 import { buildResolver } from '../../services/exerciseLinks';
 import type { ExerciseResolver } from '../../services/exerciseMatch';
+import { WORKOUT_TYPE_KEYS } from '../../services/planParser';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
-const TYPE_LABELS: Record<string, string> = {
-  strength: 'Силове', cardio: 'Кардіо', crossfit: 'CrossFit',
-  hiit: 'HIIT', yoga: 'Йога', recovery: 'Відновлення',
-  run: 'Біг', cycling: 'Велосипед', swimming: 'Плавання', custom: 'Інше',
-};
+const TYPE_KEY: Record<string, string> = { ...WORKOUT_TYPE_KEYS, custom: 'wtOther' };
 
 const TYPE_ICONS: Record<string, string> = {
   strength: 'barbell-outline', cardio: 'heart-outline', crossfit: 'flash-outline',
@@ -47,22 +43,12 @@ const TYPE_COLORS: Record<string, string> = {
   run: '#2ECC71', cycling: '#E67E22', swimming: '#1ABC9C', custom: '#95A5A6',
 };
 
-const WORKOUT_TYPES: { id: WorkoutType; label: string; icon: string }[] = [
-  { id: 'strength', label: 'Силове', icon: 'barbell-outline' },
-  { id: 'cardio', label: 'Кардіо', icon: 'heart-outline' },
-  { id: 'crossfit', label: 'CrossFit', icon: 'flash-outline' },
-  { id: 'hiit', label: 'HIIT', icon: 'timer-outline' },
-  { id: 'run', label: 'Біг', icon: 'walk-outline' },
-  { id: 'yoga', label: 'Йога', icon: 'leaf-outline' },
-  { id: 'recovery', label: 'Відновлення', icon: 'bed-outline' },
-  { id: 'cycling', label: 'Велосипед', icon: 'bicycle-outline' },
-  { id: 'swimming', label: 'Плавання', icon: 'water-outline' },
-  { id: 'custom', label: 'Інше', icon: 'ellipsis-horizontal-outline' },
-];
+const WORKOUT_TYPES: { id: WorkoutType; icon: string }[] =
+  (Object.keys(TYPE_ICONS) as WorkoutType[]).map((id) => ({ id, icon: TYPE_ICONS[id] }));
 
 export default function WorkoutDetailScreen() {
   const router = useRouter();
-  const { t } = useLocale();
+  const { t, lang } = useLocale();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [workout, setWorkout] = useState<WorkoutEntry | null>(null);
@@ -126,18 +112,18 @@ export default function WorkoutDetailScreen() {
   async function handleShare() {
     if (!workout) return;
     const lines = [
-      `${TYPE_LABELS[workout.workoutType] ?? workout.workoutType} — ${
-        format(parseISO(workout.date), 'd MMMM yyyy', { locale: uk })}`,
-      `${workout.duration} хв${kcal ? ` · ≈${roundKcal(kcal.total)} ккал` : ''}`,
+      `${t(TYPE_KEY[workout.workoutType] ?? workout.workoutType)} — ${
+        format(parseISO(workout.date), 'd MMMM yyyy', { locale: dateLocale(lang) })}`,
+      `${t('minutesShort', workout.duration)}${kcal ? ` · ${t('kcalApprox', roundKcal(kcal.total))}` : ''}`,
       '',
     ];
     for (const e of workout.exercises) {
       const parts = [
-        e.sets && e.reps && e.weight ? `${e.sets}×${e.reps} × ${e.weight} кг`
+        e.sets && e.reps && e.weight ? t('setsByRepsWeight', e.sets, e.reps, e.weight)
           : e.sets && e.reps ? `${e.sets}×${e.reps}` : null,
-        e.distance ? `${e.distance} км` : null,
-        e.duration ? `${e.duration} хв` : null,
-        e.calories ? `${e.calories} ккал` : null,
+        e.distance ? t('kmValue', e.distance) : null,
+        e.duration ? t('minValue', e.duration) : null,
+        e.calories ? t('kcalValue', e.calories) : null,
       ].filter(Boolean);
       lines.push(`• ${e.name}${parts.length ? `: ${parts.join(', ')}` : ''}`);
     }
@@ -192,7 +178,7 @@ export default function WorkoutDetailScreen() {
       await updateWorkout(updated);
       setWorkout(updated);
     } catch {
-      Alert.alert('Помилка збереження');
+      Alert.alert(t('saveError'));
     }
   }
 
@@ -234,7 +220,7 @@ export default function WorkoutDetailScreen() {
   function addDraftSet() {
     const reps = parseNum(exReps);
     const weight = parseNum(exWeight);
-    if (!reps) { Alert.alert('Вкажи повтори для підходу'); return; }
+    if (!reps) { Alert.alert(t('setRepsNeeded')); return; }
     setDraftSets([...draftSets, { reps, weight }]);
   }
 
@@ -357,7 +343,7 @@ export default function WorkoutDetailScreen() {
       setEditing(false);
       setGroupMode(false);
     } catch {
-      Alert.alert('Помилка збереження');
+      Alert.alert(t('saveError'));
     } finally {
       setSaving(false);
     }
@@ -395,16 +381,16 @@ export default function WorkoutDetailScreen() {
           <View style={{ width: 24 }} />
         </View>
         <View style={styles.notFound}>
-          <Text style={{ color: Colors.textSecondary }}>Тренування не знайдено</Text>
+          <Text style={{ color: Colors.textSecondary }}>{t('workoutNotFound')}</Text>
         </View>
       </View>
     );
   }
 
   const color = TYPE_COLORS[workout.workoutType] || Colors.textMuted;
-  const label = TYPE_LABELS[workout.workoutType] || workout.workoutType;
+  const label = t(TYPE_KEY[workout.workoutType] ?? workout.workoutType);
   const typeIcon = TYPE_ICONS[workout.workoutType] || 'barbell-outline';
-  const dateFormatted = format(parseISO(workout.date), 'EEEE, d MMMM yyyy', { locale: uk });
+  const dateFormatted = format(parseISO(workout.date), 'EEEE, d MMMM yyyy', { locale: dateLocale(lang) });
   const params = bodyParamsFor(profile, weightLog, workout.date);
   const kcal = params ? estimateWorkoutCalories(workout, params, resolver) : null;
 
@@ -426,23 +412,25 @@ export default function WorkoutDetailScreen() {
 
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {/* Workout Type */}
-            <Text style={styles.label}>Тип тренування</Text>
+            <Text style={styles.label}>{t('workoutTypeTitle')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeList}>
-              {WORKOUT_TYPES.map((t) => (
+              {WORKOUT_TYPES.map((wt) => (
                 <TouchableOpacity
-                  key={t.id}
-                  style={[styles.typeChip, workoutType === t.id && { backgroundColor: TYPE_COLORS[t.id] + '20', borderColor: TYPE_COLORS[t.id] }]}
-                  onPress={() => setWorkoutType(t.id)}
+                  key={wt.id}
+                  style={[styles.typeChip, workoutType === wt.id && { backgroundColor: TYPE_COLORS[wt.id] + '20', borderColor: TYPE_COLORS[wt.id] }]}
+                  onPress={() => setWorkoutType(wt.id)}
                 >
-                  <Ionicons name={t.icon as any} size={18} color={workoutType === t.id ? TYPE_COLORS[t.id] : Colors.textMuted} />
-                  <Text style={[styles.typeChipText, workoutType === t.id && { color: TYPE_COLORS[t.id] }]}>{t.label}</Text>
+                  <Ionicons name={wt.icon as any} size={18} color={workoutType === wt.id ? TYPE_COLORS[wt.id] : Colors.textMuted} />
+                  <Text style={[styles.typeChipText, workoutType === wt.id && { color: TYPE_COLORS[wt.id] }]}>
+                    {t(TYPE_KEY[wt.id] ?? wt.id)}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
-            <DatePickerField label="Дата" value={date} onChange={setDate} maximumDate={new Date()} />
+            <DatePickerField label={t('dateLabel')} value={date} onChange={setDate} maximumDate={new Date()} />
 
-            <Text style={styles.label}>Тривалість (хв)</Text>
+            <Text style={styles.label}>{t('durationMinLabel')}</Text>
             <TextInput
               style={styles.input}
               value={duration}
@@ -454,15 +442,15 @@ export default function WorkoutDetailScreen() {
 
             {CARDIO_TYPES.includes(workoutType as WorkoutType) && (
               <View style={styles.cardioCard}>
-                <Text style={styles.cardioTitle}>Параметри кардіо</Text>
+                <Text style={styles.cardioTitle}>{t('cardioParams')}</Text>
                 <View style={styles.row}>
                   <View style={styles.rowItem}>
-                    <Text style={styles.miniLabel}>Дистанція (км)</Text>
+                    <Text style={styles.miniLabel}>{t('distanceKmLabel')}</Text>
                     <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                       value={totalDistance} onChangeText={setTotalDistance} keyboardType="decimal-pad" />
                   </View>
                   <View style={styles.rowItem}>
-                    <Text style={styles.miniLabel}>ккал (всього)</Text>
+                    <Text style={styles.miniLabel}>{t('kcalTotalLabel')}</Text>
                     <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                       value={totalCalories} onChangeText={setTotalCalories} keyboardType="numeric" />
                   </View>
@@ -474,12 +462,12 @@ export default function WorkoutDetailScreen() {
                 ) : null}
                 <View style={styles.row}>
                   <View style={styles.rowItem}>
-                    <Text style={styles.miniLabel}>ЧСС серед.</Text>
+                    <Text style={styles.miniLabel}>{t('hrAvgLabel')}</Text>
                     <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                       value={avgHeartRate} onChangeText={setAvgHeartRate} keyboardType="numeric" />
                   </View>
                   <View style={styles.rowItem}>
-                    <Text style={styles.miniLabel}>ЧСС макс.</Text>
+                    <Text style={styles.miniLabel}>{t('hrMaxLabel')}</Text>
                     <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                       value={maxHeartRate} onChangeText={setMaxHeartRate} keyboardType="numeric" />
                   </View>
@@ -487,7 +475,7 @@ export default function WorkoutDetailScreen() {
                 {workoutType === 'run' && (
                   <View style={styles.row}>
                     <View style={styles.rowItem}>
-                      <Text style={styles.miniLabel}>Набір висоти (м)</Text>
+                      <Text style={styles.miniLabel}>{t('elevationLabel')}</Text>
                       <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                         value={elevationGain} onChangeText={setElevationGain} keyboardType="numeric" />
                     </View>
@@ -498,7 +486,7 @@ export default function WorkoutDetailScreen() {
             )}
 
             {/* Rating */}
-            <Text style={styles.label}>Оцінка тренування</Text>
+            <Text style={styles.label}>{t('workoutRating')}</Text>
             <View style={styles.ratingRow}>
               {([1, 2, 3, 4, 5] as const).map((r) => (
                 <TouchableOpacity key={r} onPress={() => setRating(rating === r ? undefined : r)}>
@@ -512,24 +500,25 @@ export default function WorkoutDetailScreen() {
             </View>
 
             {/* Exercises list */}
-            <Text style={styles.label}>Вправи</Text>
-            <Text style={styles.editHint}>Торкнись вправи, щоб змінити її</Text>
+            <Text style={styles.label}>{t('exercisesTitle')}</Text>
+            <Text style={styles.editHint}>{t('tapExerciseToEdit')}</Text>
 
             {exercises.length > 1 && (
               <View style={styles.groupBar}>
                 {!groupMode ? (
                   <TouchableOpacity style={styles.groupBarBtn} onPress={toggleGroupMode}>
                     <Ionicons name="link-outline" size={15} color={Colors.textSecondary} />
-                    <Text style={styles.groupBarText}>Об'єднати в суперсет</Text>
+                    <Text style={styles.groupBarText}>{t('mergeIntoSuperset')}</Text>
                   </TouchableOpacity>
                 ) : (
                   // самі кнопки — на панелі внизу екрана, щоб не зникали при прокрутці
-                  <Text style={styles.groupBarHint}>Відміть вправи — «Об'єднати» внизу екрана</Text>
+                  <Text style={styles.groupBarHint}>{t('markExercisesHint')}</Text>
                 )}
               </View>
             )}
 
             {renderEditableExercises({
+              t,
               exercises,
               onRemove: removeExerciseAt,
               onEdit: startEditExercise,
@@ -544,33 +533,33 @@ export default function WorkoutDetailScreen() {
             {/* Add/edit exercise form */}
             <View style={styles.exerciseForm}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={styles.formSubtitle}>{editingExIdx !== null ? 'Редагувати вправу' : 'Додати вправу'}</Text>
+                <Text style={styles.formSubtitle}>{t(editingExIdx !== null ? 'editExercise' : 'addExercise')}</Text>
                 {editingExIdx !== null && (
                   <TouchableOpacity onPress={clearExForm}>
-                    <Text style={{ color: Colors.textMuted, fontSize: 13 }}>Скасувати</Text>
+                    <Text style={{ color: Colors.textMuted, fontSize: 13 }}>{t('cancel')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
               <TextInput
                 style={styles.input}
-                placeholder="Назва вправи"
+                placeholder={t('exerciseNameLabel')}
                 placeholderTextColor={Colors.textMuted}
                 value={exName}
                 onChangeText={setExName}
               />
               <View style={styles.row}>
                 <View style={styles.rowItem}>
-                  <Text style={styles.miniLabel}>Підходи</Text>
+                  <Text style={styles.miniLabel}>{t('setsLabel')}</Text>
                   <TextInput style={styles.input} placeholder="3" placeholderTextColor={Colors.textMuted}
                     value={exSets} onChangeText={setExSets} keyboardType="numeric" />
                 </View>
                 <View style={styles.rowItem}>
-                  <Text style={styles.miniLabel}>Повтори</Text>
+                  <Text style={styles.miniLabel}>{t('repsLabel')}</Text>
                   <TextInput style={styles.input} placeholder="12" placeholderTextColor={Colors.textMuted}
                     value={exReps} onChangeText={setExReps} keyboardType="numeric" />
                 </View>
                 <View style={styles.rowItem}>
-                  <Text style={styles.miniLabel}>Вага (кг)</Text>
+                  <Text style={styles.miniLabel}>{t('weightKgLabel')}</Text>
                   <TextInput style={styles.input} placeholder="50" placeholderTextColor={Colors.textMuted}
                     value={exWeight} onChangeText={setExWeight} keyboardType="decimal-pad" />
                 </View>
@@ -581,7 +570,7 @@ export default function WorkoutDetailScreen() {
                   {draftSets.map((s, i) => (
                     <View key={i} style={styles.draftSetChip}>
                       <Text style={styles.draftSetChipText}>
-                        {i + 1}) {s.weight ? `${s.weight}кг × ` : ''}{s.reps}
+                        {i + 1}) {s.weight ? t('weightBySets', s.weight) : ''}{s.reps}
                       </Text>
                       <TouchableOpacity onPress={() => removeDraftSet(i)} hitSlop={8}>
                         <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
@@ -594,31 +583,31 @@ export default function WorkoutDetailScreen() {
                 <Ionicons name="add-circle-outline" size={16} color={Colors.textSecondary} />
                 <Text style={styles.addSetBtnText}>
                   {draftSets.length > 0
-                    ? `Додати підхід ${draftSets.length + 1} (з полів вище)`
-                    : 'Записати підходи окремо (піраміда)'}
+                    ? t('addSetN', draftSets.length + 1)
+                    : t('logSetsSeparately')}
                 </Text>
               </TouchableOpacity>
 
               <View style={styles.row}>
                 <View style={styles.rowItem}>
-                  <Text style={styles.miniLabel}>Час (хв)</Text>
+                  <Text style={styles.miniLabel}>{t('timeMinLabel')}</Text>
                   <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={exDuration} onChangeText={setExDuration} keyboardType="numeric" />
                 </View>
                 <View style={styles.rowItem}>
-                  <Text style={styles.miniLabel}>Км</Text>
+                  <Text style={styles.miniLabel}>{t('kmLabel')}</Text>
                   <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={exDistance} onChangeText={setExDistance} keyboardType="decimal-pad" />
                 </View>
                 <View style={styles.rowItem}>
-                  <Text style={styles.miniLabel}>ккал</Text>
+                  <Text style={styles.miniLabel}>{t('kcalLabel')}</Text>
                   <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={exCalories} onChangeText={setExCalories} keyboardType="numeric" />
                 </View>
               </View>
               <View style={styles.row}>
                 <View style={styles.rowItem}>
-                  <Text style={styles.miniLabel}>Вати (вт)</Text>
+                  <Text style={styles.miniLabel}>{t('wattsLabel')}</Text>
                   <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={exWatts} onChangeText={setExWatts} keyboardType="numeric" />
                 </View>
@@ -638,7 +627,7 @@ export default function WorkoutDetailScreen() {
               <View style={styles.setTypeRow}>
                 {(['normal', 'warmup', 'dropset', 'failure'] as SetType[]).map((type) => {
                   const labels: Record<SetType, string> = {
-                    normal: 'Звичайний', warmup: 'Розминка', dropset: 'Дроп-сет', failure: 'Відмова',
+                    normal: t('setNormal'), warmup: t('setWarmup'), dropset: t('setDropset'), failure: t('setFailure'),
                   };
                   const colors: Record<SetType, string> = {
                     normal: Colors.primary, warmup: '#3498DB', dropset: '#F4A261', failure: '#E63946',
@@ -660,15 +649,15 @@ export default function WorkoutDetailScreen() {
 
               <TouchableOpacity style={[styles.addExBtn, editingExIdx !== null && { backgroundColor: Colors.accent }]} onPress={addExercise}>
                 <Ionicons name={editingExIdx !== null ? 'checkmark' : 'add'} size={20} color="#FFF" />
-                <Text style={styles.addExBtnText}>{editingExIdx !== null ? 'Зберегти зміни' : 'Додати'}</Text>
+                <Text style={styles.addExBtnText}>{t(editingExIdx !== null ? 'saveChanges' : 'add')}</Text>
               </TouchableOpacity>
             </View>
 
             {/* Notes */}
-            <Text style={styles.label}>Нотатки</Text>
+            <Text style={styles.label}>{t('notesTitle')}</Text>
             <TextInput
               style={[styles.input, styles.notesInput]}
-              placeholder="Як пройшло тренування?"
+              placeholder={t('howWasWorkout')}
               placeholderTextColor={Colors.textMuted}
               value={notes}
               onChangeText={setNotes}
@@ -706,7 +695,7 @@ export default function WorkoutDetailScreen() {
           {/* Підписана кнопка — сірий олівець серед трьох іконок ніхто не знаходив */}
           <TouchableOpacity onPress={enterEdit} style={styles.editPill}>
             <Ionicons name="create-outline" size={16} color="#FFF" />
-            <Text style={styles.editPillText}>Змінити</Text>
+            <Text style={styles.editPillText}>{t('changeBtn')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -739,16 +728,16 @@ export default function WorkoutDetailScreen() {
 
         {/* Stats */}
         <View style={styles.statsRow}>
-          <StatItem icon="time-outline" label="Тривалість" value={`${workout.duration} хв`} />
+          <StatItem icon="time-outline" label={t('durationStat')} value={t('minutesShort', workout.duration)} />
           {workout.totalDistance ? (
-            <StatItem icon="navigate-outline" label="Дистанція" value={`${workout.totalDistance} км`} />
+            <StatItem icon="navigate-outline" label={t('distanceStat')} value={t('kmValue', workout.totalDistance)} />
           ) : (
-            <StatItem icon="barbell-outline" label="Вправ" value={`${workout.exercises.length}`} />
+            <StatItem icon="barbell-outline" label={t('exercisesStat')} value={`${workout.exercises.length}`} />
           )}
           {workout.avgPace ? (
-            <StatItem icon="speedometer-outline" label="Темп" value={formatPace(workout.avgPace)} />
+            <StatItem icon="speedometer-outline" label={t('paceStat')} value={formatPace(workout.avgPace)} />
           ) : workout.exercises.some((e) => e.sets) ? (
-            <StatItem icon="repeat-outline" label="Підходів"
+            <StatItem icon="repeat-outline" label={t('setsStat')}
               value={`${workout.exercises.reduce((s, e) => s + (e.sets || 0), 0)}`} />
           ) : null}
         </View>
@@ -760,28 +749,28 @@ export default function WorkoutDetailScreen() {
               <View style={styles.cardioStatItem}>
                 <Ionicons name="heart-outline" size={14} color="#E63946" />
                 <Text style={styles.cardioStatVal}>{workout.avgHeartRate}</Text>
-                <Text style={styles.cardioStatLbl}>avg уд/хв</Text>
+                <Text style={styles.cardioStatLbl}>{t('bpmAvg')}</Text>
               </View>
             )}
             {workout.maxHeartRate && (
               <View style={styles.cardioStatItem}>
                 <Ionicons name="heart" size={14} color="#E63946" />
                 <Text style={styles.cardioStatVal}>{workout.maxHeartRate}</Text>
-                <Text style={styles.cardioStatLbl}>max уд/хв</Text>
+                <Text style={styles.cardioStatLbl}>{t('bpmMax')}</Text>
               </View>
             )}
             {workout.elevationGain && (
               <View style={styles.cardioStatItem}>
                 <Ionicons name="trending-up-outline" size={14} color={Colors.success} />
                 <Text style={styles.cardioStatVal}>{workout.elevationGain}</Text>
-                <Text style={styles.cardioStatLbl}>м висоти</Text>
+                <Text style={styles.cardioStatLbl}>{t('metersClimbed')}</Text>
               </View>
             )}
             {workout.totalCalories && (
               <View style={styles.cardioStatItem}>
                 <Ionicons name="flame-outline" size={14} color={Colors.accent} />
                 <Text style={styles.cardioStatVal}>{workout.totalCalories}</Text>
-                <Text style={styles.cardioStatLbl}>ккал</Text>
+                <Text style={styles.cardioStatLbl}>{t('kcalLabel')}</Text>
               </View>
             )}
           </View>
@@ -798,8 +787,8 @@ export default function WorkoutDetailScreen() {
               </Text>
               <Text style={styles.kcalHint}>
                 {kcal.estimated
-                  ? `оцінка під твої параметри: ${paramsLabel(params)}`
-                  : 'сума ккал, вписаних у вправи'}
+                  ? t('kcalEstimateFor', paramsLabel(params))
+                  : t('kcalSumOfExercises')}
               </Text>
             </View>
           </View>
@@ -809,22 +798,23 @@ export default function WorkoutDetailScreen() {
         {workout.exercises.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Вправи</Text>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{t('exercisesTitle')}</Text>
               {workout.exercises.length > 1 && !quickGroup && (
                 <TouchableOpacity style={styles.ssShortcut} onPress={startQuickGroup}>
                   <Ionicons name="link-outline" size={14} color={Colors.primary} />
-                  <Text style={styles.ssShortcutText}>Суперсет</Text>
+                  <Text style={styles.ssShortcutText}>{t('supersetLabel')}</Text>
                 </TouchableOpacity>
               )}
             </View>
             {quickGroup && (
               <Text style={styles.editHint}>
-                Відміть вправи й натисни «Об'єднати» внизу — збережеться одразу
+                {t('markAndMergeHint')}
               </Text>
             )}
             {renderDetailExercises(
               // «суперсет» з однієї вправи — артефакт запису, показуємо як звичайну
               normalizeSupersets(workout.exercises),
+              t,
               kcal?.perExercise,
               quickGroup ? { selected: groupSel, onToggle: toggleGroupSel, onUngroup: quickUngroup } : undefined,
             )}
@@ -834,7 +824,7 @@ export default function WorkoutDetailScreen() {
         {/* Notes */}
         {workout.notes ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Нотатки</Text>
+            <Text style={styles.sectionTitle}>{t('notesTitle')}</Text>
             <View style={styles.notesCard}>
               <Text style={styles.notesText}>{workout.notes}</Text>
             </View>
@@ -843,7 +833,7 @@ export default function WorkoutDetailScreen() {
 
         {workout.aiGeneratedPlan && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>AI план</Text>
+            <Text style={styles.sectionTitle}>{t('aiPlanTag')}</Text>
             <View style={[styles.notesCard, { borderColor: 'rgba(66,133,244,0.3)' }]}>
               <Text style={styles.notesText}>{workout.aiGeneratedPlan}</Text>
             </View>
@@ -855,7 +845,7 @@ export default function WorkoutDetailScreen() {
           count={groupSel.length}
           onCancel={endQuickGroup}
           onApply={applyQuickGroup}
-          cancelLabel="Готово"
+          cancelLabel={t('doneBtn')}
         />
       )}
     </View>
@@ -909,10 +899,12 @@ interface EditableListOpts {
   selected: number[];
   onToggleSel: (i: number) => void;
   onUngroup: (ssId: string) => void;
+  /** Переклад: це функція рендера, не компонент — хук сюди не поставиш. */
+  t: TFn;
 }
 
 function renderEditableExercises(o: EditableListOpts): React.ReactNode[] {
-  const { exercises, onRemove, onEdit, onMove, editingIdx, groupMode, selected, onToggleSel, onUngroup } = o;
+  const { exercises, onRemove, onEdit, onMove, editingIdx, groupMode, selected, onToggleSel, onUngroup, t } = o;
   const nodes: React.ReactNode[] = [];
   const seen = new Set<string>();
 
@@ -935,7 +927,7 @@ function renderEditableExercises(o: EditableListOpts): React.ReactNode[] {
           onPress={() => (groupMode ? onToggleSel(idx) : onEdit(idx))}
         >
           <Text style={styles.exerciseName}>{ex.name}</Text>
-          <Text style={styles.exerciseMeta}>{detailMeta(ex, ' · ')}</Text>
+          <Text style={styles.exerciseMeta}>{detailMeta(ex, ' · ', t)}</Text>
         </TouchableOpacity>
         {!groupMode && (
           <>
@@ -970,11 +962,11 @@ function renderEditableExercises(o: EditableListOpts): React.ReactNode[] {
         <View key={`ss_${ssId}`} style={[styles.supersetGroupView, { borderLeftColor: color }]}>
           <View style={styles.supersetHeaderView}>
             <Ionicons name="link-outline" size={12} color={color} />
-            <Text style={[styles.supersetLabelView, { color }]}>СУПЕРСЕТ</Text>
+            <Text style={[styles.supersetLabelView, { color }]}>{t('supersetCaps')}</Text>
             {!groupMode && (
               <TouchableOpacity onPress={() => onUngroup(ssId)} style={styles.ungroupBtn} hitSlop={6}>
                 <Ionicons name="unlink-outline" size={13} color={Colors.textMuted} />
-                <Text style={styles.ungroupBtnText}>Розгрупувати</Text>
+                <Text style={styles.ungroupBtnText}>{t('ungroup')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -992,20 +984,20 @@ function renderEditableExercises(o: EditableListOpts): React.ReactNode[] {
 const getSupersetColorDetail = getSupersetColor;
 
 // Формує підпис вправи; для set-by-set показує кожен підхід ("80×5 / 85×5 / 90×3")
-function detailMeta(ex: ExerciseLog, sep: string): string {
+function detailMeta(ex: ExerciseLog, sep: string, t: TFn): string {
   const base = ex.setsDetail && ex.setsDetail.length > 0
     ? [ex.setsDetail.map((s) => (s.weight ? `${s.weight}×${s.reps ?? '?'}` : `${s.reps ?? '?'}`)).join(' / ')]
     : [
-        ex.sets && `${ex.sets} підх.`,
-        ex.reps && `× ${ex.reps} повт.`,
-        ex.weight && `${ex.weight} кг`,
+        ex.sets && t('setsCountShort', ex.sets),
+        ex.reps && t('repsTimes', ex.reps),
+        ex.weight && t('kgValue', ex.weight),
       ];
   return [
     ...base,
-    ex.duration && `${ex.duration} хв`,
-    ex.distance && `${ex.distance} км`,
-    ex.calories && `${ex.calories} ккал`,
-    ex.watts && `${ex.watts} вт`,
+    ex.duration && t('minValue', ex.duration),
+    ex.distance && t('kmValue', ex.distance),
+    ex.calories && t('kcalValue', ex.calories),
+    ex.watts && t('wattsValue', ex.watts),
   ].filter(Boolean).join(sep);
 }
 
@@ -1032,6 +1024,7 @@ interface DetailSelect {
 
 function renderDetailExercises(
   exercises: ExerciseLog[],
+  t: TFn,
   kcal?: ExerciseCalories[],
   select?: DetailSelect,
 ): React.ReactNode[] {
@@ -1045,7 +1038,7 @@ function renderDetailExercises(
       <>
         <View style={styles.exerciseBody}>
           <Text style={styles.exerciseNameView}>{ex.name}</Text>
-          <Text style={styles.exerciseMetaView}>{detailMeta(ex, '  ')}</Text>
+          <Text style={styles.exerciseMetaView}>{detailMeta(ex, '  ', t)}</Text>
           {ex.notes && <Text style={styles.exerciseNotes}>{ex.notes}</Text>}
         </View>
         <KcalTag ex={ex} value={kcal?.[idx]} />
@@ -1092,7 +1085,7 @@ function renderDetailExercises(
         <View key={`ss_${ex.supersetId}`} style={[styles.supersetGroupView, { borderLeftColor: color }]}>
           <View style={styles.supersetHeaderView}>
             <Ionicons name="link-outline" size={12} color={color} />
-            <Text style={[styles.supersetLabelView, { color }]}>СУПЕРСЕТ</Text>
+            <Text style={[styles.supersetLabelView, { color }]}>{t('supersetCaps')}</Text>
             {select && (
               <TouchableOpacity
                 onPress={() => select.onUngroup(ex.supersetId!)}
@@ -1100,7 +1093,7 @@ function renderDetailExercises(
                 hitSlop={6}
               >
                 <Ionicons name="unlink-outline" size={13} color={Colors.textMuted} />
-                <Text style={styles.ungroupBtnText}>Розгрупувати</Text>
+                <Text style={styles.ungroupBtnText}>{t('ungroup')}</Text>
               </TouchableOpacity>
             )}
           </View>

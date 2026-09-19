@@ -9,6 +9,7 @@ import {
   getTimerPrefs, saveScheme, deleteScheme, recordRestUsed,
   recordWorkUsed, recordBreakUsed, TimerScheme,
 } from '../services/timerPrefs';
+import { TFn, useLocale } from '../services/i18n';
 
 type TimerMode = 'rest' | 'interval';
 type IvPhase = 'idle' | 'work' | 'rest' | 'done';
@@ -24,8 +25,8 @@ function fmt(s: number) {
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
-function secLabel(s: number) {
-  return s < 60 ? `${s}с` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+function secLabel(s: number, t: TFn) {
+  return s < 60 ? t('secCompact', s) : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 function parseTimeInput(raw: string): number | null {
   const s = raw.trim();
@@ -76,6 +77,7 @@ function TimePicker({
   onChange: (v: number) => void;
   recent: number[];
 }) {
+  const { t } = useLocale();
   const [editVisible, setEditVisible] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -106,7 +108,7 @@ function TimePicker({
 
         <TouchableOpacity onPress={openEdit} style={tp.timeBtn}>
           <Text style={tp.timeText}>{fmt(value)}</Text>
-          <Text style={tp.editHint}>↑ натисни</Text>
+          <Text style={tp.editHint}>{t('tapHint')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={tp.adjBtn} {...inc}>
@@ -119,7 +121,7 @@ function TimePicker({
         {[-30, -15, +15, +30].map((d) => (
           value + d >= 5 && (
             <TouchableOpacity key={d} style={tp.quickBtn} onPress={() => adjust(d)}>
-              <Text style={tp.quickTxt}>{d > 0 ? `+${d}с` : `${d}с`}</Text>
+              <Text style={tp.quickTxt}>{d > 0 ? t('plusSeconds', d) : t('secCompact', d)}</Text>
             </TouchableOpacity>
           )
         ))}
@@ -128,7 +130,7 @@ function TimePicker({
       {/* Recent row */}
       {recent.length > 0 && (
         <View style={tp.recentRow}>
-          <Text style={tp.recentLabel}>Останні:</Text>
+          <Text style={tp.recentLabel}>{t('recentLabel')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', gap: 6 }}>
               {recent.map((r) => (
@@ -138,7 +140,7 @@ function TimePicker({
                   onPress={() => onChange(r)}
                 >
                   <Text style={[tp.recentChipTxt, r === value && tp.recentChipTxtOn]}>
-                    {secLabel(r)}
+                    {secLabel(r, t)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -152,7 +154,7 @@ function TimePicker({
         <View style={tp.editOverlay}>
           <View style={tp.editCard}>
             <Text style={tp.editTitle}>Встанови {label.toLowerCase()}</Text>
-            <Text style={tp.editHintText}>Формат: М:СС або секунди</Text>
+            <Text style={tp.editHintText}>{t('timeFormatHint')}</Text>
             <TextInput
               style={tp.editInput}
               value={draft}
@@ -162,12 +164,12 @@ function TimePicker({
               selectTextOnFocus
               returnKeyType="done"
               onSubmitEditing={applyEdit}
-              placeholder="1:30 або 90"
+              placeholder={t('timeInputPlaceholder')}
               placeholderTextColor={Colors.textMuted}
             />
             <View style={tp.editActions}>
               <TouchableOpacity style={tp.editCancel} onPress={() => setEditVisible(false)}>
-                <Text style={tp.editCancelTxt}>Скасувати</Text>
+                <Text style={tp.editCancelTxt}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={tp.editConfirm} onPress={applyEdit}>
                 <Text style={tp.editConfirmTxt}>OK</Text>
@@ -182,6 +184,7 @@ function TimePicker({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function RestTimer({ visible, onClose, autoStart }: Props) {
+  const { t } = useLocale();
   const [mode, setMode] = useState<TimerMode>('rest');
 
   // Prefs loaded from storage
@@ -365,7 +368,7 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
             {(['rest', 'interval'] as TimerMode[]).map((m) => (
               <TouchableOpacity key={m} style={[s.tab, mode === m && s.tabOn]} onPress={() => setMode(m)}>
                 <Text style={[s.tabTxt, mode === m && s.tabTxtOn]}>
-                  {m === 'rest' ? 'Відпочинок' : 'Інтервали'}
+                  {t(m === 'rest' ? 'restTabTitle' : 'intervalsTab')}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -379,7 +382,7 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
             </TouchableOpacity>
             <TouchableOpacity style={s.schemeBtn} onPress={() => setSavingScheme(true)}>
               <Ionicons name="bookmark-outline" size={14} color={Colors.textSecondary} />
-              <Text style={[s.schemeBtnTxt, { color: Colors.textSecondary }]}>Зберегти</Text>
+              <Text style={[s.schemeBtnTxt, { color: Colors.textSecondary }]}>{t('save')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -389,7 +392,7 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
               // ─── REST ─────────────────────────────────────────────────────
               <>
                 <TimePicker
-                  label="Час відпочинку"
+                  label={t('restTimeLabel')}
                   value={restSecs}
                   onChange={pickRest}
                   recent={recentRest}
@@ -399,7 +402,7 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
                 {(restOn || restLeft !== restSecs) && (
                   <View style={[s.circle, restDone && s.circleDone]}>
                     <Text style={[s.timeText, restDone && s.timeDone]}>{fmt(restLeft)}</Text>
-                    {restDone && <Text style={s.doneLabel}>Готово!</Text>}
+                    {restDone && <Text style={s.doneLabel}>{t('done')}</Text>}
                   </View>
                 )}
                 {restOn && !restDone && (
@@ -414,11 +417,11 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
                     onPress={toggleRest}
                   >
                     <Text style={s.btnPrimaryTxt}>
-                      {restOn ? 'Пауза' : restDone ? 'Ще раз' : 'Старт'}
+                      {t(restOn ? 'pauseBtn' : restDone ? 'againBtn' : 'startBtn')}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={s.btnSec} onPress={onClose}>
-                    <Text style={s.btnSecTxt}>Закрити</Text>
+                    <Text style={s.btnSecTxt}>{t('close')}</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -428,7 +431,7 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
               <>
                 {/* Rounds */}
                 <View style={s.roundRow}>
-                  <Text style={s.roundLabel}>Раунди</Text>
+                  <Text style={s.roundLabel}>{t('roundsLabel')}</Text>
                   <View style={s.counter}>
                     <TouchableOpacity style={s.cBtn} onPress={() => setRounds((r) => Math.max(1, r - 1))}>
                       <Text style={s.cBtnTxt}>−</Text>
@@ -441,30 +444,32 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
                 </View>
 
                 <TimePicker
-                  label="Робота"
+                  label={t('workLabel')}
                   value={workSecs}
                   onChange={setWorkSecs}
                   recent={recentWork}
                 />
 
                 <TimePicker
-                  label="Відпочинок між раундами"
+                  label={t('restBetweenRounds')}
                   value={breakSecs}
                   onChange={setBreakSecs}
                   recent={recentBreak}
                 />
 
                 <View style={s.summary}>
-                  <Text style={s.summaryTxt}>{rounds} × {secLabel(workSecs)} + {secLabel(breakSecs)}</Text>
-                  <Text style={s.summaryTotal}>≈ {(totalSec / 60).toFixed(1)} хв</Text>
+                  <Text style={s.summaryTxt}>
+                    {rounds} × {secLabel(workSecs, t)} + {secLabel(breakSecs, t)}
+                  </Text>
+                  <Text style={s.summaryTotal}>≈ {t('minutesShort', (totalSec / 60).toFixed(1))}</Text>
                 </View>
 
                 <View style={[s.actions, { marginTop: Spacing.sm }]}>
                   <TouchableOpacity style={s.btnPrimary} onPress={startIv}>
-                    <Text style={s.btnPrimaryTxt}>Старт</Text>
+                    <Text style={s.btnPrimaryTxt}>{t('startBtn')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={s.btnSec} onPress={onClose}>
-                    <Text style={s.btnSecTxt}>Закрити</Text>
+                    <Text style={s.btnSecTxt}>{t('close')}</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -473,15 +478,15 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
               // ─── INTERVAL DONE ────────────────────────────────────────────
               <>
                 <View style={[s.circle, s.circleDone]}>
-                  <Text style={[s.timeText, s.timeDone]}>Готово!</Text>
+                  <Text style={[s.timeText, s.timeDone]}>{t('done')}</Text>
                 </View>
                 <Text style={s.doneRounds}>{rounds} раундів завершено</Text>
                 <View style={[s.actions, { marginTop: Spacing.md }]}>
                   <TouchableOpacity style={s.btnPrimary} onPress={resetIv}>
-                    <Text style={s.btnPrimaryTxt}>Ще раз</Text>
+                    <Text style={s.btnPrimaryTxt}>{t('againBtn')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={s.btnSec} onPress={onClose}>
-                    <Text style={s.btnSecTxt}>Закрити</Text>
+                    <Text style={s.btnSecTxt}>{t('close')}</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -492,13 +497,13 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
                 <View style={s.phaseRow}>
                   <View style={[s.phaseDot, { backgroundColor: phaseColor }]} />
                   <Text style={[s.phaseLabel, { color: phaseColor }]}>
-                    {ivPhase === 'work' ? 'РОБОТА' : 'ВІДПОЧИНОК'}
+                    {t(ivPhase === 'work' ? 'workCaps' : 'restCaps')}
                   </Text>
                 </View>
                 <Text style={s.roundLabelRunning}>Раунд {ivRound} / {rounds}</Text>
                 <View style={[s.circle, { borderColor: phaseColor }]}>
                   <Text style={s.timeText}>{fmt(ivLeft)}</Text>
-                  {ivPaused && <Text style={s.pausedLabel}>ПАУЗА</Text>}
+                  {ivPaused && <Text style={s.pausedLabel}>{t('pauseCaps')}</Text>}
                 </View>
                 <View style={s.bar}>
                   <View style={[s.barFill, { width: `${ivPct * 100}%` as any, backgroundColor: phaseColor }]} />
@@ -508,10 +513,10 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
                     style={[s.btnPrimary, ivPaused && { backgroundColor: Colors.accent }]}
                     onPress={toggleIvPause}
                   >
-                    <Text style={s.btnPrimaryTxt}>{ivPaused ? 'Продовжити' : 'Пауза'}</Text>
+                    <Text style={s.btnPrimaryTxt}>{t(ivPaused ? 'resumeBtn' : 'pauseBtn')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[s.btnSec, { borderColor: Colors.primary }]} onPress={resetIv}>
-                    <Text style={[s.btnSecTxt, { color: Colors.primary }]}>Зупинити</Text>
+                    <Text style={[s.btnSecTxt, { color: Colors.primary }]}>{t('stopBtn')}</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -525,12 +530,12 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
       <Modal visible={savingScheme} transparent animationType="fade" onRequestClose={() => setSavingScheme(false)}>
         <View style={s.overlay}>
           <View style={s.miniCard}>
-            <Text style={s.miniTitle}>Назва схеми</Text>
+            <Text style={s.miniTitle}>{t('schemeNameLabel')}</Text>
             <TextInput
               style={s.miniInput}
               value={schemeName}
               onChangeText={setSchemeName}
-              placeholder="Наприклад: Присідання 90с"
+              placeholder={t('schemeNamePlaceholder')}
               placeholderTextColor={Colors.textMuted}
               autoFocus
               returnKeyType="done"
@@ -538,10 +543,10 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
             />
             <View style={s.actions}>
               <TouchableOpacity style={s.btnSec} onPress={() => { setSavingScheme(false); setSchemeName(''); }}>
-                <Text style={s.btnSecTxt}>Скасувати</Text>
+                <Text style={s.btnSecTxt}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.btnPrimary} onPress={handleSaveScheme} disabled={!schemeName.trim()}>
-                <Text style={s.btnPrimaryTxt}>Зберегти</Text>
+                <Text style={s.btnPrimaryTxt}>{t('save')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -553,13 +558,13 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
         <View style={s.overlay}>
           <View style={[s.card, { maxHeight: '70%' }]}>
             <View style={s.schemesHeader}>
-              <Text style={s.schemesTitle}>Збережені схеми</Text>
+              <Text style={s.schemesTitle}>{t('savedSchemes')}</Text>
               <TouchableOpacity onPress={() => setSchemesOpen(false)}>
                 <Ionicons name="close" size={22} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
             {schemes.length === 0 ? (
-              <Text style={s.schemesEmpty}>Немає збережених схем.{'\n'}Налаштуй таймер і натисни «Зберегти».</Text>
+              <Text style={s.schemesEmpty}>{t('noSavedSchemes')}</Text>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false}>
                 {schemes.map((sc) => (
@@ -568,14 +573,15 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
                       <Text style={s.schemeItemName}>{sc.name}</Text>
                       <Text style={s.schemeItemMeta}>
                         {sc.mode === 'rest'
-                          ? `Відпочинок · ${secLabel(sc.restSecs)}`
-                          : `${sc.rounds} раундів · ${secLabel(sc.workSecs)} / ${secLabel(sc.breakSecs)}`}
+                          ? t('restSchemeSummary', secLabel(sc.restSecs, t))
+                          : t('roundsSchemeSummary', sc.rounds,
+                            secLabel(sc.workSecs, t), secLabel(sc.breakSecs, t))}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => Alert.alert('Видалити схему?', sc.name, [
-                        { text: 'Скасувати', style: 'cancel' },
-                        { text: 'Видалити', style: 'destructive', onPress: () => handleDeleteScheme(sc.id) },
+                      onPress={() => Alert.alert(t('deleteSchemeQuestion'), sc.name, [
+                        { text: t('cancel'), style: 'cancel' },
+                        { text: t('delete'), style: 'destructive', onPress: () => handleDeleteScheme(sc.id) },
                       ])}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >

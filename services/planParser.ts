@@ -208,6 +208,7 @@ export const WORKOUT_TYPE_KEYS: Record<string, string> = {
   strength: 'wtStrength', cardio: 'wtCardio', crossfit: 'wtCrossfit',
   hiit: 'wtHiit', yoga: 'wtYoga', recovery: 'wtRecovery',
   run: 'wtRun', cycling: 'wtCycling', swimming: 'wtSwimming', custom: 'wtCustom',
+  other: 'wtOther',
 };
 
 export const WORKOUT_TYPE_COLORS: Record<string, string> = {
