@@ -242,8 +242,8 @@ export default function ProgressScreen() {
 
       {/* Key Stats */}
       <View style={styles.statsGrid}>
-        <BigStat icon="flame-outline" color={Colors.primary} value={`${stats.streak}`} unit={t('daysInRow')} label={t('streak')} />
-        <BigStat icon="barbell-outline" color={Colors.success} value={`${stats.totalWorkouts}`} unit={t('workoutsWord')} label={t('totalLabel')} />
+        <BigStat icon="flame-outline" color={Colors.primary} value={`${stats.streak}`} unit={t('daysInRow', stats.streak)} label={t('streak')} />
+        <BigStat icon="barbell-outline" color={Colors.success} value={`${stats.totalWorkouts}`} unit={t('workoutsWord', stats.totalWorkouts)} label={t('totalLabel')} />
         <BigStat icon="calendar-outline" color={Colors.accent} value={`${stats.weeklyWorkouts}`} unit={t('thisWeekWord')} label={t('weeklyWord')} />
         <BigStat
           icon="timer-outline" color="#9B59B6"

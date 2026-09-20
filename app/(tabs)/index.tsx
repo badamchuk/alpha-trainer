@@ -356,7 +356,7 @@ export default function TodayScreen() {
 
       {/* Stats Row */}
       <View style={styles.statsRow}>
-        <StatCard label={t('streak')} value={`${stats.streak}`} unit={t('daysUnit')} icon="flame-outline" color={Colors.primary} />
+        <StatCard label={t('streak')} value={`${stats.streak}`} unit={t('daysUnit', stats.streak)} icon="flame-outline" color={Colors.primary} />
         <StatCard label={t('thisWeekLabel')} value={`${stats.weeklyWorkouts}`} unit={t('trainingsUnit')} icon="calendar-outline" color={Colors.success} />
         <StatCard label={t('totalLabel')} value={`${stats.totalWorkouts}`} unit={t('trainingsUnit')} icon="trophy-outline" color={Colors.accent} />
       </View>

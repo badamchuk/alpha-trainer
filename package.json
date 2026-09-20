@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "test": "jest",
     "typecheck": "tsc --noEmit",
-    "release": "node scripts/release.js"
+    "release": "node scripts/release.js",
+    "signing:setup": "node scripts/setup-signing.js"
   },
   "jest": {
     "preset": "jest-expo",

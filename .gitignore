@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# ключ підпису релізів — лише локально, ніколи в git
+*.keystore
+keystore.properties

@@ -10,6 +10,8 @@ import { loadLanguage } from '../services/i18n';
 import { promptIfUpdateAvailable } from '../services/updates';
 import { autoBackup } from '../services/backup';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Constants from 'expo-constants';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 export default function RootLayout() {
   useEffect(() => {
@@ -36,21 +38,23 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style="light" backgroundColor="#0D0D0D" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: '#0D0D0D' },
-          // 'fade_from_bottom' є плавнішою на Android ніж slide_from_right
-          animation: 'fade_from_bottom',
-          animationDuration: 200,
-        }}
-      >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding/index" options={{ headerShown: false, animation: 'fade' }} />
-        <Stack.Screen name="workout/log" options={{ presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="workout/[id]" options={{ presentation: 'modal', headerShown: false }} />
-      </Stack>
+      <ErrorBoundary version={Constants.expoConfig?.version}>
+        <StatusBar style="light" backgroundColor="#0D0D0D" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: '#0D0D0D' },
+            // 'fade_from_bottom' є плавнішою на Android ніж slide_from_right
+            animation: 'fade_from_bottom',
+            animationDuration: 200,
+          }}
+        >
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="onboarding/index" options={{ headerShown: false, animation: 'fade' }} />
+          <Stack.Screen name="workout/log" options={{ presentation: 'modal', headerShown: false }} />
+          <Stack.Screen name="workout/[id]" options={{ presentation: 'modal', headerShown: false }} />
+        </Stack>
+      </ErrorBoundary>
     </GestureHandlerRootView>
   );
 }

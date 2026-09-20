@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Alert, Switch, KeyboardAvoidingView, Platform,
-  Animated, Dimensions, Linking, Modal,
+  Animated, Dimensions, Linking, Modal, Share,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
@@ -24,6 +24,7 @@ import {
   backupErrorText,
 } from '../../services/backup';
 import Constants from 'expo-constants';
+import { CrashRecord, LAST_CRASH_KEY, crashReportText } from '../../components/ErrorBoundary';
 import { checkForUpdate, openUpdate, showUpdateAlert, UpdateInfo } from '../../services/updates';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -1487,7 +1488,15 @@ const autoBackupStyles = StyleSheet.create({
  * хеш коміту й час збірки показують, що саме зібрано.
  */
 function BuildInfo() {
-  const { t } = useLocale();
+  const { t, lang } = useLocale();
+  // Звіт про збій лишається в сховищі: людина закрила екран падіння — але
+  // надіслати його все ще можна звідси, з профілю.
+  const [crash, setCrash] = useState<CrashRecord | null>(null);
+  useEffect(() => {
+    AsyncStorage.getItem(LAST_CRASH_KEY)
+      .then((raw) => { if (raw) setCrash(JSON.parse(raw)); })
+      .catch(() => {});
+  }, []);
   const extra = (Constants.expoConfig?.extra ?? {}) as {
     gitHash?: string;
     gitDirty?: boolean;
@@ -1495,7 +1504,7 @@ function BuildInfo() {
   };
   const version = Constants.expoConfig?.version ?? '—';
   const built = extra.buildDate
-    ? new Date(extra.buildDate).toLocaleString('uk-UA', {
+    ? new Date(extra.buildDate).toLocaleString(lang === 'en' ? 'en-GB' : 'uk-UA', {
         day: '2-digit', month: '2-digit', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
       })
@@ -1535,10 +1544,21 @@ function BuildInfo() {
         </Text>
       </TouchableOpacity>
       <Text style={buildStyles.line}>
-        Версія {version} · {extra.gitHash ?? 'unknown'}
-        {extra.gitDirty ? '*' : ''}
+        {t('versionLine', version, `${extra.gitHash ?? 'unknown'}${extra.gitDirty ? '*' : ''}`)}
       </Text>
-      <Text style={buildStyles.line}>Зібрано {built}</Text>
+      <Text style={buildStyles.line}>{t('builtLine', built)}</Text>
+      {crash && (
+        <TouchableOpacity
+          style={buildStyles.crashRow}
+          onPress={() => Share.share({ message: crashReportText(crash) }).catch(() => {})}
+        >
+          <Ionicons name="warning-outline" size={13} color={Colors.warning} />
+          <Text style={buildStyles.crashText} numberOfLines={1}>
+            {t('lastCrashRow', crash.at.slice(0, 16).replace('T', ' '))}
+          </Text>
+          <Text style={buildStyles.crashSend}>{t('sendCrashReport')}</Text>
+        </TouchableOpacity>
+      )}
       {extra.gitDirty && (
         <Text style={buildStyles.dirty}>{t('buildDirty')}</Text>
       )}
@@ -1547,6 +1567,13 @@ function BuildInfo() {
 }
 
 const buildStyles = StyleSheet.create({
+  crashRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: Spacing.sm, paddingHorizontal: Spacing.sm, paddingVertical: 6,
+    backgroundColor: `${Colors.warning}15`, borderRadius: BorderRadius.sm,
+  },
+  crashText: { ...Typography.bodySmall, color: Colors.textSecondary, fontSize: 11, flex: 1 },
+  crashSend: { ...Typography.bodySmall, color: Colors.primary, fontSize: 11, fontWeight: '700' },
   wrap: { alignItems: 'center', paddingVertical: Spacing.lg, gap: 2 },
   updateBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,

@@ -95,6 +95,13 @@ try {
   // перший реліз — тегів ще немає
 }
 
+const ownKey = fs.existsSync(path.join(ROOT, 'android/keystore.properties'));
+console.log(ownKey
+  ? '\nПідпис: власний ключ релізу'
+  : '\nПідпис: debug-ключ Android SDK. Для роздачі людям краще свій:'
+    + ' npm run signing:setup (увага: встановлені додатки після зміни ключа'
+    + ' оновитись не зможуть — лише перевстановлення).');
+
 console.log(`\nРеліз ${pkg.version} → ${version} (versionCode ${versionCode})`
   + (prevTag ? `, зміни з ${prevTag}` : ', перший'));
 

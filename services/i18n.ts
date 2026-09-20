@@ -101,7 +101,12 @@ const translations: Record<Lang, Record<string, StringValue>> = {
     relax: 'Відновлюйся та готуйся',
     logBtn: 'Записати',
     streak: 'Серія',
-    daysUnit: 'днів',
+    daysUnit: (n: number) => {
+      const m10 = n % 10, m100 = n % 100;
+      if (m10 === 1 && m100 !== 11) return 'день';
+      if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'дні';
+      return 'днів';
+    },
     thisWeekLabel: 'Цього тижня',
     totalLabel: 'Загалом',
     trainingsUnit: 'трен.',
@@ -694,8 +699,18 @@ const translations: Record<Lang, Record<string, StringValue>> = {
     // прогрес
     enterAtLeastOneMeasure: 'Введи хоча б один вимір',
     enterValidWeight: 'Введи коректну вагу (20–300 кг)',
-    daysInRow: 'днів поспіль',
-    workoutsWord: 'тренувань',
+    daysInRow: (n: number) => {
+      const m10 = n % 10, m100 = n % 100;
+      if (m10 === 1 && m100 !== 11) return 'день поспіль';
+      if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'дні поспіль';
+      return 'днів поспіль';
+    },
+    workoutsWord: (n: number) => {
+      const m10 = n % 10, m100 = n % 100;
+      if (m10 === 1 && m100 !== 11) return 'тренування';
+      if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'тренування';
+      return 'тренувань';
+    },
     thisWeekWord: 'цього тижня',
     weeklyWord: 'Тижнево',
     hoursMinutes: '{0}г {1}хв',
@@ -808,6 +823,14 @@ const translations: Record<Lang, Record<string, StringValue>> = {
     unknownProduct: 'Невідомий продукт',
     dishFromPhoto: 'Страва з фото',
     noAiKey: 'Немає жодного AI-ключа',
+    crashTitle: 'Щось пішло не так',
+    crashText: 'Екран впав, але дані на місці. Надішли звіт — і повертайся в додаток.',
+    crashSend: 'Надіслати звіт',
+    crashBack: 'Повернутись у додаток',
+    versionLine: 'Версія {0} · {1}',
+    builtLine: 'Зібрано {0}',
+    lastCrashRow: 'Останній збій: {0}',
+    sendCrashReport: 'Надіслати',
     geminiNotInit: 'Gemini не ініціалізовано. Додай API ключ у налаштуваннях.',
     groqNotInit: 'Groq не ініціалізовано. Додай API ключ у налаштуваннях.',
     allGeminiDown: 'Всі моделі Gemini недоступні',
@@ -1206,7 +1229,7 @@ const translations: Record<Lang, Record<string, StringValue>> = {
     relax: 'Rest & recover',
     logBtn: 'Log',
     streak: 'Streak',
-    daysUnit: 'days',
+    daysUnit: (n: number) => (n === 1 ? 'day' : 'days'),
     thisWeekLabel: 'This week',
     totalLabel: 'Total',
     trainingsUnit: 'workouts',
@@ -1796,8 +1819,8 @@ const translations: Record<Lang, Record<string, StringValue>> = {
     // progress
     enterAtLeastOneMeasure: 'Enter at least one measurement',
     enterValidWeight: 'Enter a valid weight (20–300 kg)',
-    daysInRow: 'days in a row',
-    workoutsWord: 'workouts',
+    daysInRow: (n: number) => (n === 1 ? 'day in a row' : 'days in a row'),
+    workoutsWord: (n: number) => (n === 1 ? 'workout' : 'workouts'),
     thisWeekWord: 'this week',
     weeklyWord: 'Weekly',
     hoursMinutes: '{0}h {1}m',
@@ -1910,6 +1933,14 @@ const translations: Record<Lang, Record<string, StringValue>> = {
     unknownProduct: 'Unknown product',
     dishFromPhoto: 'Dish from a photo',
     noAiKey: 'No AI key at all',
+    crashTitle: 'Something went wrong',
+    crashText: 'The screen crashed, but your data is safe. Send the report and go back in.',
+    crashSend: 'Send the report',
+    crashBack: 'Back to the app',
+    versionLine: 'Version {0} · {1}',
+    builtLine: 'Built {0}',
+    lastCrashRow: 'Last crash: {0}',
+    sendCrashReport: 'Send',
     geminiNotInit: 'Gemini is not set up. Add an API key in settings.',
     groqNotInit: 'Groq is not set up. Add an API key in settings.',
     allGeminiDown: 'All Gemini models are unavailable',
