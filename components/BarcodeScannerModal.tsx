@@ -255,7 +255,7 @@ export default function BarcodeScannerModal({ visible, onClose, onConfirm }: Pro
                     </View>
                     <View style={styles.resultMacros}>
                       <Text style={styles.resultCal}>{item.calories} {t('kcalLabel')}</Text>
-                      <Text style={styles.resultMacroDetail}>Б{item.protein}·В{item.carbs}·Ж{item.fat}</Text>
+                      <Text style={styles.resultMacroDetail}>{t('macroCompact', item.protein, item.carbs, item.fat)}</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} style={{ marginLeft: 4 }} />
                   </TouchableOpacity>

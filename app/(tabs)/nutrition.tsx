@@ -547,7 +547,7 @@ export default function NutritionScreen() {
             <View style={styles.calRow}>
               <View style={styles.calLeft}>
                 <Text style={styles.calNum}>{totals.calories}</Text>
-                <Text style={styles.calOf}>/ {goals.calories} ккал</Text>
+                <Text style={styles.calOf}>{t('kcalOfGoal', goals.calories)}</Text>
               </View>
               <View style={[styles.modeBadge, { backgroundColor: MODE_COLORS[goals.mode] + '22', borderColor: MODE_COLORS[goals.mode] + '44' }]}>
                 <Text style={[styles.modeText, { color: MODE_COLORS[goals.mode] }]}>{t(MODE_KEY[goals.mode])}</Text>
@@ -618,7 +618,7 @@ export default function NutritionScreen() {
                     <Text style={styles.mealName}>{meal.name}</Text>
                   </View>
                   <View style={styles.mealHeaderRight}>
-                    <Text style={styles.mealCal}>{meal.calories} ккал</Text>
+                    <Text style={styles.mealCal}>{t('kcalValue', meal.calories)}</Text>
                     <TouchableOpacity onPress={() => openRepeatMeal(meal)} style={{ padding: 4 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Ionicons name="copy-outline" size={17} color={Colors.textMuted} />
                     </TouchableOpacity>
@@ -631,15 +631,15 @@ export default function NutritionScreen() {
                   </View>
                 </View>
                 <View style={styles.mealMacros}>
-                  <Text style={styles.mealMacroText}>Б: {meal.protein}г</Text>
+                  <Text style={styles.mealMacroText}>{t('proteinColon', meal.protein)}</Text>
                   <Text style={styles.mealMacroDivider}>·</Text>
-                  <Text style={styles.mealMacroText}>В: {meal.carbs}г</Text>
+                  <Text style={styles.mealMacroText}>{t('carbsColon', meal.carbs)}</Text>
                   <Text style={styles.mealMacroDivider}>·</Text>
-                  <Text style={styles.mealMacroText}>Ж: {meal.fat}г</Text>
+                  <Text style={styles.mealMacroText}>{t('fatColon', meal.fat)}</Text>
                   {(meal.fiber ?? 0) > 0 && (
                     <>
                       <Text style={styles.mealMacroDivider}>·</Text>
-                      <Text style={[styles.mealMacroText, { color: '#2ECC71' }]}>Кл: {meal.fiber}г</Text>
+                      <Text style={[styles.mealMacroText, { color: '#2ECC71' }]}>{t('fiberColon', meal.fiber)}</Text>
                     </>
                   )}
                 </View>
@@ -647,7 +647,7 @@ export default function NutritionScreen() {
                   <View style={styles.mealItems}>
                     {meal.items.map((item, i) => (
                       <Text key={i} style={styles.mealItem}>
-                        · {item.name} {item.qty} — {item.calories} ккал
+                        {t('mealItemLine', item.name, item.qty, item.calories)}
                       </Text>
                     ))}
                   </View>
@@ -730,7 +730,7 @@ export default function NutritionScreen() {
                     <View key={i} style={styles.parsedItem}>
                       <Text style={styles.parsedItemName}>{item.name}</Text>
                       <Text style={styles.parsedItemQty}>{item.qty}</Text>
-                      <Text style={styles.parsedItemCal}>{item.calories} ккал</Text>
+                      <Text style={styles.parsedItemCal}>{t('kcalValue', item.calories)}</Text>
                     </View>
                   ))}
 
@@ -793,19 +793,19 @@ export default function NutritionScreen() {
                 <View style={styles.goalsPreview}>
                   <View style={styles.goalsPreviewRow}>
                     <Text style={styles.goalsPreviewLabel}>{t('caloriesWord')}</Text>
-                    <Text style={styles.goalsPreviewVal}>{preview.calories} ккал</Text>
+                    <Text style={styles.goalsPreviewVal}>{t('kcalValue', preview.calories)}</Text>
                   </View>
                   <View style={styles.goalsPreviewRow}>
                     <Text style={styles.goalsPreviewLabel}>{t('proteinsWord')}</Text>
-                    <Text style={[styles.goalsPreviewVal, { color: '#E63946' }]}>{preview.protein}г</Text>
+                    <Text style={[styles.goalsPreviewVal, { color: '#E63946' }]}>{preview.protein}{t('gramsUnit')}</Text>
                   </View>
                   <View style={styles.goalsPreviewRow}>
                     <Text style={styles.goalsPreviewLabel}>{t('carbsWord')}</Text>
-                    <Text style={[styles.goalsPreviewVal, { color: '#F4A261' }]}>{preview.carbs}г</Text>
+                    <Text style={[styles.goalsPreviewVal, { color: '#F4A261' }]}>{preview.carbs}{t('gramsUnit')}</Text>
                   </View>
                   <View style={styles.goalsPreviewRow}>
                     <Text style={styles.goalsPreviewLabel}>{t('fatsWord')}</Text>
-                    <Text style={[styles.goalsPreviewVal, { color: '#3498DB' }]}>{preview.fat}г</Text>
+                    <Text style={[styles.goalsPreviewVal, { color: '#3498DB' }]}>{preview.fat}{t('gramsUnit')}</Text>
                   </View>
                 </View>
               );
@@ -932,7 +932,7 @@ export default function NutritionScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.libraryName}>{item.name}</Text>
                       <Text style={styles.libraryMeta}>
-                        {item.calories} ккал · Б:{item.protein}г В:{item.carbs}г Ж:{item.fat}г
+                        {t('macroSummary', item.calories, item.protein, item.carbs, item.fat)}
                       </Text>
                     </View>
                     <View style={styles.libraryRight}>
@@ -1036,7 +1036,7 @@ function FiberBar({ value }: { value: number }) {
     <View style={styles.macroItem}>
       <Text style={styles.macroLabel}>{t('macroFiberShort')}</Text>
       <Text style={[styles.macroValue, { color: '#2ECC71' }]}>{value}<Text style={styles.macroUnit}>{t('gramsUnit')}</Text></Text>
-      <Text style={styles.macroGoal}>/ {goal}г</Text>
+      <Text style={styles.macroGoal}>{t('gramsOfGoal', goal)}</Text>
       <View style={styles.macroBarBg}>
         <View style={[styles.macroBarFill, { width: `${pct}%` as any, backgroundColor: '#2ECC71' }]} />
       </View>

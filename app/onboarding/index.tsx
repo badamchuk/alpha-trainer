@@ -448,7 +448,7 @@ export default function OnboardingScreen() {
                           <Text style={[styles.metricInput, { fontSize: 15 }]}>
                             {`${String(birthDate.getDate()).padStart(2, '0')}.${String(birthDate.getMonth() + 1).padStart(2, '0')}.${birthDate.getFullYear()}`}
                           </Text>
-                          <Text style={styles.metricUnit}>{calcDisplayAge(birthDate)} років</Text>
+                          <Text style={styles.metricUnit}>{t('ageYears', calcDisplayAge(birthDate))}</Text>
                         </>
                       ) : (
                         <Ionicons name="calendar-outline" size={28} color={Colors.primary} style={{ marginVertical: 4 }} />
@@ -919,7 +919,7 @@ function StepWelcome({
       <View style={styles.bigIcon}>
         <Ionicons name="barbell-outline" size={52} color={Colors.primary} />
       </View>
-      <Text style={styles.stepTitle}>Ласкаво просимо до{'\n'}Гарту</Text>
+      <Text style={styles.stepTitle}>{t('welcomeTitle')}</Text>
       <Text style={styles.stepDesc}>{t('welcomeIntro')}</Text>
       <View style={styles.featureList}>
         {[
@@ -1004,7 +1004,7 @@ function StepBody({ birthDate, onOpenDatePicker, weight, setWeight, height, setH
               <Text style={[styles.metricInput, { fontSize: 15 }]}>
                 {`${String(birthDate.getDate()).padStart(2, '0')}.${String(birthDate.getMonth() + 1).padStart(2, '0')}.${birthDate.getFullYear()}`}
               </Text>
-              <Text style={styles.metricUnit}>{ageDisplay} років</Text>
+              <Text style={styles.metricUnit}>{t('ageYears', ageDisplay)}</Text>
             </>
           ) : (
             <Ionicons name="calendar-outline" size={28} color={Colors.primary} style={{ marginVertical: 4 }} />
@@ -1389,7 +1389,7 @@ function BackupSection({
       </View>
       <Text style={backupStyles.hint}>
         Збережи всі тренування, цілі та налаштування у файл.
-        {'\n'}При зміні телефону — імпортуй файл для відновлення.
+        {t('backupPhoneNote')}
       </Text>
       <AutoBackupRow />
       <View style={backupStyles.actions}>

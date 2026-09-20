@@ -767,7 +767,7 @@ export default function LogWorkoutScreen() {
             <View style={styles.cardioCard}>
               <Text style={styles.cardioTitle}>
                 <Ionicons name="speedometer-outline" size={14} color={Colors.textSecondary} />
-                {'  '}Параметри кардіо
+                {'  '}{t('cardioParams')}
               </Text>
               <View style={styles.row}>
                 <View style={styles.rowItem}>
@@ -862,7 +862,7 @@ export default function LogWorkoutScreen() {
             <View style={styles.kcalRow}>
               <Ionicons name="flame-outline" size={15} color={Colors.accent} />
               <Text style={styles.kcalRowText}>
-                {kcalEst.estimated ? `≈ ${roundKcal(kcalEst.total)}` : Math.round(kcalEst.total)} ккал
+                {kcalEst.estimated ? t('kcalApprox', roundKcal(kcalEst.total)) : t('kcalValue', Math.round(kcalEst.total))}
               </Text>
               <Text style={styles.kcalRowHint} numberOfLines={1}>
                 {kcalEst.estimated ? t('estimateBy', paramsLabel(kcalParams)) : t('enteredManually')}
@@ -1157,7 +1157,7 @@ export default function LogWorkoutScreen() {
                         <TouchableOpacity style={styles.templateItemLeft} onPress={() => applyTemplate(item)}>
                           <Text style={styles.templateName}>{item.name}</Text>
                           <Text style={styles.templateMeta}>
-                            {item.exercises.length} вправ · {typeLabel}
+                            {t('exercisesAndType', item.exercises.length, typeLabel)}
                             {ssCount > 0 ? t('supersetsCount', ssCount) : ''}
                           </Text>
                         </TouchableOpacity>
@@ -1196,7 +1196,7 @@ export default function LogWorkoutScreen() {
                   onPress={() => setPlateCalcBarbell(kg)}
                 >
                   <Text style={[styles.plateCalcChipText, plateCalcBarbell === kg && styles.plateCalcChipTextActive]}>
-                    {kg} кг
+                    {t('kgValue', kg)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -1215,14 +1215,14 @@ export default function LogWorkoutScreen() {
             {(() => {
               const total = parseFloat(plateCalcTarget.replace(',', '.'));
               if (isNaN(total) || total <= plateCalcBarbell) {
-                return <Text style={styles.plateCalcHint}>Введи вагу більше ніж штанга ({plateCalcBarbell} кг)</Text>;
+                return <Text style={styles.plateCalcHint}>{t('plateNeedMore', plateCalcBarbell)}</Text>;
               }
               const { plates, leftover } = calcPlates(total, plateCalcBarbell);
               const perSide = (total - plateCalcBarbell) / 2;
               const exactWeight = total - leftover * 2;
               return (
                 <View style={styles.plateResult}>
-                  <Text style={styles.plateResultTitle}>По {perSide % 1 === 0 ? perSide : perSide.toFixed(2)} кг на кожну сторону:</Text>
+                  <Text style={styles.plateResultTitle}>{t('platePerSide', perSide % 1 === 0 ? perSide : perSide.toFixed(2))}</Text>
                   {plates.length === 0 ? (
                     <Text style={styles.plateCalcHint}>{t('platesImpossible')}</Text>
                   ) : (
@@ -1230,9 +1230,9 @@ export default function LogWorkoutScreen() {
                       {plates.map(({ plate, count }) => (
                         <View key={plate} style={styles.plateRow}>
                           <View style={[styles.plateVisual, { width: 12 + Math.min(plate, 25) * 2 }]} />
-                          <Text style={styles.plateName}>{plate} кг</Text>
+                          <Text style={styles.plateName}>{t('kgValue', plate)}</Text>
                           <Text style={styles.plateCount}>× {count}</Text>
-                          <Text style={styles.plateTotalVal}>= {plate * count} кг</Text>
+                          <Text style={styles.plateTotalVal}>{t('plateTotalEq', plate * count)}</Text>
                         </View>
                       ))}
                     </View>
@@ -1241,7 +1241,7 @@ export default function LogWorkoutScreen() {
                     <View style={styles.plateLeftover}>
                       <Ionicons name="warning-outline" size={14} color={Colors.accent} />
                       <Text style={styles.plateLeftoverText}>
-                        Залишок {leftover.toFixed(2)} кг/сторону не складається — фактично {exactWeight} кг
+                        {t('plateLeftover', leftover.toFixed(2), exactWeight)}
                       </Text>
                     </View>
                   )}
@@ -1250,7 +1250,7 @@ export default function LogWorkoutScreen() {
                     onPress={() => { setExWeight(String(leftover > 0.01 ? exactWeight : total)); setPlateCalcVisible(false); }}
                   >
                     <Text style={styles.plateApplyBtnText}>
-                      Встановити {leftover > 0.01 ? exactWeight : total} кг
+                      {t('plateSet', leftover > 0.01 ? exactWeight : total)}
                     </Text>
                   </TouchableOpacity>
                 </View>

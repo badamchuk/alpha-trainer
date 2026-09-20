@@ -783,7 +783,7 @@ export default function WorkoutDetailScreen() {
             <Ionicons name="flame-outline" size={22} color={Colors.accent} />
             <View style={{ flex: 1 }}>
               <Text style={styles.kcalValue}>
-                {kcal.estimated ? `≈ ${roundKcal(kcal.total)}` : Math.round(kcal.total)} ккал
+                {kcal.estimated ? t('kcalApprox', roundKcal(kcal.total)) : t('kcalValue', Math.round(kcal.total))}
               </Text>
               <Text style={styles.kcalHint}>
                 {kcal.estimated
@@ -1006,11 +1006,12 @@ function detailMeta(ex: ExerciseLog, sep: string, t: TFn): string {
  * підписі; окремо — лише сума, коли їх записано на кілька підходів.
  */
 function KcalTag({ ex, value }: { ex: ExerciseLog; value?: ExerciseCalories }) {
+  const { t } = useLocale();
   if (!value || value.kcal <= 0) return null;
   if (!value.estimated && Math.round(value.kcal) === ex.calories) return null;
   return (
     <Text style={styles.exKcal}>
-      {value.estimated ? `≈${roundKcal(value.kcal)}` : Math.round(value.kcal)} ккал
+      {value.estimated ? t('kcalApprox', roundKcal(value.kcal)) : t('kcalValue', Math.round(value.kcal))}
     </Text>
   );
 }

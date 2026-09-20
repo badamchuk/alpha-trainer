@@ -49,3 +49,22 @@ describe('двомовність', () => {
     expect(cyrillic.map((m) => `${m[1]}: ${m[2]}`)).toEqual([]);
   });
 });
+
+describe('вибір мови переживає перезапуск', () => {
+  // Баг, знайдений на емуляторі: loadLanguage() мовчки міняв _lang, а екрани
+  // вже були змонтовані з типовою мовою — і лишались українськими до кінця
+  // сесії. Тепер завантаження будить підписників так само, як і перемикач.
+  it('loadLanguage повідомляє підписників', async () => {
+    const i18n = require('../services/i18n');
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.setItem('@alpha_trainer:language', 'en');
+    await i18n.loadLanguage();
+    expect(i18n.getCurrentLang()).toBe('en');
+
+    const src = require('fs').readFileSync(
+      require('path').resolve(__dirname, '../services/i18n.ts'), 'utf8');
+    const body = src.slice(src.indexOf('export async function loadLanguage'));
+    const end = body.indexOf('\n}\n');
+    expect(body.slice(0, end)).toContain('_subscribers.forEach');
+  });
+});

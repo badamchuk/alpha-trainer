@@ -71,6 +71,9 @@ function ukrainianLiterals(src: string): string[] {
   // текст просто в розмітці: <Text>Зберегти</Text>
   const jsx = />\s*([^<>{}\n]*[А-Яа-яЇїІіЄєҐґ][^<>{}\n]*?)\s*</g;
   for (const m of code.matchAll(jsx)) out.push(m[1].trim());
+  // одиниця після значення: {weight} кг, {n} хв — саме так текст і витікав
+  const unit = /\}[^<>{}\n]{0,20}?[А-Яа-яЇїІіЄєҐґ][^<>{}\n]{0,25}/g;
+  for (const m of code.matchAll(unit)) out.push(m[0].trim());
   return out;
 }
 
@@ -85,6 +88,12 @@ describe('перекладені екрани', () => {
   it('сам сканер працює — знаходить підкинутий рядок', () => {
     const fake = `const x = <Text>Зберегти</Text>;\nconst y = 'Привіт';\n// коментар українською\n`;
     expect(ukrainianLiterals(fake).sort()).toEqual(['Зберегти', 'Привіт']);
+  });
+
+  it('ловить одиницю, приклеєну до значення', () => {
+    // саме так «{weight} кг» пережило перший прохід перекладу
+    expect(ukrainianLiterals('<Text>{w.weight} кг</Text>')).toContain('} кг');
+    expect(ukrainianLiterals('<Text>{t(\'kgValue\', w.weight)}</Text>')).toEqual([]);
   });
 
   it('коментарі й англійський код тест не чіпає', () => {

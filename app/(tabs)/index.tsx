@@ -379,7 +379,7 @@ export default function TodayScreen() {
           <Ionicons name="water" size={18} color="#4285F4" />
           <Text style={styles.waterTitle}>{t('waterLabel')}</Text>
           <Text style={styles.waterCount}>
-            {waterData.glasses}/{waterData.goal} склянок
+            {t('glassesOf', waterData.glasses, waterData.goal)}
           </Text>
         </View>
         <View style={styles.glassesGrid}>
@@ -452,7 +452,7 @@ export default function TodayScreen() {
                 {todayPlan.estimatedDuration > 0 && (
                   <View style={styles.planMeta}>
                     <Ionicons name="time-outline" size={12} color={Colors.textMuted} />
-                    <Text style={styles.planMetaText}>~{todayPlan.estimatedDuration} хв</Text>
+                    <Text style={styles.planMetaText}>~{t('minutesShort', todayPlan.estimatedDuration)}</Text>
                   </View>
                 )}
               </View>
@@ -464,7 +464,7 @@ export default function TodayScreen() {
                     </Text>
                   ))}
                   {todayPlan.exercises.length > 3 && (
-                    <Text style={styles.planMore}>ще {todayPlan.exercises.length - 3} вправ...</Text>
+                    <Text style={styles.planMore}>{t('moreExercises', todayPlan.exercises.length - 3)}</Text>
                   )}
                 </View>
               )}
@@ -569,7 +569,7 @@ export default function TodayScreen() {
                 <View style={[styles.workoutDot, { backgroundColor: Colors.success }]} />
                 <View>
                   <Text style={styles.workoutItemTitle}>{t(WORKOUT_TYPE_KEYS[w.workoutType] ?? w.workoutType)}</Text>
-                  <Text style={styles.workoutItemSub}>{w.duration} хв • {w.exercises.length} вправ</Text>
+                  <Text style={styles.workoutItemSub}>{t('minutesAndExercises', w.duration, w.exercises.length)}</Text>
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />

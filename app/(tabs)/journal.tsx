@@ -222,7 +222,7 @@ function WorkoutCard({ workout, onPress, onDelete, onRepeat }: {
             {workout.duration > 0 && (
               <View style={styles.metaItem}>
                 <Ionicons name="time-outline" size={12} color={Colors.textMuted} />
-                <Text style={styles.metaText}>{workout.duration} хв</Text>
+                <Text style={styles.metaText}>{t('minValue', workout.duration)}</Text>
               </View>
             )}
             {workout.rating && (

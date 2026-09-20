@@ -379,7 +379,7 @@ export default function ProgressScreen() {
                   })}
                 </View>
                 <View style={styles.weightChartLabels}>
-                  <Text style={styles.weightChartLabel}>{formatPace(minP)} (кращий)</Text>
+                  <Text style={styles.weightChartLabel}>{t('bestParen', formatPace(minP))}</Text>
                   <Text style={styles.weightChartLabel}>{formatPace(maxP)}</Text>
                 </View>
               </View>
@@ -419,7 +419,7 @@ export default function ProgressScreen() {
               </Text>
               {strengthScore.lifts.map((lift) => (
                 <Text key={lift.name} style={styles.strengthLiftRow}>
-                  {lift.name}: <Text style={styles.strengthLiftVal}>{lift.estimated1RM} кг 1RM</Text>
+                  {lift.name}: <Text style={styles.strengthLiftVal}>{t('e1rmKg', lift.estimated1RM)}</Text>
                 </Text>
               ))}
             </View>
@@ -534,11 +534,11 @@ export default function ProgressScreen() {
                 <View style={styles.exBestRow}>
                   <View style={styles.exBestCard}>
                     <Text style={styles.exBestLabel}>{t('maxWeightLabel')}</Text>
-                    <Text style={styles.exBestValue}>{Math.max(...exerciseProgress.map(p => p.weight))} кг</Text>
+                    <Text style={styles.exBestValue}>{t('kgValue', Math.max(...exerciseProgress.map(p => p.weight)))}</Text>
                   </View>
                   <View style={styles.exBestCard}>
                     <Text style={styles.exBestLabel}>{t('e1rmLabel')}</Text>
-                    <Text style={[styles.exBestValue, { color: Colors.primary }]}>{best.estimated1RM} кг</Text>
+                    <Text style={[styles.exBestValue, { color: Colors.primary }]}>{t('kgValue', best.estimated1RM)}</Text>
                   </View>
                   <View style={styles.exBestCard}>
                     <Text style={styles.exBestLabel}>{t('sessionsLabel')}</Text>
@@ -555,7 +555,7 @@ export default function ProgressScreen() {
                   const step = chartW / Math.max(pts.length - 1, 1);
                   return (
                     <View style={styles.weightChartContainer}>
-                      <Text style={styles.subSectionTitle}>Вага (кг) за останні {pts.length} сесій</Text>
+                      <Text style={styles.subSectionTitle}>{t('weightBySessions', pts.length)}</Text>
                       <View style={{ height: chartH, position: 'relative' }}>
                         {pts.map((p, i) => {
                           const x = i * step;
@@ -581,9 +581,9 @@ export default function ProgressScreen() {
                   {exerciseProgress.slice(-5).reverse().map((p, i) => (
                     <View key={i} style={styles.exHistoryRow}>
                       <Text style={styles.exHistoryDate}>{p.date}</Text>
-                      {p.weight > 0 && <Text style={styles.exHistoryWeight}>{p.weight} кг</Text>}
+                      {p.weight > 0 && <Text style={styles.exHistoryWeight}>{t('kgValue', p.weight)}</Text>}
                       {p.reps > 0 && <Text style={styles.exHistoryReps}>× {p.reps}</Text>}
-                      {p.sets > 0 && <Text style={styles.exHistorySets}>{p.sets} підх.</Text>}
+                      {p.sets > 0 && <Text style={styles.exHistorySets}>{t('setsShortUnit', p.sets)}</Text>}
                       {p.estimated1RM > 0 && <Text style={styles.exHistory1rm}>~{p.estimated1RM} 1RM</Text>}
                     </View>
                   ))}
@@ -618,7 +618,7 @@ export default function ProgressScreen() {
       {hrZones.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('hrZonesTitle')}</Text>
-          <Text style={styles.hrNote}>Макс. ЧСС: {220 - (profile ? getAgeFromProfile(profile) : 30)} уд/хв (220 − вік)</Text>
+          <Text style={styles.hrNote}>{t('maxHrNote', 220 - (profile ? getAgeFromProfile(profile) : 30))}</Text>
           {hrZones.map((z) => (
             <View key={z.zone} style={styles.hrZoneRow}>
               <View style={[styles.hrZoneDot, { backgroundColor: z.color }]} />
@@ -653,13 +653,13 @@ export default function ProgressScreen() {
               <>
                 <View style={styles.calTotalRow}>
                   <Ionicons name="flame-outline" size={22} color={Colors.accent} />
-                  <Text style={styles.calTotal}>{Math.round(totalCal).toLocaleString()} ккал</Text>
+                  <Text style={styles.calTotal}>{t('kcalValue', Math.round(totalCal).toLocaleString())}</Text>
                   <Text style={styles.calTotalLabel}>{t('lastMonthWord')}</Text>
                 </View>
                 {Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([type, cal]) => (
                   <View key={type} style={styles.calRow}>
                     <Text style={styles.calType}>{typeName(type)}</Text>
-                    <Text style={styles.calValue}>{Math.round(cal)} ккал</Text>
+                    <Text style={styles.calValue}>{t('kcalValue', Math.round(cal))}</Text>
                   </View>
                 ))}
                 <Text style={styles.calNote}>{t('kcalFootnote')}</Text>
@@ -719,7 +719,7 @@ export default function ProgressScreen() {
               );
             })()}
             {measurements.length > 1 && (
-              <Text style={styles.weightMore}>Всього {measurements.length} записів</Text>
+              <Text style={styles.weightMore}>{t('totalRecords', measurements.length)}</Text>
             )}
             {/* Body fat estimate */}
             {profile?.height && profile?.gender && measurements.length > 0 && (() => {
@@ -791,8 +791,8 @@ export default function ProgressScreen() {
                     })}
                   </View>
                   <View style={styles.weightChartLabels}>
-                    <Text style={styles.weightChartLabel}>{minW} кг</Text>
-                    <Text style={styles.weightChartLabel}>{maxW} кг</Text>
+                    <Text style={styles.weightChartLabel}>{t('kgValue', minW)}</Text>
+                    <Text style={styles.weightChartLabel}>{t('kgValue', maxW)}</Text>
                   </View>
                 </View>
               );
@@ -802,11 +802,11 @@ export default function ProgressScreen() {
               <View key={i} style={styles.weightRow}>
                 <Ionicons name="scale-outline" size={16} color={Colors.textMuted} />
                 <Text style={styles.weightDate}>{e.date}</Text>
-                <Text style={styles.weightValue}>{e.weight} кг</Text>
+                <Text style={styles.weightValue}>{t('kgValue', e.weight)}</Text>
               </View>
             ))}
             {weightLog.length > 5 && (
-              <Text style={styles.weightMore}>+{weightLog.length - 5} ще записів</Text>
+              <Text style={styles.weightMore}>{t('moreRecords', weightLog.length - 5)}</Text>
             )}
           </>
         )}
@@ -829,13 +829,13 @@ export default function ProgressScreen() {
                 {r.maxWeight > 0 && (
                   <View style={styles.prBadge}>
                     <Ionicons name="barbell-outline" size={12} color={Colors.primary} />
-                    <Text style={styles.prBadgeText}>{r.maxWeight} кг</Text>
+                    <Text style={styles.prBadgeText}>{t('kgValue', r.maxWeight)}</Text>
                   </View>
                 )}
                 {r.maxReps > 0 && (
                   <View style={[styles.prBadge, { backgroundColor: 'rgba(46,196,182,0.12)' }]}>
                     <Ionicons name="repeat-outline" size={12} color={Colors.success} />
-                    <Text style={[styles.prBadgeText, { color: Colors.success }]}>{r.maxReps} повт.</Text>
+                    <Text style={[styles.prBadgeText, { color: Colors.success }]}>{t('repsShort', r.maxReps)}</Text>
                   </View>
                 )}
               </View>
@@ -849,7 +849,7 @@ export default function ProgressScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('achievementsTitle')}</Text>
           <Text style={styles.sectionHint}>
-            {achievements.filter((a) => a.unlockedAt).length} / {achievements.length} розблоковано
+            {t('unlockedOf', achievements.filter((a) => a.unlockedAt).length, achievements.length)}
           </Text>
           <View style={styles.achievementsGrid}>
             {achievements
@@ -915,12 +915,12 @@ export default function ProgressScreen() {
             <View style={styles.tdeeStats}>
               <View style={styles.tdeeStat}>
                 <Text style={styles.tdeeStatLabel}>{t('avgIntake')}</Text>
-                <Text style={styles.tdeeStatValue}>{adaptiveTDEE.avgDailyCalories} ккал</Text>
+                <Text style={styles.tdeeStatValue}>{t('kcalValue', adaptiveTDEE.avgDailyCalories)}</Text>
               </View>
               <View style={styles.tdeeStat}>
                 <Text style={styles.tdeeStatLabel}>{t('weightChangePerWeek')}</Text>
                 <Text style={[styles.tdeeStatValue, { color: adaptiveTDEE.weeklyWeightDelta < 0 ? '#2ECC71' : adaptiveTDEE.weeklyWeightDelta > 0 ? '#E63946' : Colors.textPrimary }]}>
-                  {adaptiveTDEE.weeklyWeightDelta > 0 ? '+' : ''}{adaptiveTDEE.weeklyWeightDelta} кг
+                  {adaptiveTDEE.weeklyWeightDelta > 0 ? '+' : ''}{t('kgValue', adaptiveTDEE.weeklyWeightDelta)}
                 </Text>
               </View>
               <View style={styles.tdeeStat}>
@@ -952,14 +952,14 @@ export default function ProgressScreen() {
               <View style={styles.correlationStats}>
                 <View style={styles.correlationStat}>
                   <Text style={styles.correlationStatLabel}>{t('goodNutrition')}</Text>
-                  <Text style={styles.correlationStatVal}>⭐ {c.avgRatingHighCal} · {c.avgDurationHighCal} хв</Text>
-                  <Text style={styles.correlationN}>{c.highCalDays} тренувань</Text>
+                  <Text style={styles.correlationStatVal}>{t('ratingAndMinutes', c.avgRatingHighCal, c.avgDurationHighCal)}</Text>
+                  <Text style={styles.correlationN}>{t('workoutsCount', c.highCalDays)}</Text>
                 </View>
                 <View style={styles.correlationDivider} />
                 <View style={styles.correlationStat}>
                   <Text style={styles.correlationStatLabel}>{t('lowKcal')}</Text>
-                  <Text style={styles.correlationStatVal}>⭐ {c.avgRatingLowCal} · {c.avgDurationLowCal} хв</Text>
-                  <Text style={styles.correlationN}>{c.lowCalDays} тренувань</Text>
+                  <Text style={styles.correlationStatVal}>{t('ratingAndMinutes', c.avgRatingLowCal, c.avgDurationLowCal)}</Text>
+                  <Text style={styles.correlationN}>{t('workoutsCount', c.lowCalDays)}</Text>
                 </View>
               </View>
             </View>

@@ -480,7 +480,7 @@ export default function RestTimer({ visible, onClose, autoStart }: Props) {
                 <View style={[s.circle, s.circleDone]}>
                   <Text style={[s.timeText, s.timeDone]}>{t('done')}</Text>
                 </View>
-                <Text style={s.doneRounds}>{rounds} раундів завершено</Text>
+                <Text style={s.doneRounds}>{t('roundsDone', rounds)}</Text>
                 <View style={[s.actions, { marginTop: Spacing.md }]}>
                   <TouchableOpacity style={s.btnPrimary} onPress={resetIv}>
                     <Text style={s.btnPrimaryTxt}>{t('againBtn')}</Text>
