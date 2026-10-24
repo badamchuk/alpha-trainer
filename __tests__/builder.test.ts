@@ -244,7 +244,7 @@ describe('перенесення у форму запису', () => {
     for (let seed = 1; seed <= 10; seed++) {
       for (const log of draftToExercises(generateWorkout(gym(), seed))) {
         if (log.duration === undefined) continue;
-        expect(log.duration).toBe(Math.round(log.duration * 10) / 10);
+        expect(Math.round(log.duration * 60)).toBeCloseTo(log.duration * 60, 6);
       }
     }
   });

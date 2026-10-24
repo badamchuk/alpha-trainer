@@ -360,10 +360,12 @@ export default function TrainerScreen() {
             <Text style={styles.headerTitle}>{t('trainerTitle')}</Text>
             <Text style={styles.headerSub}>
               {/* показуємо того, хто реально відповів, а не того, чий ключ перший */}
-              {activeProvider === 'groq' ? 'Groq'
-                : activeProvider === 'gemini' ? 'Gemini'
-                : profile?.groqApiKey && !isProviderDead('groq') ? 'Groq' : 'Gemini'}
-              {' · '}{profile?.name || t('setUpProfile')}
+              {/* без жодного ключа назва моделі лише вводить в оману */}
+              {!profile?.groqApiKey && !profile?.geminiApiKey ? t('addApiKeyShort')
+                : `${activeProvider === 'groq' ? 'Groq'
+                  : activeProvider === 'gemini' ? 'Gemini'
+                  : profile?.groqApiKey && !isProviderDead('groq') ? 'Groq' : 'Gemini'} · ${
+                  profile?.name || t('setUpProfile')}`}
             </Text>
           </View>
         </View>
@@ -645,7 +647,8 @@ function AiExercises({ text }: { text: string }) {
         exerciseId: ex.id,
         sets: p.sets,
         reps: p.reps,
-        duration: p.seconds ? Math.round(p.seconds / 6) / 10 : undefined,
+        // до секунди: 40 с мають лишитись 40 с, а не стати 42
+        duration: p.seconds ? Math.round(p.seconds) / 60 : undefined,
       };
     });
     // той самий шлях, що в конструктора — без третього механізму передачі

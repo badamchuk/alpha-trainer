@@ -26,6 +26,7 @@ import {
 import { buildResolver } from '../../services/exerciseLinks';
 import type { ExerciseResolver } from '../../services/exerciseMatch';
 import { WORKOUT_TYPE_KEYS } from '../../services/planParser';
+import { durationToInput, formatDuration, parseDuration } from '../../services/duration';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -122,7 +123,7 @@ export default function WorkoutDetailScreen() {
         e.sets && e.reps && e.weight ? t('setsByRepsWeight', e.sets, e.reps, e.weight)
           : e.sets && e.reps ? `${e.sets}×${e.reps}` : null,
         e.distance ? t('kmValue', e.distance) : null,
-        e.duration ? t('minValue', e.duration) : null,
+        e.duration ? formatDuration(e.duration, t) : null,
         e.calories ? t('kcalValue', e.calories) : null,
       ].filter(Boolean);
       lines.push(`• ${e.name}${parts.length ? `: ${parts.join(', ')}` : ''}`);
@@ -209,7 +210,7 @@ export default function WorkoutDetailScreen() {
     const s = (v: number | undefined) => (v !== undefined ? String(v) : '');
     setExName(ex.name);
     setExSets(s(ex.sets)); setExReps(s(ex.reps)); setExWeight(s(ex.weight));
-    setExDuration(s(ex.duration)); setExDistance(s(ex.distance));
+    setExDuration(durationToInput(ex.duration, t)); setExDistance(s(ex.distance));
     setExCalories(s(ex.calories)); setExWatts(s(ex.watts));
     setExRpe(ex.rpe);
     setExSetType(ex.setType ?? 'normal');
@@ -277,7 +278,7 @@ export default function WorkoutDetailScreen() {
     const prevEx = isEdit ? exercises[editingExIdx!] : undefined;
     const common = {
       name: exName.trim(),
-      duration: parseNum(exDuration),
+      duration: parseDuration(exDuration),
       distance: parseNum(exDistance),
       calories: parseNum(exCalories),
       watts: parseNum(exWatts),
@@ -591,8 +592,8 @@ export default function WorkoutDetailScreen() {
               <View style={styles.row}>
                 <View style={styles.rowItem}>
                   <Text style={styles.miniLabel}>{t('timeMinLabel')}</Text>
-                  <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
-                    value={exDuration} onChangeText={setExDuration} keyboardType="numeric" />
+                  <TextInput style={styles.input} placeholder={t('timeHint')} placeholderTextColor={Colors.textMuted}
+                    value={exDuration} onChangeText={setExDuration} keyboardType="numbers-and-punctuation" />
                 </View>
                 <View style={styles.rowItem}>
                   <Text style={styles.miniLabel}>{t('kmLabel')}</Text>
@@ -994,7 +995,7 @@ function detailMeta(ex: ExerciseLog, sep: string, t: TFn): string {
       ];
   return [
     ...base,
-    ex.duration && t('minValue', ex.duration),
+    ex.duration && formatDuration(ex.duration, t),
     ex.distance && t('kmValue', ex.distance),
     ex.calories && t('kcalValue', ex.calories),
     ex.watts && t('wattsValue', ex.watts),

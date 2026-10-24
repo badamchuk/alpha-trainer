@@ -37,6 +37,7 @@ import { markDayDone } from '../../services/programs/storage';
 import { applySubstitution } from '../../services/substitutions';
 import { recentExerciseIds } from '../../services/analytics';
 import SubstitutionSheet from '../../components/SubstitutionSheet';
+import { durationToInput, formatDuration, parseDuration } from '../../services/duration';
 
 const CARDIO_TYPES: WorkoutType[] = ['run', 'cycling', 'swimming', 'cardio', 'hiit', 'crossfit'];
 
@@ -323,7 +324,7 @@ export default function LogWorkoutScreen() {
     setExName(ex.name);
     setExId(ex.exerciseId);
     setExSets(s(ex.sets)); setExReps(s(ex.reps)); setExWeight(s(ex.weight));
-    setExDuration(s(ex.duration)); setExDistance(s(ex.distance));
+    setExDuration(durationToInput(ex.duration, t)); setExDistance(s(ex.distance));
     setExCalories(s(ex.calories)); setExWatts(s(ex.watts));
     setExRpe(ex.rpe);
     setExSetType(ex.setType ?? 'normal');
@@ -464,7 +465,7 @@ export default function LogWorkoutScreen() {
         reps: bestSet.reps,
         weight: bestSet.weight,
         setsDetail: draftSets,
-        duration: parseNum(exDuration),
+        duration: parseDuration(exDuration),
         distance: parseNum(exDistance),
         calories: parseNum(exCalories),
         watts: parseNum(exWatts),
@@ -479,7 +480,7 @@ export default function LogWorkoutScreen() {
         sets: parseNum(exSets),
         reps: parseNum(exReps),
         weight: parseNum(exWeight),
-        duration: parseNum(exDuration),
+        duration: parseDuration(exDuration),
         distance: parseNum(exDistance),
         calories: parseNum(exCalories),
         watts: parseNum(exWatts),
@@ -1007,8 +1008,8 @@ export default function LogWorkoutScreen() {
             <View style={styles.row}>
               <View style={styles.rowItem}>
                 <Text style={styles.miniLabel}>{t('timeMinLabel')}</Text>
-                <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
-                  value={exDuration} onChangeText={setExDuration} keyboardType="numeric" />
+                <TextInput style={styles.input} placeholder={t('timeHint')} placeholderTextColor={Colors.textMuted}
+                  value={exDuration} onChangeText={setExDuration} keyboardType="numbers-and-punctuation" />
               </View>
               <View style={styles.rowItem}>
                 <Text style={styles.miniLabel}>{t('kmLabel')}</Text>
@@ -1119,7 +1120,7 @@ export default function LogWorkoutScreen() {
           const p = prescribe(ex);
           if (!exSets) setExSets(String(p.sets));
           if (!exReps && p.reps) setExReps(String(p.reps));
-          if (!exDuration && p.seconds) setExDuration(String(p.seconds / 60));
+          if (!exDuration && p.seconds) setExDuration(durationToInput(p.seconds / 60, t));
         }}
       />
 
@@ -1379,7 +1380,7 @@ function renderExerciseMeta(ex: ExerciseLog, t: TFn): string {
     ex.sets && t('setsCountShort', ex.sets),
     ex.reps && t('repsCountShort', ex.reps),
     ex.weight && t('kgValue', ex.weight),
-    ex.duration && t('minValue', ex.duration),
+    ex.duration && formatDuration(ex.duration, t),
     ex.distance && t('kmValue', ex.distance),
     ex.calories && t('kcalValue', ex.calories),
     ex.watts && t('wattsValue', ex.watts),

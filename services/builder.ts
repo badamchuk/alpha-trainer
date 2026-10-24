@@ -511,7 +511,8 @@ export function draftToExercises(
         sets: p.sets,
         reps: p.reps,
         // форма показує хвилини: 40 секунд — це 0.7 хв, а не 0.6666666666666666
-        duration: p.seconds ? Math.round(p.seconds / 6) / 10 : undefined,
+        // до секунди: 40 с мають лишитись 40 с, а не стати 42
+        duration: p.seconds ? Math.round(p.seconds) / 60 : undefined,
         // метри й калорії кардіо теж переносимо: форма підставить їх у поля
         distance: p.distanceM ? p.distanceM / 1000 : undefined,
         calories: p.calories,

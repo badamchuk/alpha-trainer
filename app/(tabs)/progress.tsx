@@ -249,7 +249,7 @@ export default function ProgressScreen() {
           icon="timer-outline" color="#9B59B6"
           value={totalDurationHours > 0
             ? t('hoursMinutes', totalDurationHours, totalDurationMins)
-            : t('minutesCompact', stats.totalDuration)}
+            : t('minValue', stats.totalDuration)}
           unit={t('totalTime')} label={t('durationStat')}
         />
       </View>
@@ -275,9 +275,9 @@ export default function ProgressScreen() {
             })}
           </View>
           <View style={styles.heatmapLegend}>
-            <View style={styles.heatmapCell} />
+            <View style={[styles.heatmapCell, styles.legendCell]} />
             <Text style={styles.legendText}>{t('noneWord')}</Text>
-            <View style={[styles.heatmapCell, styles.heatmapActive]} />
+            <View style={[styles.heatmapCell, styles.legendCell, styles.heatmapActive]} />
             <Text style={styles.legendText}>{t('hasWorkout')}</Text>
           </View>
         </View>
@@ -1110,11 +1110,14 @@ const styles = StyleSheet.create({
   },
   volumeStatus: { fontSize: 10, fontWeight: '600', alignSelf: 'flex-end' },
   heatmapContainer: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border },
-  heatmap: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: Spacing.sm },
+  // 4 тижні по 7 днів: в один ряд 28 клітинок було по 10 px — їх не видно
+  heatmap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: Spacing.sm },
+  legendCell: { width: 22, aspectRatio: 1 },
   heatmapCell: {
-    width: (SCREEN_WIDTH - Spacing.md * 4 - 4 * 27) / 28,
-    aspectRatio: 1, borderRadius: 3,
+    width: (SCREEN_WIDTH - Spacing.md * 4 - 6 * 6) / 7,
+    aspectRatio: 2.2, borderRadius: 4,
     backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1, borderColor: Colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
   heatmapActive: { backgroundColor: Colors.primary },
