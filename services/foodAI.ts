@@ -22,7 +22,7 @@ export interface OFFProduct {
 export async function lookupBarcode(barcode: string): Promise<OFFProduct | null> {
   try {
     const res = await fetch(
-      `https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=product_name,brands,quantity,serving_size,nutriments`,
+      `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=product_name,brands,quantity,serving_size,nutriments`,
       { headers: { 'User-Agent': 'Hart/1.0 (https://github.com/badamchuk/alpha-trainer)' } }
     );
     if (!res.ok) return null;
@@ -219,18 +219,23 @@ export async function analyzePhotoNutrition(
     for (const model of GEMINI_VISION_MODELS) {
       try {
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reqBody) }
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          {
+            method: 'POST',
+            // ключ у заголовку, а не в адресі: адреси осідають у логах і звітах про помилки
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
+            body: JSON.stringify(reqBody),
+          }
         );
         const json = await res.json();
         if (!res.ok) {
           const errMsg: string = json?.error?.message ?? '';
           const status: string = json?.error?.status ?? '';
           if (res.status === 400 && errMsg.toLowerCase().includes('api key')) {
-            throw new PhotoAnalysisError('Невірний Gemini API ключ. Перевір ключ у профілі → AI-моделі.');
+            throw new PhotoAnalysisError(translate('geminiKeyInvalid'));
           }
           if (res.status === 403 || status === 'PERMISSION_DENIED') {
-            throw new PhotoAnalysisError('Gemini API ключ не має доступу. Перевір ключ у профілі → AI-моделі.');
+            throw new PhotoAnalysisError(translate('geminiKeyNoAccess'));
           }
           if (res.status === 429 || status === 'RESOURCE_EXHAUSTED') {
             geminiOk = false; break; // усі моделі Gemini теж отримають 429
@@ -268,7 +273,7 @@ export async function analyzePhotoNutrition(
         });
         const json = await res.json();
         if (!res.ok) {
-          if (res.status === 401) throw new PhotoAnalysisError('Невірний Groq API ключ. Перевір ключ у профілі → AI-моделі.');
+          if (res.status === 401) throw new PhotoAnalysisError(translate('groqKeyInvalid'));
           if (res.status === 429) { groqOk = false; break; }
           groqOk = false; continue;
         }

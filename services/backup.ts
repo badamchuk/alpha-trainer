@@ -53,12 +53,46 @@ export interface BackupFile {
 
 // ─── EXPORT ──────────────────────────────────────────────────────────────────
 
+const PROFILE_KEY = '@alpha_trainer:user_profile';
+const LANG_KEYS = new Set(['@alpha_trainer:language', '@alpha_trainer:exercise_language']);
+
+/** Ключі, де лежить список: інший тип у файлі зламав би екрани, що роблять .map/.filter. */
+const ARRAY_KEYS = new Set([
+  '@alpha_trainer:goals',
+  '@alpha_trainer:workouts',
+  '@alpha_trainer:weight_log',
+  '@alpha_trainer:measurements',
+  '@alpha_trainer:workout_templates',
+  '@alpha_trainer:chat_history',
+  '@alpha_trainer:nutritionist_chat_history',
+  '@alpha_trainer:custom_exercises',
+]);
+
+/**
+ * Ключі AI вирізаються з будь-якої копії.
+ *
+ * Файл копії летить у месенджер, пошту чи хмару — ключ від чужого рахунку
+ * Groq/Gemini туди потрапляти не повинен. Після відновлення ключ вводиться ще
+ * раз (або лишається той, що вже є в додатку: імпорт його не затирає).
+ */
+export function stripSecrets(rawProfile: string | null): string | null {
+  if (!rawProfile) return rawProfile;
+  try {
+    const profile = JSON.parse(rawProfile);
+    if (!profile || typeof profile !== 'object') return rawProfile;
+    const { groqApiKey: _g, geminiApiKey: _m, ...rest } = profile;
+    return JSON.stringify({ ...rest, geminiApiKey: '' });
+  } catch {
+    return null;   // зіпсований профіль у копію не кладемо
+  }
+}
+
 /** Знімок усього сховища. Один для ручного експорту й для автокопії — щоб не розходились. */
 async function collectBackup(): Promise<BackupFile> {
   const pairs = await AsyncStorage.multiGet(ALL_KEYS);
   const data: Record<string, string | null> = {};
   for (const [key, value] of pairs) {
-    data[key] = value;
+    data[key] = key === PROFILE_KEY ? stripSecrets(value) : value;
   }
   return {
     version: BACKUP_VERSION,
@@ -131,6 +165,55 @@ export interface ImportResult extends BackupResult {
   itemCount?: number;
 }
 
+/**
+ * Що з файлу можна пустити в сховище.
+ *
+ * Лише відомі ключі й лише вміст, який розбирається й має очікуваний тип.
+ * Чужий або пошкоджений файл інакше поклав би, скажімо, рядок замість списку
+ * тренувань — і журнал падав би при кожному відкритті.
+ */
+export function sanitizeImport(
+  data: Record<string, unknown>,
+  currentProfileRaw: string | null,
+): [string, string][] {
+  const allowed = new Set(ALL_KEYS);
+  const out: [string, string][] = [];
+  for (const [key, value] of Object.entries(data)) {
+    if (!allowed.has(key) || typeof value !== 'string') continue;
+
+    if (LANG_KEYS.has(key)) {
+      if (value === 'uk' || value === 'en') out.push([key, value]);
+      continue;
+    }
+
+    let parsed: unknown;
+    try { parsed = JSON.parse(value); } catch { continue; }
+    if (ARRAY_KEYS.has(key) && !Array.isArray(parsed)) continue;
+
+    if (key === PROFILE_KEY) {
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+      // ключі AI в копії не їздять — лишаємо ті, що вже введені в додатку
+      let keys: { groqApiKey?: string; geminiApiKey?: string } = {};
+      try {
+        const cur = currentProfileRaw ? JSON.parse(currentProfileRaw) : null;
+        if (cur && typeof cur === 'object') {
+          keys = { groqApiKey: cur.groqApiKey, geminiApiKey: cur.geminiApiKey };
+        }
+      } catch { /* поточного профілю немає або він зіпсований */ }
+      const p = parsed as Record<string, unknown>;
+      out.push([key, JSON.stringify({
+        ...p,
+        groqApiKey: keys.groqApiKey ?? p.groqApiKey,
+        geminiApiKey: keys.geminiApiKey || p.geminiApiKey || '',
+      })]);
+      continue;
+    }
+
+    out.push([key, value]);
+  }
+  return out;
+}
+
 export async function importBackup(): Promise<ImportResult> {
   try {
     const result = await DocumentPicker.getDocumentAsync({
@@ -145,18 +228,19 @@ export async function importBackup(): Promise<ImportResult> {
     const asset = result.assets[0];
     const content = await new File(asset.uri).text();
 
-    const backup: BackupFile = JSON.parse(content);
-
-    if (backup.appId !== 'alpha_trainer') {
+    let backup: BackupFile;
+    try {
+      backup = JSON.parse(content);
+    } catch {
       return { success: false, errorCode: 'badFile' };
     }
 
-    const pairs: [string, string][] = [];
-    for (const [key, value] of Object.entries(backup.data)) {
-      if (value !== null && value !== undefined) {
-        pairs.push([key, value]);
-      }
+    if (backup?.appId !== 'alpha_trainer' || !backup.data || typeof backup.data !== 'object') {
+      return { success: false, errorCode: 'badFile' };
     }
+
+    const current = await AsyncStorage.getItem(PROFILE_KEY);
+    const pairs = sanitizeImport(backup.data, current);
 
     if (pairs.length === 0) {
       return { success: false, errorCode: 'emptyFile' };

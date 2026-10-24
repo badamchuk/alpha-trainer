@@ -57,6 +57,12 @@ module.exports = () => ({
       monochromeImage: './assets/android-icon-monochrome.png',
     },
     package: 'com.alphatrainer.app',
+    // Мікрофон тягне бібліотека камери, «поверх вікон» — меню розробника.
+    // Додатку не потрібні ні той, ні інший.
+    blockedPermissions: [
+      'android.permission.RECORD_AUDIO',
+      'android.permission.SYSTEM_ALERT_WINDOW',
+    ],
   },
   web: {
     favicon: './assets/favicon.png',
@@ -72,6 +78,7 @@ module.exports = () => ({
       {
         cameraPermission:
           '«Гарт» використовує камеру для сканування штрих-кодів та фото-логування їжі.',
+        recordAudioAndroid: false,
       },
     ],
     [
@@ -79,6 +86,7 @@ module.exports = () => ({
       {
         photosPermission: '«Гарт» використовує галерею для фото-логування їжі.',
         cameraPermission: '«Гарт» використовує камеру для фото-логування їжі.',
+        microphonePermission: false,
       },
     ],
     [
