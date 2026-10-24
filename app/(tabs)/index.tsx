@@ -26,12 +26,16 @@ import { getRecoveryScore, RecoveryScoreResult, WellbeingSnapshot } from '../../
 import { getTodayWellbeing, saveWellbeingEntry, WellbeingEntry } from '../../services/wellbeing';
 import { scheduleWaterReminders, cancelWaterReminders, requestPermissions } from '../../services/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { checkForUpdate, openUpdate, UpdateInfo } from '../../services/updates';
 
 export default function TodayScreen() {
   const router = useRouter();
   const { t, lang } = useLocale();
   const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  // Плашка лишається, доки є новіша версія: закрив діалог чи стер файл —
+  // звідси її завжди можна поставити знову.
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [todayWorkouts, setTodayWorkouts] = useState<WorkoutEntry[]>([]);
   const [stats, setStats] = useState({ totalWorkouts: 0, weeklyWorkouts: 0, monthlyWorkouts: 0, totalDuration: 0, streak: 0 });
   const [advice, setAdvice] = useState<string>('');
@@ -192,6 +196,12 @@ export default function TodayScreen() {
       setLoadingAdvice(false);
     }
   }
+
+  useFocusEffect(
+    useCallback(() => {
+      checkForUpdate().then(setUpdate).catch(() => {});
+    }, [])
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -474,6 +484,14 @@ export default function TodayScreen() {
             </View>
           </TouchableOpacity>
         </View>
+      )}
+
+      {update && (
+        <TouchableOpacity style={styles.updateBanner} onPress={() => openUpdate(update)}>
+          <Ionicons name="download-outline" size={18} color={Colors.primary} />
+          <Text style={styles.updateBannerText}>{t('updateAvailable', update.version)}</Text>
+          <Text style={styles.updateBannerAction}>{t('updateNow')}</Text>
+        </TouchableOpacity>
       )}
 
       {/* Активна програма: головніша за все інше на цьому екрані */}
@@ -870,6 +888,14 @@ const styles = StyleSheet.create({
   todayCardLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   todayLabel: { ...Typography.h3, fontSize: 16 },
   todaySubtext: { ...Typography.bodySmall, marginTop: 2 },
+  updateBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    marginHorizontal: Spacing.md, marginBottom: Spacing.md, padding: Spacing.md,
+    backgroundColor: `${Colors.primary}18`, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: `${Colors.primary}55`,
+  },
+  updateBannerText: { ...Typography.body, flex: 1 },
+  updateBannerAction: { ...Typography.body, color: Colors.primary, fontWeight: '700' },
   programCard: {
     marginHorizontal: Spacing.md, marginBottom: Spacing.md, padding: Spacing.md,
     backgroundColor: Colors.surface, borderRadius: BorderRadius.md, gap: 6,

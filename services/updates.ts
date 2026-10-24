@@ -14,9 +14,13 @@ import { translate } from './i18n';
 export const REPO = 'badamchuk/alpha-trainer';
 const LATEST_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const KEY = '@alpha_trainer:update_check';
-const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
+// Мережу перевіряємо часто: запит до GitHub дешевий, а пропущене оновлення —
+// це людина на старій версії без жодного шансу дізнатись про нову.
+const CHECK_EVERY_MS = 10 * 60 * 1000;
 /** Після «Пізніше» не нагадувати про ту саму версію добу */
-const REMIND_EVERY_MS = 24 * 60 * 60 * 1000;
+// Пропозиція повторюється при кожному заході в додаток. Інтервал лише
+// склеює старт і перше «повернення» в один діалог, а не два поспіль.
+const REMIND_EVERY_MS = 2 * 60 * 1000;
 
 export interface UpdateInfo {
   version: string;   // '1.2.0'
@@ -154,12 +158,12 @@ let inFlight: Promise<void> | null = null;
  * Автоматична перевірка — на старті й при поверненні в додаток.
  * Помилки мережі мовчки ігнорує: без інтернету тренуватись теж треба.
  */
-export function promptIfUpdateAvailable(): Promise<void> {
+export function promptIfUpdateAvailable(force = false): Promise<void> {
   if (Platform.OS !== 'android') return Promise.resolve(); // APK — лише для Android
   if (!inFlight) {
     inFlight = (async () => {
       try {
-        const info = await checkForUpdate();
+        const info = await checkForUpdate(force);
         if (!info) return;
         const state = await readState();
         const remindedRecently = state.promptedVersion === info.version

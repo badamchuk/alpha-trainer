@@ -22,7 +22,8 @@ export default function RootLayout() {
       if (profile?.groqApiKey) initGroq(profile.groqApiKey);
       await requestPermissions();
       // після дозволів — щоб діалог оновлення не наліз на системний
-      promptIfUpdateAvailable();
+      // на старті — завжди свіжий запит у мережу, без кешу
+      promptIfUpdateAvailable(true);
       // тиха копія даних раз на тиждень; помилки проковтуються всередині
       autoBackup();
     }
