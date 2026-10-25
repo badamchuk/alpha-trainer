@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
   },
   generateText: { ...Typography.body, color: '#FFF', fontWeight: '600' },
   summary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  summaryText: { ...Typography.bodySmall, color: Colors.textSecondary },
+  summaryText: { ...Typography.bodySmall, color: Colors.textSecondary, flexShrink: 1 },
   reroll: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   rerollText: { ...Typography.bodySmall, color: Colors.primary },
   block: { backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: Spacing.md, gap: Spacing.sm },

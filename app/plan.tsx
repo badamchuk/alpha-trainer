@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
   dayBadgeText: { color: Colors.textSecondary, fontWeight: '700', fontSize: 14 },
   dayBadgeTextToday: { color: '#FFF' },
   dayTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, marginBottom: 4 },
-  dayName: { ...Typography.body, fontWeight: '700' },
+  dayName: { ...Typography.body, fontWeight: '700', flexShrink: 1 },
   todayTag: {
     backgroundColor: Colors.primary, borderRadius: BorderRadius.full,
     paddingHorizontal: 8, paddingVertical: 2,

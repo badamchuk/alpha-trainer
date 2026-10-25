@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3,
     borderWidth: 1,
   },
-  typeBadgeText: { fontSize: 12, fontWeight: '600' },
+  typeBadgeText: { fontSize: 12, fontWeight: '600', flexShrink: 1 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   metaText: { color: Colors.textMuted, fontSize: 12 },
   cardDate: { color: Colors.textSecondary, fontSize: 13, marginBottom: 4 },

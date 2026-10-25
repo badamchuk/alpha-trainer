@@ -1607,7 +1607,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginBottom: Spacing.xs,
   },
-  formSubtitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
+  formSubtitle: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', flexShrink: 1 },
   setTypeRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4,
   },

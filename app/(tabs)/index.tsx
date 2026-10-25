@@ -328,11 +328,11 @@ export default function TodayScreen() {
             size={28}
             color={isWorkoutDay ? Colors.primary : Colors.accent}
           />
-          <View style={{ marginLeft: Spacing.sm }}>
+          <View style={{ marginLeft: Spacing.sm, flex: 1 }}>
             <Text style={styles.todayLabel}>
               {isWorkoutDay ? t('workoutDay') : t('restDay')}
             </Text>
-            <Text style={styles.todaySubtext}>
+            <Text style={styles.todaySubtext} numberOfLines={2}>
               {todayWorkouts.length > 0
                 ? t('workoutsLoggedToday', todayWorkouts.length)
                 : isWorkoutDay
@@ -346,14 +346,13 @@ export default function TodayScreen() {
         {/* «Скласти» показуємо щодня: у день відпочинку теж буває настрій
             потренуватись, а іншого входу в конструктор немає */}
         <View style={styles.dayActions}>
-          {isWorkoutDay && (
-            <TouchableOpacity
-              style={styles.logBtn}
-              onPress={() => router.push('/workout/log')}
-            >
-              <Text style={styles.logBtnText}>{t('logBtn')}</Text>
-            </TouchableOpacity>
-          )}
+          {/* записати можна будь-якого дня — це найчастіша дія, їй місце зверху */}
+          <TouchableOpacity
+            style={styles.logBtn}
+            onPress={() => router.push('/workout/log')}
+          >
+            <Text style={styles.logBtnText}>{t('logBtn')}</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.buildBtn}
             onPress={() => router.push('/workout/builder')}
@@ -877,7 +876,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   content: { padding: Spacing.md, paddingTop: 8, paddingBottom: 24 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.lg },
-  greeting: { ...Typography.h2, marginBottom: 2 },
+  greeting: { ...Typography.h2, marginBottom: 2, flexShrink: 1 },
   date: { ...Typography.bodySmall, textTransform: 'capitalize' },
   profileBtn: { padding: 4 },
   todayCard: {
@@ -926,16 +925,16 @@ const styles = StyleSheet.create({
   },
   noPlanBtnPrimary: { borderColor: Colors.primary },
   noPlanBtnText: { ...Typography.bodySmall, color: Colors.textSecondary },
-  dayActions: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
+  dayActions: { gap: 6, alignItems: 'stretch', marginLeft: Spacing.sm },
   buildBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.primary,
   },
   buildBtnText: { ...Typography.bodySmall, color: Colors.primary },
   logBtn: {
-    backgroundColor: Colors.primary, borderRadius: BorderRadius.sm,
-    paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: Colors.primary, borderRadius: BorderRadius.full,
+    paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center',
   },
   logBtnText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
   statsRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm },
@@ -946,7 +945,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   recoveryLeft: { flex: 1 },
-  recoveryTitle: { color: Colors.textMuted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
+  recoveryTitle: { color: Colors.textMuted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, flexShrink: 1 },
   recoveryLevel: { fontSize: 18, fontWeight: '700', marginTop: 2 },
   recoverySub: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
   recoveryRight: { alignItems: 'flex-end', gap: 2 },
@@ -989,7 +988,7 @@ const styles = StyleSheet.create({
   planCardBody: { flex: 1, padding: Spacing.md, gap: Spacing.xs },
   planCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   planTypePill: { borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
-  planTypeText: { fontSize: 12, fontWeight: '700' },
+  planTypeText: { fontSize: 12, fontWeight: '700', flexShrink: 1 },
   planMeta: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   planMetaText: { color: Colors.textMuted, fontSize: 12 },
   planExercises: { gap: 2 },

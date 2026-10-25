@@ -1129,7 +1129,7 @@ const styles = StyleSheet.create({
   },
   mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   mealHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  mealTime: { color: Colors.textMuted, fontSize: 12, fontWeight: '600' },
+  mealTime: { color: Colors.textMuted, fontSize: 12, fontWeight: '600', flexShrink: 1 },
   mealName: { color: Colors.textPrimary, fontWeight: '700', fontSize: 15 },
   mealHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   mealCal: { color: Colors.primary, fontWeight: '700', fontSize: 14 },
