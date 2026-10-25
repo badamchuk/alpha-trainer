@@ -12,10 +12,15 @@ import type { TFn } from './i18n';
  *   «45с», «45 s», «45 сек»  → 0.75
  *   «1:30»                   → 1.5
  *   «2м», «2 хв», «2 min»    → 2
- *   «0.75», «25»             → як є, хвилини
+ *   «45», «90»               → секунди: число без одиниці більше 10
+ *   «3», «0.75»              → хвилини: число без одиниці до 10 включно
+ *
+ * Правило «більше 10 — секунди» — здогадка, але життєва: вправу на 45 хвилин
+ * записують рідко, на 45 секунд — щодня. Хто хоче 25 хвилин бігу, пише «25хв».
  *
  * Порожнє чи незрозуміле → undefined (поле не заповнене).
  */
+const BARE_SECONDS_FROM = 10;
 export function parseDuration(raw: string): number | undefined {
   const v = raw.trim().toLowerCase().replace(',', '.');
   if (!v) return undefined;
@@ -37,15 +42,19 @@ export function parseDuration(raw: string): number | undefined {
   }
 
   const n = Number(v);
-  return isNaN(n) || n < 0 ? undefined : round(n);
+  if (isNaN(n) || n < 0) return undefined;
+  return round(n > BARE_SECONDS_FROM ? n / 60 : n);
 }
 
-/** Хвилини → що показати в полі при редагуванні: «45с», «1:30», «25». */
+/**
+ * Хвилини → що показати в полі при редагуванні: «45с», «1:30», «25 хв».
+ * Хвилини завжди з одиницею — голе «25» розбір прочитав би як секунди.
+ */
 export function durationToInput(min: number | undefined, t: TFn): string {
   if (min === undefined || min === null) return '';
   const totalSec = Math.round(min * 60);
   if (totalSec < 60) return t('secCompact', totalSec);
-  if (totalSec % 60 === 0) return String(totalSec / 60);
+  if (totalSec % 60 === 0) return t('minValue', totalSec / 60);
   return `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, '0')}`;
 }
 

@@ -12,7 +12,8 @@ describe('розбір поля тривалості', () => {
     ['45с', 0.75], ['45 с', 0.75], ['45 сек', 0.75], ['45s', 0.75], ['30 sec', 0.5],
     ['1:30', 1.5], ['0:45', 0.75], ['10:00', 10],
     ['2м', 2], ['2 хв', 2], ['5 min', 5],
-    ['25', 25], ['0.75', 0.75], ['1,5', 1.5],
+    ['45', 0.75], ['90', 1.5], ['11', 11 / 60],
+    ['10', 10], ['3', 3], ['0.75', 0.75], ['1,5', 1.5], ['25хв', 25], ['25 min', 25],
   ])('%s → %s хв', (input, min) => {
     expect(parseDuration(input)).toBeCloseTo(min, 5);
   });
@@ -38,7 +39,9 @@ describe('показ тривалості', () => {
     expect(formatDuration(1.5, uk)).toBe('1:30');
   });
   it('поле при редагуванні показує те, що зрозуміє розбір', () => {
-    for (const min of [0.75, 1.5, 25, 0.5]) {
+    // 25 хвилин мають повернутись 25 хвилинами, а не стати 25 секундами
+    expect(durationToInput(25, uk)).toBe('25 хв');
+    for (const min of [0.75, 1.5, 25, 0.5, 3, 11]) {
       expect(parseDuration(durationToInput(min, uk))).toBeCloseTo(min, 5);
       expect(parseDuration(durationToInput(min, en))).toBeCloseTo(min, 5);
     }
