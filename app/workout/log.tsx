@@ -498,10 +498,8 @@ export default function LogWorkoutScreen() {
     // Таймер відпочинку і банер рекорду — тільки для нової вправи в тренуванні.
     // Під час виправлення помилки чи правки шаблону вони б лише заважали.
     if (isEdit || isTemplateMode) return;
-    // Auto-open rest timer only for strength-type workouts (has sets/reps/weight)
-    if (ex.sets || ex.reps || ex.weight) {
-      setRestTimerVisible(true);
-    }
+    // Таймер відпочинку тут не відкриваємо: при записі заднім числом він лише
+    // заважає. Він запускається, коли вправу позначено виконаною (галочка).
     // PR detection: порівнюємо розрах. 1RM (вага+повтори) з історією
     // ТА з уже доданими вправами поточної сесії — без подвійних банерів
     const candidate1RM = best1RMOf(ex);
@@ -758,7 +756,7 @@ export default function LogWorkoutScreen() {
             style={styles.input}
             value={duration}
             onChangeText={setDuration}
-            placeholder="60"
+            placeholder="–"
             placeholderTextColor={Colors.textMuted}
             keyboardType="numeric"
           />
@@ -812,19 +810,6 @@ export default function LogWorkoutScreen() {
             </View>
           )}
 
-          {/* Rating */}
-          <Text style={styles.label}>{t('ratingLabel')}</Text>
-          <View style={styles.ratingRow}>
-            {RATINGS.map((r) => (
-              <TouchableOpacity key={r} onPress={() => setRating(r)}>
-                <Ionicons
-                  name={rating && rating >= r ? 'star' : 'star-outline'}
-                  size={28}
-                  color={rating && rating >= r ? Colors.accent : Colors.textMuted}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
           </>
           )}
 
@@ -894,9 +879,15 @@ export default function LogWorkoutScreen() {
             onEdit: startEditExercise,
             onSubstitute: openSubstitute,
             done,
-            onToggleDone: (i: number) => setDone((prev) => (
-              prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]
-            )),
+            onToggleDone: (i: number) => {
+              const marking = !done.includes(i);
+              setDone((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
+              // галочка «зробив» — і одразу відпочинок; лише для силових вправ
+              const ex = exercises[i];
+              if (marking && !isTemplateMode && ex && (ex.sets || ex.reps || ex.weight)) {
+                setRestTimerVisible(true);
+              }
+            },
             onMove: handleMove,
             editingIdx: editingExIdx,
             groupMode,
@@ -961,12 +952,12 @@ export default function LogWorkoutScreen() {
             <View style={styles.row}>
               <View style={styles.rowItem}>
                 <Text style={styles.miniLabel}>{t('setsLabel')}</Text>
-                <TextInput style={styles.input} placeholder="3" placeholderTextColor={Colors.textMuted}
+                <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                   value={exSets} onChangeText={setExSets} keyboardType="numeric" />
               </View>
               <View style={styles.rowItem}>
                 <Text style={styles.miniLabel}>{t('repsLabel')}</Text>
-                <TextInput style={styles.input} placeholder="12" placeholderTextColor={Colors.textMuted}
+                <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                   value={exReps} onChangeText={setExReps} keyboardType="numeric" />
               </View>
               <View style={styles.rowItem}>
@@ -976,7 +967,7 @@ export default function LogWorkoutScreen() {
                     <Ionicons name="calculator-outline" size={13} color={Colors.primary} />
                   </TouchableOpacity>
                 </View>
-                <TextInput style={styles.input} placeholder="50" placeholderTextColor={Colors.textMuted}
+                <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                   value={exWeight} onChangeText={setExWeight} keyboardType="decimal-pad" />
               </View>
             </View>
@@ -1075,6 +1066,19 @@ export default function LogWorkoutScreen() {
           {/* Notes */}
           {!isTemplateMode && (
             <>
+          {/* Оцінка — після вправ: її ставлять у кінці */}
+          <Text style={styles.label}>{t('ratingLabel')}</Text>
+          <View style={styles.ratingRow}>
+            {RATINGS.map((r) => (
+              <TouchableOpacity key={r} onPress={() => setRating(r)}>
+                <Ionicons
+                  name={rating && rating >= r ? 'star' : 'star-outline'}
+                  size={28}
+                  color={rating && rating >= r ? Colors.accent : Colors.textMuted}
+                />
+              </TouchableOpacity>
+            ))}
+          </View>
               <Text style={styles.label}>{t('notesLabel')}</Text>
               <TextInput
                 style={[styles.input, styles.notesInput]}

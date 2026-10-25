@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Alert, Switch, KeyboardAvoidingView, Platform,
-  Animated, Dimensions, Linking, Modal, Share,
+  Animated, Dimensions, Linking, Modal, Share, Image,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
@@ -917,9 +917,7 @@ function StepWelcome({
           <Text style={[styles.langBtnText, exerciseLang === 'en' && styles.langBtnTextActive]}>🇬🇧 English</Text>
         </TouchableOpacity>
       </View>
-      <View style={styles.bigIcon}>
-        <Ionicons name="barbell-outline" size={52} color={Colors.primary} />
-      </View>
+      <Image source={require('../../assets/icon.png')} style={styles.welcomeLogo} />
       <Text style={styles.stepTitle}>{t('welcomeTitle')}</Text>
       <Text style={styles.stepDesc}>{t('welcomeIntro')}</Text>
       <View style={styles.featureList}>
@@ -1638,6 +1636,7 @@ const styles = StyleSheet.create({
   nextBtnText: { color: '#FFF', fontWeight: '700', fontSize: 17 },
 
   // Welcome step
+  welcomeLogo: { width: 96, height: 96, borderRadius: 24, alignSelf: 'center', marginBottom: Spacing.lg },
   bigIcon: {
     width: 100, height: 100, borderRadius: 50,
     backgroundColor: 'rgba(230,57,70,0.1)', borderWidth: 2, borderColor: 'rgba(230,57,70,0.3)',

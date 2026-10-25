@@ -436,7 +436,7 @@ export default function WorkoutDetailScreen() {
               style={styles.input}
               value={duration}
               onChangeText={setDuration}
-              placeholder="60"
+              placeholder="–"
               placeholderTextColor={Colors.textMuted}
               keyboardType="numeric"
             />
@@ -551,17 +551,17 @@ export default function WorkoutDetailScreen() {
               <View style={styles.row}>
                 <View style={styles.rowItem}>
                   <Text style={styles.miniLabel}>{t('setsLabel')}</Text>
-                  <TextInput style={styles.input} placeholder="3" placeholderTextColor={Colors.textMuted}
+                  <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={exSets} onChangeText={setExSets} keyboardType="numeric" />
                 </View>
                 <View style={styles.rowItem}>
                   <Text style={styles.miniLabel}>{t('repsLabel')}</Text>
-                  <TextInput style={styles.input} placeholder="12" placeholderTextColor={Colors.textMuted}
+                  <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={exReps} onChangeText={setExReps} keyboardType="numeric" />
                 </View>
                 <View style={styles.rowItem}>
                   <Text style={styles.miniLabel}>{t('weightKgLabel')}</Text>
-                  <TextInput style={styles.input} placeholder="50" placeholderTextColor={Colors.textMuted}
+                  <TextInput style={styles.input} placeholder="–" placeholderTextColor={Colors.textMuted}
                     value={exWeight} onChangeText={setExWeight} keyboardType="decimal-pad" />
                 </View>
               </View>

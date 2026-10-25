@@ -372,7 +372,8 @@ export default function TodayScreen() {
       </View>
 
       {/* Recovery Score */}
-      {recovery && <RecoveryWidget recovery={recovery} />}
+      {/* до першого тренування число з повітря — не показуємо */}
+      {recovery && stats.totalWorkouts > 0 && <RecoveryWidget recovery={recovery} />}
 
       {/* Wellbeing Card */}
       <WellbeingCard wellbeing={wellbeing} onOpen={openWellbeingModal} />
@@ -392,6 +393,7 @@ export default function TodayScreen() {
             {t('glassesOf', waterData.glasses, waterData.goal)}
           </Text>
         </View>
+        <Text style={styles.waterHint}>{t('waterGoalHint', waterData.goal * 250 / 1000)}</Text>
         <View style={styles.glassesGrid}>
           {Array(waterData.goal).fill(0).map((_, i) => (
             <TouchableOpacity
@@ -1034,6 +1036,7 @@ const styles = StyleSheet.create({
   weekDayDotMissed: { backgroundColor: Colors.surfaceElevated, borderColor: Colors.border },
   weekDayDotPlanned: { borderColor: Colors.primary, borderStyle: 'dashed' },
   weekDayDotToday: { borderColor: Colors.primary, borderWidth: 2 },
+  waterHint: { ...Typography.bodySmall, color: Colors.textMuted, fontSize: 11, marginTop: -4, marginBottom: 6 },
   waterCard: {
     backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
     padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,

@@ -246,10 +246,17 @@ function WorkoutCard({ workout, onPress, onDelete, onRepeat }: {
           <Text style={styles.cardNotes} numberOfLines={2}>{workout.notes}</Text>
         ) : null}
 
-        <TouchableOpacity style={styles.repeatBtn} onPress={onRepeat}>
-          <Ionicons name="copy-outline" size={14} color={Colors.textMuted} />
-          <Text style={styles.repeatBtnText}>{t('repeatWithEdits')}</Text>
-        </TouchableOpacity>
+        <View style={styles.cardActions}>
+          <TouchableOpacity style={styles.repeatBtn} onPress={onRepeat}>
+            <Ionicons name="copy-outline" size={14} color={Colors.textMuted} />
+            <Text style={styles.repeatBtnText}>{t('repeatWithEdits')}</Text>
+          </TouchableOpacity>
+          {/* довге натискання лишається, але його не видно — тому ще й кошик */}
+          <TouchableOpacity style={styles.repeatBtn} onPress={onDelete} hitSlop={6}>
+            <Ionicons name="trash-outline" size={14} color={Colors.textMuted} />
+            <Text style={styles.repeatBtnText}>{t('delete')}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -324,6 +331,7 @@ const styles = StyleSheet.create({
   cardDate: { color: Colors.textSecondary, fontSize: 13, marginBottom: 4 },
   cardExercises: { color: Colors.textMuted, fontSize: 12, marginBottom: 4 },
   cardNotes: { color: Colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginBottom: 4 },
+  cardActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   repeatBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 2, marginTop: 2,
